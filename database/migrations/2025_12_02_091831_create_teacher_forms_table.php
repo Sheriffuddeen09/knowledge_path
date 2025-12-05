@@ -21,7 +21,7 @@ return new class extends Migration
         $table->string('logo')->nullable();
         $table->string('cv')->nullable();
         $table->string('qualification');
-        $table->string('experience');
+        $table->string('experience')->nullable();
         $table->string('specialization')->nullable();
         $table->timestamps();
     });

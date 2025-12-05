@@ -140,11 +140,9 @@ class RegisterController extends Controller
     Auth::login($user);
 
     // Redirect based on role
-    if ($user->role === 'student') {
-        $redirect = route('student.dashboard');
-    } else {
-        $redirect = route('admin.choose_choice');
-    }
+    $redirect = $user->role === 'admin'
+        ? '/admin/dashboard'
+        : '/student/dashboard';
 
     return response()->json([
         'status' => true,

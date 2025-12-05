@@ -15,7 +15,7 @@ class VerifyCsrfToken extends Middleware
         // Add your API routes here that should bypass CSRF
         'api/*',
         'check-email',
-        'check',
+        'register',
         'check-phone'
 
     ];

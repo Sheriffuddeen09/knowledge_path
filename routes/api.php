@@ -3,11 +3,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\ForgotPasswordController;
+use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\OtpController;
 use App\Http\Controllers\AdminChoiceController;
 use App\Http\Controllers\TeacherFormController;
 use App\Models\User;
 use App\Http\Controllers\DashboardController;
+use App\Http\Middleware\EnsureTeacherChoice;
+
 
 Route::post('/send-otp', [OtpController::class, 'sendOtp']);
 Route::post('/verify-otp', [OtpController::class, 'verifyOtp']);
@@ -39,7 +43,9 @@ Route::middleware('auth:sanctum')->get('/user-status', function (Request $reques
     if ($user) {
         return response()->json([
             'status' => 'logged_in',
-            'user' => $user
+            'user' => $user,
+            'admin_choice' => $user->admin_choice,
+            'teacher_profile_completed' => $user->teacher_profile_completed
         ]);
     }
 
@@ -63,8 +69,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/admin/choose-choice', [AdminChoiceController::class, 'store'])
         ->name('admin.choose_choice');
 
-    Route::post('/admin/teacher-form', [TeacherFormController::class, 'store'])
-        ->name('admin.teacher_form');
+        Route::middleware([
+        EnsureTeacherChoice::class
+    ])->group(function () {
+
+        Route::get('/admin/teacher-form', [TeacherFormController::class, 'index']);
+        Route::post('/admin/teacher/save', [TeacherFormController::class, 'submitForm']);
+
+        Route::get('/teacher-form', [TeacherFormController::class, 'getTeacherForm'])
+        ->middleware('auth:sanctum');
+
+        Route::get('/teacher', [TeacherFormController::class, 'allTeachers'])
+        ->middleware('auth:sanctum');
+
+    });
 
     Route::get('/admin/dashboard', function () {
         return response()->json(['message' => 'Admin dashboard']);

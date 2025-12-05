@@ -9,15 +9,18 @@ use Illuminate\Support\Facades\Password;
 class ForgotPasswordController extends Controller
 {
     public function sendResetLink(Request $request)
-    {
-        $request->validate(['email' => 'required|email']);
+{
+    $request->validate([
+        'email' => 'required|email'
+    ]);
 
-        $status = Password::sendResetLink(
-            $request->only('email')
-        );
+    $status = Password::sendResetLink(
+        $request->only('email')
+    );
 
-        return $status === Password::RESET_LINK_SENT
-            ? response()->json(['message' => 'Password reset link sent.'])
-            : response()->json(['message' => 'Unable to send reset link'], 400);
-    }
+    return $status === Password::RESET_LINK_SENT
+        ? response()->json(['message' => __($status)], 200)
+        : response()->json(['message' => __($status)], 400);
+}
+
 }

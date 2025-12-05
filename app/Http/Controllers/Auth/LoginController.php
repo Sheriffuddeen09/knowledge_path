@@ -129,9 +129,12 @@ class LoginController extends Controller
     $token = $user->createToken('auth_token', ['*'], $expiresAt)->plainTextToken;
 
     // Determine redirect URL based on role
-    $redirect = $user->role === 'admin'
-        ? '/admin/dashboard'
-        : '/student/dashboard';
+    $role = strtolower(trim($user->role));
+
+    $redirect = $role === 'student'
+        ? '/student/dashboard'
+        : '/admin/dashboard';
+
 
     return response()->json([
         'status' => true,
