@@ -11,6 +11,10 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;  // ← add HasApiTokens here
 
+    public function library() {
+        return $this->belongsToMany(Video::class, 'libraries');
+    }
+
     protected $fillable = [
         'first_name',
         'last_name',

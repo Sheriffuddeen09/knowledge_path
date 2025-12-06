@@ -11,6 +11,43 @@ use App\Http\Controllers\TeacherFormController;
 use App\Models\User;
 use App\Http\Controllers\DashboardController;
 use App\Http\Middleware\EnsureTeacherChoice;
+use App\Http\Controllers\Api\VideoController;
+use App\Http\Controllers\Api\CommentController;
+use App\Http\Controllers\Api\ReactionController;
+use App\Http\Controllers\Api\ShareController;
+use App\Models\Category;
+use App\Http\Controllers\Api\AdminController;
+
+
+
+Route::get('/admin', [AdminController::class, 'show']);
+
+Route::get('/categories', function () {
+    return Category::all();
+});
+
+Route::middleware('auth:sanctum')->group(function(){
+    Route::get('/videos', [VideoController::class,'index']);
+    Route::post('/videos', [VideoController::class,'store']);
+    Route::get('/videos/{video}', [VideoController::class,'show']);
+    Route::put('/videos/{video}', [VideoController::class,'update']);
+    Route::delete('/videos/{video}', [VideoController::class,'destroy']);
+    Route::get('/videos/{video}/download', [VideoController::class,'download']);
+    Route::post('/videos/{video}/save', [VideoController::class,'saveToLibrary']);
+    Route::delete('/videos/{video}/save', [VideoController::class,'removeFromLibrary']);
+
+    Route::post('/videos/{video}/comments', [CommentController::class,'store']);
+    Route::put('/comments/{comment}', [CommentController::class,'update']);
+    Route::delete('/comments/{comment}', [CommentController::class,'destroy']);
+
+     Route::post('/reply', [ReplyController::class, 'store']);
+    Route::post('/reply/{id}/like', [ReplyController::class, 'likeReply']);
+    Route::delete('/reply/{id}', [ReplyController::class, 'destroy']);
+    
+    Route::post('/reactions/toggle', [ReactionController::class,'toggle']);
+
+    Route::post('/videos/{video}/share', [ShareController::class,'share']);
+});
 
 
 Route::post('/send-otp', [OtpController::class, 'sendOtp']);
