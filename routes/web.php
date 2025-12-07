@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\LoginController;
 
-use App\Models\User;
+use App\Models\Video;
 
 Route::get('/reset-password/{token}', function ($token) {
     $email = request('email');
@@ -12,8 +12,8 @@ Route::get('/reset-password/{token}', function ($token) {
 })->name('password.reset');
 
 
-Route::get('/check-users', function () {
-    return User::all();
+Route::get('/video', function () {
+    return Video::all();
 });
 
 
