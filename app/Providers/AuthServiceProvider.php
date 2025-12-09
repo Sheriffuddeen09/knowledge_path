@@ -19,7 +19,9 @@ class AuthServiceProvider extends ServiceProvider
      */
     protected $policies = [
     Video::class => VideoPolicy::class,
-    ];
+    \App\Models\Comment::class => \App\Policies\CommentPolicy::class,
+];
+
     /**
      * Register any authentication / authorization services.
      */

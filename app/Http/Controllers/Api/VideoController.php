@@ -6,44 +6,84 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Video;
 use Illuminate\Support\Facades\Storage;
+ use App\Models\VideoReaction;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+
 
 class VideoController extends Controller
 {
-    // Public: List all videos
-    public function index()
-    {
-        $videos = Video::with(['user:id,first_name,last_name','category'])
-            ->latest()
-            ->paginate(12);
 
-        $videos->getCollection()->transform(function ($v) {
-            $v->video_url = $v->video_path ? asset('storage/' . $v->video_path) : null;
-            $v->thumbnail_url = $v->thumbnail ? asset('storage/' . $v->thumbnail) : null;
-            return $v;
-        });
+   public function index()
+{
+    $userId = Auth::id(); // logged-in user ID or null
 
-        return response()->json($videos);
-    }
+    $videos = Video::with([
+            'user:id,first_name,last_name,role',
+            'category',
+            'reactions.user:id,first_name,last_name,role'
+        ])
 
+        ->latest()
+        ->paginate(12);
+
+    // Transform each video
+    $videos->getCollection()->transform(function ($v) use ($userId) {
+        // URLs
+        $v->video_url = $v->video_path ? asset('storage/' . $v->video_path) : null;
+        $v->thumbnail_url = $v->thumbnail ? asset('storage/' . $v->thumbnail) : null;
+
+        // Reaction counts (computed in PHP)
+        $v->reaction_counts = $v->reactions
+            ->groupBy('emoji')
+            ->map(fn($group) => $group->count())
+            ->toArray();
+
+        // Current logged-in user's reaction
+        $v->my_reaction = $userId
+            ? $v->reactions->firstWhere('user_id', $userId)?->emoji
+            : null;
+
+         $v->reacted_users = $v->reactions->map(function ($r) use ($userId) {
+            return [
+                'id'    => $r->user->id,
+                'name'  => $r->user_id === $userId
+                    ? 'You'
+                    : trim($r->user->first_name . ' ' . $r->user->last_name ),
+                'role'  => $r->user->role,
+                'emoji' => $r->emoji,
+            ];
+        })->values();
+
+        return $v;
+    });
+
+    return response()->json($videos);
+}
+ 
     // Public: Show single video with comments
     public function show(Video $video)
-    {
-        $video->load([
-            'user:id,first_name,last_name',
-            'category',
-            'comments.user',
-            'comments.replies.user'
-        ]);
+{
+    $userId = Auth::id();
 
-        $video->video_url = $video->video_path ? asset('storage/' . $video->video_path) : null;
-        $video->thumbnail_url = $video->thumbnail ? asset('storage/' . $video->thumbnail) : null;
-        $video->reaction_summary = $video->reactions()
-            ->selectRaw('emoji, count(*) as count')
-            ->groupBy('emoji')
-            ->get();
+    $video->load(['user:id,first_name,last_name, role', 'category', 'comments.user', 'comments.replies.user', 'reactions']);
 
-        return response()->json(['video' => $video]);
-    }
+    $video->video_url = $video->video_path ? asset('storage/' . $video->video_path) : null;
+    $video->thumbnail_url = $video->thumbnail ? asset('storage/' . $video->thumbnail) : null;
+
+    // Reaction summary
+    $video->reaction_summary = $video->reactions
+        ->groupBy('emoji')
+        ->map(fn($group) => $group->count())
+        ->toArray();
+
+    // Current logged-in user's reaction
+    $video->my_reaction = $userId
+        ? $video->reactions->firstWhere('user_id', $userId)?->emoji
+        : null;
+
+    return response()->json(['video' => $video]);
+}
 
     // Admin: Create video
     public function store(Request $request)
