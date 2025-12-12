@@ -71,17 +71,28 @@ class CommentController extends Controller
 public function react(Request $request, Comment $comment)
 {
     $request->validate(['emoji' => 'required|string']);
+
     $reactions = $comment->reactions ? json_decode($comment->reactions, true) : [];
     $emoji = $request->emoji;
     $userId = auth()->id();
 
-    $reactions[$emoji] = $reactions[$emoji] ?? [];
-    if (!in_array($userId, $reactions[$emoji])) $reactions[$emoji][] = $userId;
+    // Ensure array exists
+    if (!isset($reactions[$emoji]) || !is_array($reactions[$emoji])) {
+        $reactions[$emoji] = [];
+    }
+
+    // Toggle reaction (optional)
+    if (!in_array($userId, $reactions[$emoji])) {
+        $reactions[$emoji][] = $userId;
+    }
 
     $comment->reactions = json_encode($reactions);
     $comment->save();
 
-    return response()->json(['comment' => $comment]);
+    // ⭐ RETURN EXACT STRUCTURE YOUR FRONTEND EXPECTS
+    return response()->json([
+        'reactions' => $reactions,
+    ]);
 }
 
 

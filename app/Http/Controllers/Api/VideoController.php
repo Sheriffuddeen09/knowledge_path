@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 class VideoController extends Controller
 {
 
-   public function index()
+  public function index()
 {
     $userId = Auth::id(); // logged-in user ID or null
 
@@ -23,33 +23,30 @@ class VideoController extends Controller
             'category',
             'reactions.user:id,first_name,last_name,role'
         ])
-
+        ->withCount('comments') // <-- Add this
         ->latest()
         ->paginate(12);
 
     // Transform each video
     $videos->getCollection()->transform(function ($v) use ($userId) {
-        // URLs
         $v->video_url = $v->video_path ? asset('storage/' . $v->video_path) : null;
         $v->thumbnail_url = $v->thumbnail ? asset('storage/' . $v->thumbnail) : null;
 
-        // Reaction counts (computed in PHP)
         $v->reaction_counts = $v->reactions
             ->groupBy('emoji')
             ->map(fn($group) => $group->count())
             ->toArray();
 
-        // Current logged-in user's reaction
         $v->my_reaction = $userId
             ? $v->reactions->firstWhere('user_id', $userId)?->emoji
             : null;
 
-         $v->reacted_users = $v->reactions->map(function ($r) use ($userId) {
+        $v->reacted_users = $v->reactions->map(function ($r) use ($userId) {
             return [
                 'id'    => $r->user->id,
                 'name'  => $r->user_id === $userId
                     ? 'You'
-                    : trim($r->user->first_name . ' ' . $r->user->last_name ),
+                    : trim($r->user->first_name . ' ' . $r->user->last_name),
                 'role'  => $r->user->role,
                 'emoji' => $r->emoji,
             ];
@@ -60,24 +57,23 @@ class VideoController extends Controller
 
     return response()->json($videos);
 }
- 
-    // Public: Show single video with comments
-    public function show(Video $video)
+public function show(Video $video)
 {
     $userId = Auth::id();
 
-    $video->load(['user:id,first_name,last_name, role', 'category', 'comments.user', 'comments.replies.user', 'reactions']);
+    // Ensure comment count is included
+    $video = Video::withCount('comments')
+        ->with(['user:id,first_name,last_name,role', 'category', 'comments.user', 'comments.replies.user', 'reactions'])
+        ->find($video->id);
 
     $video->video_url = $video->video_path ? asset('storage/' . $video->video_path) : null;
     $video->thumbnail_url = $video->thumbnail ? asset('storage/' . $video->thumbnail) : null;
 
-    // Reaction summary
     $video->reaction_summary = $video->reactions
         ->groupBy('emoji')
         ->map(fn($group) => $group->count())
         ->toArray();
 
-    // Current logged-in user's reaction
     $video->my_reaction = $userId
         ? $video->reactions->firstWhere('user_id', $userId)?->emoji
         : null;

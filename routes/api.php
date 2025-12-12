@@ -19,13 +19,17 @@ use App\Models\Category;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\VideoReactionController;
 use App\Http\Controllers\CommentReactionController;
+use App\Http\Controllers\Api\ReplyController;
 
+
+Route::post('replies/{reply}/react', [ReplyController::class, 'react']);
 
 Route::middleware('auth:sanctum')->get('/me', function (Request $request) {
     return $request->user();
 });
 
 Route::get('/videos/{id}/reactions', [VideoReactionController::class, 'index']); // public
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/comments/{comment}/reaction', [CommentReactionController::class, 'toggle']);
 });
@@ -55,10 +59,6 @@ Route::middleware('auth:sanctum')->group(function(){
 
     Route::put('/comments/{comment}', [CommentController::class,'update']);
     Route::delete('/comments/{comment}', [CommentController::class,'destroy']);
-
-     Route::post('/reply', [ReplyController::class, 'store']);
-    Route::post('/reply/{id}/like', [ReplyController::class, 'likeReply']);
-    Route::delete('/reply/{id}', [ReplyController::class, 'destroy']);
     
 
     Route::post('/videos/{video}/share', [ShareController::class,'share']);

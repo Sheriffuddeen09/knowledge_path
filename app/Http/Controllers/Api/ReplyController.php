@@ -1,65 +1,38 @@
-<?php 
+<?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api;
 
-use App\Models\Reply;
-use App\Models\Comment;
+use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\ReplyReaction;
 
 class ReplyController extends Controller
 {
-    // Add a reply
-    public function store(Request $request)
+    public function react(Request $request, $replyId)
     {
-        $data = $request->validate([
-            'comment_id' => 'required|exists:comments,id',
-            'reply' => 'required|string',
-            'emoji' => 'nullable|string'
+        $emoji = $request->input('emoji');
+
+        // Optional: use a session ID or 'guest' identifier instead of user_id
+        $userId = auth()->id() ?? null; // allow null for guests
+
+        // Create reaction; user_id can be null for guests
+        $reaction = ReplyReaction::updateOrCreate(
+            [
+                'reply_id' => $replyId,
+                'user_id' => $userId,
+                'emoji' => $emoji,
+            ]
+        );
+
+        // Fetch all reactions for this reply
+        $reactions = ReplyReaction::where('reply_id', $replyId)
+            ->get()
+            ->groupBy('emoji')
+            ->map(fn($users, $emoji) => $users->pluck('user_id')->toArray());
+
+        return response()->json([
+            'success' => true,
+            'reactions' => $reactions
         ]);
-
-        $reply = Reply::create([
-            'comment_id' => $data['comment_id'],
-            'reply' => $data['reply'],
-            'emoji' => $data['emoji'],
-            'user_id' => auth()->id(),
-            'likes' => []
-        ]);
-
-        return response()->json(['status' => true, 'reply' => $reply]);
-    }
-
-    // Like a reply with emoji
-    public function likeReply(Request $request, $id)
-    {
-        $reply = Reply::findOrFail($id);
-
-        $emoji = $request->emoji;
-
-        $likes = $reply->likes ?? [];
-
-        if (isset($likes[auth()->id()]) && $likes[auth()->id()] == $emoji) {
-            unset($likes[auth()->id()]);
-        } else {
-            $likes[auth()->id()] = $emoji;
-        }
-
-        $reply->likes = $likes;
-        $reply->save();
-
-        return response()->json(['status' => true, 'likes' => $likes]);
-    }
-
-    // Delete reply (Admin only)
-    public function destroy($id)
-    {
-        $reply = Reply::findOrFail($id);
-
-        if (auth()->user()->role !== 'admin') {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-
-        $reply->delete();
-
-        return response()->json(['status' => true]);
     }
 }
