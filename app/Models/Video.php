@@ -2,6 +2,10 @@
 namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\VideoReaction;
+use App\Models\VideoDownload;
+use App\Models\VideoView;
+use Carbon\Carbon;
+
 
 class Video extends Model {
 
@@ -20,8 +24,16 @@ class Video extends Model {
         'video_path',
         'thumbnail',
         'is_public',
-        'is_permissible' // also make sure this is included if used
+        'is_permissible', // also make sure this is included if used
+        'time_ago'
     ];
+
+    public function getTimeAgoAttribute()
+        {
+            return $this->created_at
+                ? $this->created_at->diffForHumans()
+                : null;
+        }
 
     public function user() { return $this->belongsTo(User::class); }
     public function category() { return $this->belongsTo(Category::class); }
@@ -31,5 +43,22 @@ class Video extends Model {
         {
             return $this->hasMany(VideoReaction::class);
         }
+
+
+    public function savedByUsers()
+        {
+            return $this->belongsToMany(User::class, 'library');
+        }
+    public function downloads()
+        {
+            return $this->hasMany(VideoDownload::class);
+        }
+    public function views()
+        {
+            return $this->hasMany(VideoView::class);
+        }
+        
+
+
 }
 

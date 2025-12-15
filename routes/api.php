@@ -20,15 +20,40 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\VideoReactionController;
 use App\Http\Controllers\CommentReactionController;
 use App\Http\Controllers\Api\ReplyController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ProfileVisibilityController;
 
 
-Route::post('replies/{reply}/react', [ReplyController::class, 'react']);
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    // Own profile
+    Route::get('/profile', [ProfileController::class, 'show']);
+    Route::put('/profile', [ProfileController::class, 'update']);
+    Route::put('/profile/visibility', [ProfileController::class, 'updateVisibility']);
+
+    // View another user's profile
+    Route::get('/profile/{id}', [ProfileController::class, 'show']);
+});
+
+Route::middleware('auth:sanctum')->get('/user/videos/count', [VideoController::class, 'userVideoCount']);
+
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/reports', [ReportController::class, 'store']);
+    Route::get('/reports', [ReportController::class, 'index']);
+});
+
+
+Route::middleware('auth:sanctum')->group(function () {
+Route::post('/replies/{reply}/react', [ReplyController::class, 'react']);
+});
 
 Route::middleware('auth:sanctum')->get('/me', function (Request $request) {
     return $request->user();
 });
 
-Route::get('/videos/{id}/reactions', [VideoReactionController::class, 'index']); // public
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/comments/{comment}/reaction', [CommentReactionController::class, 'toggle']);
@@ -37,6 +62,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/videos/{id}/reaction', [VideoReactionController::class, 'store']);
     Route::delete('/videos/{id}/reaction', [VideoReactionController::class, 'destroy']);
 });
+Route::get('/videos/{id}/reactions', [VideoReactionController::class, 'index']); // public
 
 Route::get('/admin', [AdminController::class, 'show']);
 
@@ -50,9 +76,23 @@ Route::middleware('auth:sanctum')->group(function(){
     Route::get('/videos/{video}', [VideoController::class,'show']);
     Route::put('/videos/{video}', [VideoController::class,'update']);
     Route::delete('/videos/{video}', [VideoController::class,'destroy']);
-    Route::get('/videos/{video}/download', [VideoController::class,'download']);
-    Route::post('/videos/{video}/save', [VideoController::class,'saveToLibrary']);
-    Route::delete('/videos/{video}/save', [VideoController::class,'removeFromLibrary']);
+   // routes/api.php
+
+// Library
+Route::middleware('auth:sanctum')->get('/library', [VideoController::class, 'savedVideos']);
+Route::middleware('auth:sanctum')->delete('/library/{video}', [VideoController::class, 'removeFromLibrary']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/videos/{video}/save-to-library', [VideoController::class, 'saveToLibrary']);
+});
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/downloaded-videos', [VideoController::class, 'downloadedVideos']);
+    Route::get('/download-video/{id}', [VideoController::class, 'download']);
+
+});
+// Reports
+Route::middleware('auth:sanctum')->get('/admin/reports', [VideoController::class, 'reportedVideos']);
+
 
     Route::get('/videos/{video}/comments', [CommentController::class, 'index']);
     Route::post('/videos/{video}/comments', [CommentController::class, 'store']);

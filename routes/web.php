@@ -1,10 +1,14 @@
 <?php
-
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\LoginController;
-
 use App\Models\Video;
+use App\Http\Controllers\VideoStreamController;
+
+Route::get('/video/stream/{video}', [VideoStreamController::class, 'stream'])
+    ->name('video.stream')
+    ->middleware('signed');
+
 
 Route::get('/reset-password/{token}', function ($token) {
     $email = request('email');
@@ -20,3 +24,5 @@ Route::get('/video', function () {
 Route::get('/', function () {
     return response()->json(['message' => 'Web working']);
 });
+
+

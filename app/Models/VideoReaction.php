@@ -21,4 +21,8 @@ class VideoReaction extends Model
     {
         return $this->belongsTo(Video::class);
     }
+    public function reactionable()
+    {
+        return $this->morphTo();
+    }
 }

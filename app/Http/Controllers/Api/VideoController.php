@@ -9,6 +9,9 @@ use Illuminate\Support\Facades\Storage;
  use App\Models\VideoReaction;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Models\VideoDownload;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\URL;
 
 
 class VideoController extends Controller
@@ -19,41 +22,48 @@ class VideoController extends Controller
     $userId = Auth::id(); // logged-in user ID or null
 
     $videos = Video::with([
-            'user:id,first_name,last_name,role',
-            'category',
-            'reactions.user:id,first_name,last_name,role'
-        ])
-        ->withCount('comments') // <-- Add this
-        ->latest()
-        ->paginate(12);
+        'user:id,first_name,last_name,role',
+        'category',
+        'reactions.user:id,first_name,last_name,role'
+    ])
+    ->withCount(['comments', 'views']) // 👈 ADD views
+    ->latest()
+    ->paginate(12);
+
 
     // Transform each video
     $videos->getCollection()->transform(function ($v) use ($userId) {
-        $v->video_url = $v->video_path ? asset('storage/' . $v->video_path) : null;
-        $v->thumbnail_url = $v->thumbnail ? asset('storage/' . $v->thumbnail) : null;
+    $v->video_url = $v->video_path ? asset('storage/' . $v->video_path) : null;
+    $v->thumbnail_url = $v->thumbnail ? asset('storage/' . $v->thumbnail) : null;
 
-        $v->reaction_counts = $v->reactions
-            ->groupBy('emoji')
-            ->map(fn($group) => $group->count())
-            ->toArray();
+    // 👇 FIX: human readable timestamp
+    $v->time_ago = $v->created_at
+        ? Carbon::parse($v->created_at)->diffForHumans()
+        : null;
 
-        $v->my_reaction = $userId
-            ? $v->reactions->firstWhere('user_id', $userId)?->emoji
-            : null;
+    $v->reaction_counts = $v->reactions
+        ->groupBy('emoji')
+        ->map(fn($group) => $group->count())
+        ->toArray();
 
-        $v->reacted_users = $v->reactions->map(function ($r) use ($userId) {
-            return [
-                'id'    => $r->user->id,
-                'name'  => $r->user_id === $userId
-                    ? 'You'
-                    : trim($r->user->first_name . ' ' . $r->user->last_name),
-                'role'  => $r->user->role,
-                'emoji' => $r->emoji,
-            ];
-        })->values();
+    $v->my_reaction = $userId
+        ? $v->reactions->firstWhere('user_id', $userId)?->emoji
+        : null;
 
-        return $v;
-    });
+    $v->reacted_users = $v->reactions->map(function ($r) use ($userId) {
+        return [
+            'id'    => $r->user->id,
+            'name'  => $r->user_id === $userId
+                ? 'You'
+                : trim($r->user->first_name . ' ' . $r->user->last_name),
+            'role'  => $r->user->role,
+            'emoji' => $r->emoji,
+            'created_at' => $r->created_at->diffForHumans(),
+        ];
+    })->values();
+
+    return $v;
+});
 
     return response()->json($videos);
 }
@@ -62,9 +72,16 @@ public function show(Video $video)
     $userId = Auth::id();
 
     // Ensure comment count is included
-    $video = Video::withCount('comments')
-        ->with(['user:id,first_name,last_name,role', 'category', 'comments.user', 'comments.replies.user', 'reactions'])
-        ->find($video->id);
+    $video = Video::withCount(['comments', 'views']) // 👈 ADD views
+    ->with([
+        'user:id,first_name,last_name,role',
+        'category',
+        'comments.user',
+        'comments.replies.user',
+        'reactions'
+    ])
+    ->find($video->id);
+
 
     $video->video_url = $video->video_path ? asset('storage/' . $video->video_path) : null;
     $video->thumbnail_url = $video->thumbnail ? asset('storage/' . $video->thumbnail) : null;
@@ -144,25 +161,148 @@ public function show(Video $video)
     }
 
     // Download video
-    public function download(Video $video)
-    {
-        $path = storage_path('app/public/' . $video->video_path);
-        return response()->download($path, $video->title . '.' . pathinfo($video->video_path, PATHINFO_EXTENSION));
+
+    public function downloadedVideos(Request $request)
+{
+    $user = $request->user();
+
+    if (!$user) {
+        return response()->json(['error' => 'Not logged in'], 401);
+    }
+
+    $downloads = $user->downloads() // now works
+        ->with(['video.user'])
+        ->get()
+        ->map(function ($download) {
+            $video = $download->video;
+            return [
+                'id' => $video->id,
+                'title' => $video->title,
+                'video_path' => $video->video_path,
+                'category' => $video->category,
+                'total_likes' => $video->reactions()->where('type', 'like')->count(),
+                'total_comments' => $video->comments()->count(),
+                'total_views' => $video->views()->count(),
+                'created_at' => $video->created_at->diffForHumans(),
+                'user' => $video->user,
+            ];
+        });
+
+    return response()->json([
+        'status' => true,
+        'videos' => $downloads
+    ]);
+}
+
+    // Download a video
+    
+
+public function download(Request $request, $id)
+{
+    $user = $request->user();
+    $video = Video::findOrFail($id);
+
+    // Record download (optional but recommended)
+    if ($user) {
+        $user->library()->syncWithoutDetaching([$video->id]);
+
+        VideoDownload::updateOrCreate([
+            'user_id' => $user->id,
+            'video_id' => $video->id,
+        ]);
+    }
+
+    $path = storage_path('app/public/' . $video->video_path);
+
+    if (!file_exists($path)) {
+        return response()->json(['error' => 'File not found'], 404);
+    }
+
+    // ✅ FORCE DEFAULT DOWNLOAD NAME
+    return response()->download($path, 'IPK video.mp4', [
+        'Content-Type' => 'video/mp4'
+    ]);
 }
 
     // Save video to user's library
-    public function saveToLibrary(Request $request, Video $video)
-    {
-        $request->user()->library()->syncWithoutDetaching([$video->id]);
-        return response()->json(['status' => true]);
+    public function savedVideos(Request $request)
+{
+    $user = $request->user();
+
+    if (!$user) {
+        return response()->json(['error' => 'Not logged in'], 401);
     }
 
-    // Remove video from library
-    public function removeFromLibrary(Request $request, Video $video)
-    {
-        $request->user()->library()->detach($video->id);
-        return response()->json(['status' => true]);
-    }
+    $saved = $user->library()
+    ->with(['user', 'category'])
+    ->withCount([
+        'comments as total_comments',
+        'views as total_views',
+    ])
+    ->latest()
+    ->get()
+    ->map(function ($video) {
+
+        // Get counts for all reactions for this video
+        $reactionCounts = DB::table('video_reactions')
+            ->where('video_id', $video->id)
+            ->select('emoji', DB::raw('count(*) as total'))
+            ->groupBy('emoji')
+            ->pluck('total','emoji'); // returns ['like' => 2, 'love' => 1, ...]
+
+        return [
+            'id' => $video->id,
+            'title' => $video->title,
+            'views' => $video->total_views ?? 0,
+            'reactions' => $reactionCounts, // all emojis
+            'total_comments' => $video->total_comments ?? 0,
+            'category' => $video->category,
+            'created_at' => $video->created_at->diffForHumans(),
+            'user' => $video->user,
+            'video_url' => url('storage/' . $video->video_path),
+        ];
+    });
+
+    return response()->json([
+        'status' => true,
+        'videos' => $saved
+    ]);
+}
+
+
+public function userVideoCount()
+{
+    $user = Auth::user();
+
+    $count = $user->videos()->count(); // assuming User has `videos()` relation
+
+    return response()->json([
+        'video_count' => $count
+    ]);
+}
+
+public function saveToLibrary(Request $request, Video $video)
+{
+    $request->user()->library()->syncWithoutDetaching([$video->id]);
+
+    return response()->json(['status' => true, 'message' => 'Video saved']);
+}
+
+    public function removeFromLibrary(Video $video)
+{
+    auth()->user()->library()->detach($video->id);
+    return response()->json(['status' => true]);
+}
+
+public function reportVideo(Video $video)
+{
+    // Create a report entry
+    $video->reports()->create([
+        'user_id' => auth()->id(),
+        'reason' => 'Inappropriate content'
+    ]);
+    return response()->json(['status' => true]);
+}
 
     // React with emoji
     public function react(Request $request, Video $video)
