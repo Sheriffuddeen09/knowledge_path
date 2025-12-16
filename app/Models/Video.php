@@ -28,6 +28,7 @@ class Video extends Model {
         'time_ago'
     ];
 
+
     public function getTimeAgoAttribute()
         {
             return $this->created_at

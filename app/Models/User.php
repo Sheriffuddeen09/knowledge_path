@@ -30,6 +30,18 @@ class User extends Authenticatable
     }
 
 
+    public function liveRequestsSent()
+    {
+        return $this->hasMany(LiveClassRequest::class, 'user_id');
+    }
+
+    public function liveRequestsReceived()
+    {
+        return $this->hasMany(LiveClassRequest::class, 'teacher_id');
+    }
+
+
+
     protected $fillable = [
         'first_name',
         'last_name',

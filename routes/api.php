@@ -23,6 +23,15 @@ use App\Http\Controllers\Api\ReplyController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProfileVisibilityController;
+use App\Http\Controllers\LiveClassController;
+
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/live-class/request', [LiveClassController::class, 'sendRequest']);
+    Route::get('/live-class/my-requests', [LiveClassController::class, 'myRequests']);
+    Route::get('/live-class/requests', [LiveClassController::class, 'pendingRequests']);
+    Route::post('/live-class/respond/{id}', [LiveClassController::class, 'respond']);
+});
 
 
 
@@ -54,8 +63,10 @@ Route::middleware('auth:sanctum')->get('/me', function (Request $request) {
     return $request->user();
 });
 
+Route::middleware('auth:sanctum')->delete('/videos/{id}', [VideoController::class, 'destroy']);
 
 Route::middleware('auth:sanctum')->group(function () {
+
     Route::post('/comments/{comment}/reaction', [CommentReactionController::class, 'toggle']);
 });
 Route::middleware('auth:sanctum')->group(function () {
@@ -171,10 +182,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/teacher-form', [TeacherFormController::class, 'getTeacherForm'])
         ->middleware('auth:sanctum');
 
-        Route::get('/teacher', [TeacherFormController::class, 'allTeachers'])
-        ->middleware('auth:sanctum');
+        
 
     });
+
+    Route::get('/teacher', [TeacherFormController::class, 'allTeachers'])
+        ->middleware('auth:sanctum');
 
     Route::get('/admin/dashboard', function () {
         return response()->json(['message' => 'Admin dashboard']);

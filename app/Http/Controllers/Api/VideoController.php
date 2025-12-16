@@ -149,16 +149,34 @@ public function show(Video $video)
     }
 
     // Admin: Delete video
-    public function destroy(Video $video)
-    {
-        $this->authorize('delete', $video);
+    public function destroy($id)
+{
+    $video = Video::findOrFail($id);
 
-        Storage::disk('public')->delete($video->video_path);
-        Storage::disk('public')->delete($video->thumbnail);
-        $video->delete();
-
-        return response()->json(['status' => true]);
+    // 🔐 Only owner can delete
+    if ($video->user_id !== auth()->id()) {
+        return response()->json([
+            'message' => 'Unauthorized'
+        ], 403);
     }
+
+    // 🗑 Delete video file
+    if ($video->video_path && Storage::disk('public')->exists($video->video_path)) {
+        Storage::disk('public')->delete($video->video_path);
+    }
+
+    // 🗑 Delete thumbnail if exists
+    if ($video->thumbnail_path && Storage::disk('public')->exists($video->thumbnail_path)) {
+        Storage::disk('public')->delete($video->thumbnail_path);
+    }
+
+    // 🗑 Delete DB record
+    $video->delete();
+
+    return response()->json([
+        'message' => 'Video deleted successfully'
+    ]);
+}
 
     // Download video
 

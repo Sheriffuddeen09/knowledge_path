@@ -1,5 +1,9 @@
 php artisan route:clear
 php artisan config:clear
 php artisan cache:clear
-composer dump-autoload
 php artisan route:list
+
+
+php artisan make:mail StudentRequestedLiveClass
+php artisan make:mail LiveClassAccepted
+php artisan make:mail LiveClassDeclined

@@ -143,6 +143,8 @@ public function allTeachers()
             'id' => $user->id,
             'first_name' => $user->first_name,
             'last_name' => $user->last_name,
+            'gender' => $user->gender,
+            'location' => $user->location,
             'logo' => isset($info['logo']) ? asset('storage/' . $info['logo']) : null,
             'cv' => isset($info['cv']) ? asset('storage/' . $info['cv']) : null,
             'course_title' => $info['course_title'] ?? 'Arabic Course',
