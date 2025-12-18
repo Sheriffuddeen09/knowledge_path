@@ -12,6 +12,8 @@ class LiveClassRequest extends Model
         'user_id',
         'teacher_id',
         'status',
+        'cleared_by_student',
+        'cleared_by_teacher',
     ];
 
     // Student who sent the request

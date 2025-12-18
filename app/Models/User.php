@@ -7,41 +7,41 @@ use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\Video;
-use App\Models\VideoDownload; // ← import this
+use App\Models\VideoDownload;
+use App\Models\LiveClassRequest;
+use Illuminate\Support\Facades\Cache;
 
 class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
-    // User library (saved videos)
+    // Relationships
     public function library() {
         return $this->belongsToMany(Video::class, 'libraries');
     }
 
-    // User downloaded videos
     public function downloads() {
         return $this->hasMany(VideoDownload::class);
     }
 
-    // User.php
-    public function videos()
-    {
-        return $this->hasMany(Video::class, 'user_id'); // or your correct foreign key
+    public function videos() {
+        return $this->hasMany(Video::class, 'user_id');
     }
 
-
-    public function liveRequestsSent()
-    {
+    public function liveRequestsSent() {
         return $this->hasMany(LiveClassRequest::class, 'user_id');
     }
 
-    public function liveRequestsReceived()
-    {
+    public function liveRequestsReceived() {
         return $this->hasMany(LiveClassRequest::class, 'teacher_id');
     }
 
+    // Online status
+    public function isOnline() {
+        return Cache::has('user-is-online-' . $this->id);
+    }
 
-
+    // Mass assignable
     protected $fillable = [
         'first_name',
         'last_name',
@@ -58,17 +58,22 @@ class User extends Authenticatable
         'admin_choice',
     ];
 
+    // Hidden attributes
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
+    // Casts
     protected $casts = [
         'email_verified_at' => 'datetime',
         'teacher_info' => 'array',
         'visibility' => 'array',
+        'last_seen_at' => 'datetime',
     ];
+
+    // Default attributes
     protected $attributes = [
-    'visibility' => '{"email":true,"phone":true,"dob":true,"location":true,"gender":true}',
+        'visibility' => '{"email":true,"phone":true,"dob":true,"location":true,"gender":true}',
     ];
 }

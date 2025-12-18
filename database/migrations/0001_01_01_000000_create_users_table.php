@@ -21,6 +21,8 @@ return new class extends Migration
             $table->string('location_country_code');
             $table->string('email')->unique();
             $table->string('gender');   // male, female, other
+            $table->timestamp('last_seen_at')->nullable();
+
 
             // role handling
             $table->enum('role', ['student', 'admin']);

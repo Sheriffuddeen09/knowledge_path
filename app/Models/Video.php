@@ -62,4 +62,3 @@ class Video extends Model {
 
 
 }
-

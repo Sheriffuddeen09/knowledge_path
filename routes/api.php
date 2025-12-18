@@ -24,16 +24,56 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProfileVisibilityController;
 use App\Http\Controllers\LiveClassController;
+use App\Http\Controllers\ChatController;
+use App\Http\Controllers\UserController;
+use App\Http\Controllers\NotificationController;
 
+
+
+
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/notifications/requests', [NotificationController::class, 'requestCount']);
+    Route::get('/notifications/messages', [NotificationController::class, 'messageCount']);
+    Route::post('/chats/{chat}/seen', [NotificationController::class, 'markAsRead']);
+    Route::delete(
+  '/live-class/request/{id}/clear-teacher',
+    [LiveClassController::class, 'clearByTeacher']
+    );
+
+Route::delete(
+  '/live-class/request/{id}/clear-student',
+  [LiveClassController::class, 'clearRequestByStudent']
+);
+
+Route::middleware('auth:sanctum')->get('/live-class/teacher-requests-summary', [LiveClassController::class, 'requestsSummary']);
+
+});
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/live-class/request', [LiveClassController::class, 'sendRequest']);
     Route::get('/live-class/my-requests', [LiveClassController::class, 'myRequests']);
-    Route::get('/live-class/requests', [LiveClassController::class, 'pendingRequests']);
+    Route::get('/live-class/all-requests', [LiveClassController::class, 'allRequests']);
     Route::post('/live-class/respond/{id}', [LiveClassController::class, 'respond']);
+  
 });
 
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/chats', [ChatController::class,'myChats']);
+    Route::get('/chats/{chat}/messages', [ChatController::class,'messages']);
+    Route::post('/messages', [ChatController::class,'send']);
+    Route::put('/messages/{message}', [ChatController::class,'edit']);
+    Route::delete('/messages/{message}', [ChatController::class,'delete']);
+    Route::post('/messages/voice', [ChatController::class, 'sendVoice']);
+    Route::post('/messages/{message}/seen', [ChatController::class, 'markSeen']);
+    Route::post('/messages/typing', [ChatController::class, 'typing']);
+    Route::post('/messages/react', [ChatController::class, 'react']);
+});
 
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/users/{user}/online-status', [UserController::class, 'onlineStatus']);
+    Route::post('/users/online-status-bulk', [UserController::class, 'onlineStatusBulk']);
+});
 
 Route::middleware('auth:sanctum')->group(function () {
 
