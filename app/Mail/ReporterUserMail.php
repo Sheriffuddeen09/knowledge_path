@@ -7,7 +7,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 
-class ReportedUserMail extends Mailable
+class ReporterUserMail extends Mailable
 {
     use Queueable, SerializesModels;
 
@@ -21,8 +21,8 @@ class ReportedUserMail extends Mailable
     public function build()
     {
         return $this
-            ->subject('You have been reported')
-            ->view('emails.reported_user')
+            ->subject('Thank you for your report')
+            ->view('emails.user_reporter')
             ->with([
                 'report' => $this->report,
             ]);

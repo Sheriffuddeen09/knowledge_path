@@ -68,12 +68,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/messages/{message}/seen', [ChatController::class, 'markSeen']);
     Route::post('/messages/typing', [ChatController::class, 'typing']);
     Route::post('/messages/react', [ChatController::class, 'react']);
+    Route::post('/messages/report', [ReportController::class, 'storereport']);
+    Route::get('/messages/report-get', [ReportController::class, 'getReports']);
+    Route::delete('/messages/{message}', [ChatController::class, 'destroy']);
+    Route::put('/messages/{message}', [ChatController::class, 'update']);
+    Route::post('/block', [BlockController::class, 'block']);
+    Route::post('/unblock', [BlockController::class, 'unblock']);
+    Route::get('/chat/is-blocked/{userId}', [ChatController::class, 'isBlocked']);
+    Route::delete('/chats/{chat}/clear', [ChatController::class, 'clearChat']);
+
 });
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/users/{user}/online-status', [UserController::class, 'onlineStatus']);
     Route::post('/users/online-status-bulk', [UserController::class, 'onlineStatusBulk']);
 });
+
+
 
 Route::middleware('auth:sanctum')->group(function () {
 

@@ -4,25 +4,22 @@ namespace App\Mail;
 
 use App\Models\MessageReport;
 use Illuminate\Bus\Queueable;
-use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailable;   // ✅ THIS LINE
 use Illuminate\Queue\SerializesModels;
 
-class ReportedUserMail extends Mailable
+class UserReportedMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public MessageReport $report;
-
-    public function __construct(MessageReport $report)
-    {
-        $this->report = $report;
-    }
+    public function __construct(
+        public MessageReport $report
+    ) {}
 
     public function build()
     {
         return $this
-            ->subject('You have been reported')
-            ->view('emails.reported_user')
+            ->subject('Message Reported')
+            ->view('emails.user_reported')
             ->with([
                 'report' => $this->report,
             ]);

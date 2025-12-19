@@ -15,6 +15,6 @@
 .
     </p>
     <p>Please review and respond to the request.</p>
-    <p>Thank you,<br>Your App Name</p>
+    <p>Thank you,<br>Islam Path Of Knowledge</p>
 </body>
 </html>

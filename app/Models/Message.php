@@ -14,13 +14,14 @@ class Message extends Model
         'file',
         'edited',
         'delivered_at',
-        'seen_at'
+        'seen_at',
     ];
 
  
 
     protected $casts = [
         'seen_at' => 'datetime',
+        'delivered_at' => 'datetime',
         'edited' => 'boolean'
     ];
 

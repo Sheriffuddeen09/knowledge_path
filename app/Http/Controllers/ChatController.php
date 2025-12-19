@@ -9,6 +9,8 @@ use App\Events\NewMessage;
 use Illuminate\Support\Facades\Storage;
 use App\Events\TypingEvent;
 use App\Models\User;
+use App\Models\Block;
+use App\Models\MessageReport;
 
 
    class ChatController extends Controller
@@ -146,6 +148,8 @@ use App\Models\User;
         'file'      => $path,
     ]);
 
+    $message->load('sender');
+
     return response()->json([
         'message' => $message,
     ]);
@@ -181,10 +185,74 @@ public function react(Request $request, Message $message)
         ['reaction' => $request->reaction]
     );
 
-    broadcast(new MessageReacted($message->id, $reaction))->toOthers();
+    broadcast(new Message($message->id, $reaction))->toOthers();
 
     return $reaction;
 }
+
+
+
+public function destroy(Message $message)
+{
+  abort_if($message->sender_id !== auth()->id(), 403);
+  $message->delete();
+  return response()->json(['success' => true]);
+}
+public function update(Request $request, Message $message)
+{
+  abort_if($message->sender_id !== auth()->id(), 403);
+
+  $request->validate(['message' => 'required|string']);
+
+  $message->update([
+    'message' => $request->message,
+    'edited' => true,
+  ]);
+
+  return response()->json($message);
+}
+
+public function toggleBlock(Request $request)
+{
+  Block::firstOrCreate([
+    'user_id' => auth()->id(),
+    'blocked_user_id' => $request->user_id,
+  ]);
+
+  return response()->json(['blocked' => true]);
+}
+
+public function clearChat(Chat $chat)
+{
+  $chat->messages()->delete();
+  return response()->json(['success' => true]);
+}
+
+public function isBlocked($userId)
+{
+    $blocked = BlockedUser::where(function ($q) use ($userId) {
+        $q->where('blocker_id', auth()->id())
+          ->where('blocked_id', $userId);
+    })
+    ->orWhere(function ($q) use ($userId) {
+        $q->where('blocker_id', $userId)
+          ->where('blocked_id', auth()->id());
+    })
+    ->exists();
+
+    if ($blocked) {
+    return response()->json([
+        'message' => 'You cannot message this user'
+    ], 403);
+}
+
+    return response()->json([
+        'blocked' => $blocked
+    ]);
+}
+
+
+
 
 
 }

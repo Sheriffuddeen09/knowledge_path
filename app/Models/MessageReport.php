@@ -4,17 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Report extends Model
+class MessageReport extends Model
 {
-    protected $table = 'reports';
-
     protected $fillable = [
-        'video_id',
-        'reporter_id',
-        'reported_user_id',
-        'category',
-        'description',
-        'status',
+        'message_id', 'reporter_id', 'reported_user_id', 'reason', 'details', 'status'
     ];
 
     public function reporter()
@@ -22,13 +15,13 @@ class Report extends Model
         return $this->belongsTo(User::class, 'reporter_id');
     }
 
-    public function reportedUser()
+    public function reported_user()
     {
         return $this->belongsTo(User::class, 'reported_user_id');
     }
 
-    public function video()
+    public function message()
     {
-        return $this->belongsTo(Video::class);
+        return $this->belongsTo(Message::class, 'message_id');
     }
 }
