@@ -4,10 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class MessageReport extends Model
+class ChatReport extends Model
 {
     protected $fillable = [
-        'message_id', 'reporter_id', 'reported_user_id', 'reason', 'details', 'status'
+        'chat_id',
+        'reporter_id',
+        'reported_user_id',
+        'reason',
+        'details',
     ];
 
     public function reporter()
@@ -15,13 +19,13 @@ class MessageReport extends Model
         return $this->belongsTo(User::class, 'reporter_id');
     }
 
-    public function reported_user()
+    public function reportedUser()
     {
         return $this->belongsTo(User::class, 'reported_user_id');
     }
 
-    public function message()
+    public function chat()
     {
-        return $this->belongsTo(Message::class, 'message_id');
+        return $this->belongsTo(Chat::class);
     }
 }

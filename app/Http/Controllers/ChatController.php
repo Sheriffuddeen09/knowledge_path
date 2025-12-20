@@ -68,7 +68,6 @@ use App\Models\MessageReport;
 }
 
 
-
     // Send message
    public function send(Request $request)
 {
@@ -97,35 +96,25 @@ use App\Models\MessageReport;
         'file_name' => $fileName,
     ]);
 
+    // Attach message to all chat participants in message_user table
+    $chat = Chat::with(['teacher', 'student'])->findOrFail($request->chat_id);
+
+    $userIds = collect([
+        $chat->teacher_id,
+        $chat->student_id,
+    ])->filter();
+
+    foreach ($userIds as $userId) {
+        $message->users()->attach($userId, ['deleted' => false]);
+    }
+
     $message->load('sender');
 
     broadcast(new NewMessage($message))->toOthers();
 
+
     return $message;
 }
-
-    // Edit message
-    public function edit(Message $message, Request $request)
-    {
-        abort_if($message->sender_id !== auth()->id(), 403);
-
-        $message->update([
-            'message' => $request->message,
-            'edited' => true
-        ]);
-
-        return $message;
-    }
-
-    // Delete message
-    public function delete(Message $message)
-    {
-        abort_if($message->sender_id !== auth()->id(), 403);
-        $message->delete();
-
-        return response()->noContent();
-    }
-
 
    
     public function sendVoice(Request $request)
@@ -194,23 +183,64 @@ public function react(Request $request, Message $message)
 
 public function destroy(Message $message)
 {
-  abort_if($message->sender_id !== auth()->id(), 403);
-  $message->delete();
-  return response()->json(['success' => true]);
+    $userId = auth()->id();
+
+    // Sender → delete for everyone
+    if ($message->sender_id === $userId) {
+        $message->delete();
+        return response()->json([
+            'message' => 'Message deleted for everyone'
+        ]);
+    }
+
+    // Other user → delete only for me
+    $message->users()
+        ->updateExistingPivot($userId, ['deleted' => true]);
+
+    return response()->json([
+        'message' => 'Message deleted for you'
+    ]);
 }
-public function update(Request $request, Message $message)
+
+
+// ChatController.php
+
+public function edit(Request $request, Message $message)
 {
-  abort_if($message->sender_id !== auth()->id(), 403);
+    $user = auth()->user();
 
-  $request->validate(['message' => 'required|string']);
+    // Only sender can edit
+    if ($message->sender_id !== $user->id) {
+        return response()->json(['message' => 'You cannot edit this message.'], 403);
+    }
 
-  $message->update([
-    'message' => $request->message,
-    'edited' => true,
-  ]);
+    // Only text messages can be edited
+    if ($message->type !== 'text') {
+        return response()->json(['message' => 'Only text messages can be edited.'], 403);
+    }
 
-  return response()->json($message);
+    // Prevent editing if the message has been seen
+    if ($message->seen_at) {
+        return response()->json(['message' => 'Cannot edit message after it has been seen.'], 403);
+    }
+
+    $request->validate([
+        'message' => 'required|string',
+    ]);
+
+    $message->update([
+        'message' => $request->message,
+        'edited' => true,
+    ]);
+
+    return response()->json([
+        'message' => $message,
+        'status' => 'success',
+    ]);
 }
+
+
+
 
 public function toggleBlock(Request $request)
 {

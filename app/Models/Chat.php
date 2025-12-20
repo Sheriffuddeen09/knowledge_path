@@ -21,11 +21,16 @@ class Chat extends Model
 
     public function users()
     {
-        return $this->belongsToMany(User::class, 'chat_user');
+        return $this->belongsToMany(User::class, 'chat_user', 'chat_id', 'user_id');
     }
      public function latestMessage() {
         return $this->hasOne(Message::class)->latestOfMany();
     }
+
+    public function participants()
+{
+    return $this->belongsToMany(User::class, 'chat_user');
+}
 
 }
 $chats = Chat::with('latestMessage')->get();

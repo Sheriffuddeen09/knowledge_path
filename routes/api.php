@@ -27,6 +27,8 @@ use App\Http\Controllers\LiveClassController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ChatReportController;
+
 
 
 
@@ -68,10 +70,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/messages/{message}/seen', [ChatController::class, 'markSeen']);
     Route::post('/messages/typing', [ChatController::class, 'typing']);
     Route::post('/messages/react', [ChatController::class, 'react']);
-    Route::post('/messages/report', [ReportController::class, 'storereport']);
-    Route::get('/messages/report-get', [ReportController::class, 'getReports']);
+    Route::post('/chat/report', [ChatReportController::class, 'store']);
+    Route::get('/chat/reports', [ChatReportController::class, 'index']);
     Route::delete('/messages/{message}', [ChatController::class, 'destroy']);
-    Route::put('/messages/{message}', [ChatController::class, 'update']);
+    Route::put('/messages/{message}', [ChatController::class, 'edit']);
     Route::post('/block', [BlockController::class, 'block']);
     Route::post('/unblock', [BlockController::class, 'unblock']);
     Route::get('/chat/is-blocked/{userId}', [ChatController::class, 'isBlocked']);

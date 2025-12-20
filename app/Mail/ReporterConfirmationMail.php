@@ -5,14 +5,14 @@ namespace App\Mail;
 use App\Models\ChatReport;
 use Illuminate\Mail\Mailable;
 
-class UserReportedMail extends Mailable
+class ReporterConfirmationMail extends Mailable
 {
     public function __construct(public ChatReport $report) {}
 
     public function build()
     {
         return $this
-            ->subject('You Have Been Reported')
-            ->view('emails.user_reported');
+            ->subject('Report Received')
+            ->view('emails.reporter_confirmation');
     }
 }

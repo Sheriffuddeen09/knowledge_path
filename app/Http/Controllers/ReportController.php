@@ -9,9 +9,7 @@ use App\Models\Video;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\ReporterMail;
-use App\Mail\UserReportedMail;
 use App\Mail\ReportedUserMail;
-use App\Mail\ReporterUserMail;
 use Illuminate\Support\Facades\Auth;
 
 
@@ -74,53 +72,6 @@ public function store(Request $request)
     }
 
 
-
-    public function storeReport(Request $request)
-{
-    $request->validate([
-        'message_id' => 'required|exists:messages,id',
-        'reported_user_id' => 'required|exists:users,id',
-        'reason' => 'required|string',
-        'details' => 'nullable|string',
-    ]);
-
-    $report = MessageReport::create([
-        'message_id' => $request->message_id,
-        'reporter_id' => auth()->id(),
-        'reported_user_id' => $request->reported_user_id,
-        'reason' => $request->reason,
-        'details' => $request->details,
-    ]);
-
-    $reporter = auth()->user();
-    $reportedUser = User::find($request->reported_user_id);
-
-    Mail::to(auth()->user()->email)->send(new ReporterUserMail($report));
-
-    // Send email to reported user
-    $reportedUser = User::find($request->reported_user_id);
-    Mail::to($reportedUser->email)->send(new UserReportedMail($report));
-
-    if ($request->reported_user_id == auth()->id()) {
-    return response()->json([
-        'message' => 'You cannot report yourself.'
-    ], 422);
-}
-
-    return response()->json([
-        'message' => 'Report submitted successfully.'
-    ]);
-}
-
-
-   
-
-public function getReports()
-{
-    $reports = MessageReport::with(['reporter', 'reported_user', 'message'])->latest()->get();
-
-    return response()->json($reports);
-}
 
 
 

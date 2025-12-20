@@ -13,11 +13,7 @@ class Message extends Model
         'message',
         'file',
         'edited',
-        'delivered_at',
-        'seen_at',
     ];
-
- 
 
     protected $casts = [
         'seen_at' => 'datetime',
@@ -38,4 +34,24 @@ class Message extends Model
     public function reactions() {
         return $this->hasMany(MessageReaction::class);
     }
+    
+    // Scope to filter messages visible to a specific user
+    public function users()
+{
+    return $this->belongsToMany(User::class, 'message_user')
+        ->withPivot('deleted')
+        ->withTimestamps();
 }
+
+public function scopeVisibleFor($query, $userId)
+{
+    return $query->whereHas('users', function ($q) use ($userId) {
+        $q->where('user_id', $userId)
+          ->where('deleted', false);
+    });
+}
+
+
+}
+
+ 
