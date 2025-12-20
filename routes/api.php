@@ -73,6 +73,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chat/report', [ChatReportController::class, 'store']);
     Route::get('/chat/reports', [ChatReportController::class, 'index']);
     Route::delete('/messages/{message}', [ChatController::class, 'destroy']);
+    Route::delete('/messages/{message}/forward', [ChatController::class, 'forward']);
     Route::put('/messages/{message}', [ChatController::class, 'edit']);
     Route::post('/block', [BlockController::class, 'block']);
     Route::post('/unblock', [BlockController::class, 'unblock']);

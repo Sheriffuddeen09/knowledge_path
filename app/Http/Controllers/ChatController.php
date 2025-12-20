@@ -15,7 +15,10 @@ use App\Models\MessageReport;
 
    class ChatController extends Controller
 {
+
+    
     // Chat list (left panel)
+
     public function myChats()
 {
     $userId = auth()->id();
@@ -50,6 +53,8 @@ use App\Models\MessageReport;
 }
 
 
+
+// get message function
    public function messages(Chat $chat)
 {
     $userId = auth()->id();
@@ -117,6 +122,8 @@ use App\Models\MessageReport;
 }
 
    
+
+// sendvoice note function
     public function sendVoice(Request $request)
 {
     $request->validate([
@@ -145,6 +152,8 @@ use App\Models\MessageReport;
 }
 
 
+// markSeen function
+
 public function markSeen(Message $message)
 {
     abort_if($message->sender_id === auth()->id(), 403);
@@ -157,6 +166,9 @@ public function markSeen(Message $message)
 }
 
 
+
+// Typing Function
+
 public function typing(Request $request)
 {
     broadcast(new TypingEvent(
@@ -167,19 +179,10 @@ public function typing(Request $request)
     return response()->noContent();
 }
 
-public function react(Request $request, Message $message)
-{
-    $reaction = $message->reactions()->updateOrCreate(
-        ['user_id' => auth()->id()],
-        ['reaction' => $request->reaction]
-    );
-
-    broadcast(new Message($message->id, $reaction))->toOthers();
-
-    return $reaction;
-}
 
 
+
+// delete function
 
 public function destroy(Message $message)
 {
@@ -203,29 +206,48 @@ public function destroy(Message $message)
 }
 
 
-// ChatController.php
+// Clear all message function
 
-public function edit(Request $request, Message $message)
+
+public function clearChat(Chat $chat)
 {
-    $user = auth()->user();
+    $userId = auth()->id();
 
-    // Only sender can edit
-    if ($message->sender_id !== $user->id) {
-        return response()->json(['message' => 'You cannot edit this message.'], 403);
-    }
+    // Make sure user belongs to this chat
+    abort_if(
+        $chat->teacher_id !== $userId && $chat->student_id !== $userId,
+        403,
+        'Unauthorized'
+    );
 
-    // Only text messages can be edited
-    if ($message->type !== 'text') {
-        return response()->json(['message' => 'Only text messages can be edited.'], 403);
-    }
+    // Get all message IDs in this chat
+    $messageIds = Message::where('chat_id', $chat->id)->pluck('id');
 
-    // Prevent editing if the message has been seen
-    if ($message->seen_at) {
-        return response()->json(['message' => 'Cannot edit message after it has been seen.'], 403);
-    }
+    // Mark messages as deleted for this user only
+    \DB::table('message_user')
+        ->whereIn('message_id', $messageIds)
+        ->where('user_id', $userId)
+        ->update([
+            'deleted' => true,
+            'updated_at' => now(),
+        ]);
+
+    return response()->json([
+        'message' => 'Chat cleared successfully.',
+    ]);
+}
+
+
+// Edit function
+
+public function edit (Request $request, Message $message)
+{
+    abort_if($message->sender_id !== auth()->id(), 403);
+    abort_if($message->type !== 'text', 403);
+    abort_if($message->seen_at, 403);
 
     $request->validate([
-        'message' => 'required|string',
+        'message' => 'required|string'
     ]);
 
     $message->update([
@@ -234,12 +256,49 @@ public function edit(Request $request, Message $message)
     ]);
 
     return response()->json([
-        'message' => $message,
-        'status' => 'success',
+        'message' => $message->fresh()
     ]);
 }
 
 
+
+//  forward function
+
+public function forward(Request $request)
+    {
+        $request->validate([
+            'message_id' => 'required|exists:messages,id',
+            'chat_id' => 'required|exists:chats,id',
+        ]);
+
+        $original = Message::findOrFail($request->message_id);
+
+        $newMessage = Message::create([
+            'chat_id'   => $request->chat_id,
+            'sender_id' => Auth::id(),
+            'type'      => $original->type,
+            'message'   => $original->message,
+            'file'      => $original->file,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => $newMessage
+        ]);
+    }
+
+    
+public function react(Request $request, Message $message)
+{
+    $reaction = $message->reactions()->updateOrCreate(
+        ['user_id' => auth()->id()],
+        ['reaction' => $request->reaction]
+    );
+
+    broadcast(new Message($message->id, $reaction))->toOthers();
+
+    return $reaction;
+}
 
 
 public function toggleBlock(Request $request)
@@ -252,11 +311,6 @@ public function toggleBlock(Request $request)
   return response()->json(['blocked' => true]);
 }
 
-public function clearChat(Chat $chat)
-{
-  $chat->messages()->delete();
-  return response()->json(['success' => true]);
-}
 
 public function isBlocked($userId)
 {
