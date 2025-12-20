@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
+
 
 class UserController extends Controller
 {
@@ -29,5 +31,15 @@ class UserController extends Controller
             ]);
 
         return response()->json($statuses);
+    }
+
+    public function index()
+    {
+        // Get all users except current logged-in user
+        $users = User::where('id', '!=', Auth::id())
+                     ->select('id', 'first_name', 'last_name', 'email', 'role')
+                     ->get();
+
+        return response()->json($users);
     }
 }

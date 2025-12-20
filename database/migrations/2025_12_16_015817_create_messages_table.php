@@ -15,11 +15,10 @@ return new class extends Migration
             $table->id();
             $table->foreignId('chat_id')->constrained()->onDelete('cascade');
             $table->foreignId('sender_id')->constrained('users')->onDelete('cascade');
-
             $table->enum('type', ['text', 'image', 'voice']);
             $table->text('message')->nullable();
             $table->string('file')->nullable();
-
+            $table->unsignedBigInteger('forwarded_from')->nullable()->after('id');
             $table->boolean('edited')->default(false);
             $table->timestamps();
         });

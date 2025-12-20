@@ -11,7 +11,7 @@ use App\Events\TypingEvent;
 use App\Models\User;
 use App\Models\Block;
 use App\Models\MessageReport;
-
+use App\Events\MessageSent;
 
    class ChatController extends Controller
 {
@@ -264,30 +264,64 @@ public function edit (Request $request, Message $message)
 
 //  forward function
 
-public function forward(Request $request)
-    {
-        $request->validate([
-            'message_id' => 'required|exists:messages,id',
-            'chat_id' => 'required|exists:chats,id',
-        ]);
+public function forwardMultiple(Request $request)
+{
+    $request->validate([
+        'receiver_ids' => 'required|array|min:1',
+        'message_ids' => 'required|array|min:1',
+    ]);
 
-        $original = Message::findOrFail($request->message_id);
+    $sender = auth()->user();
+    $messageIds = $request->message_ids;
+    $receiverIds = $request->receiver_ids;
 
-        $newMessage = Message::create([
-            'chat_id'   => $request->chat_id,
-            'sender_id' => Auth::id(),
-            'type'      => $original->type,
-            'message'   => $original->message,
-            'file'      => $original->file,
-        ]);
+    $forwardedChats = [];
 
-        return response()->json([
-            'success' => true,
-            'message' => $newMessage
-        ]);
+    foreach ($receiverIds as $receiverId) {
+        $receiver = User::findOrFail($receiverId);
+
+        // Find or create chat
+        $chat = Chat::where(function ($q) use ($sender, $receiver) {
+            $q->where('teacher_id', $sender->id)->where('student_id', $receiver->id);
+        })->orWhere(function ($q) use ($sender, $receiver) {
+            $q->where('teacher_id', $receiver->id)->where('student_id', $sender->id);
+        })->first();
+
+        if (!$chat) {
+            $chat = Chat::create([
+                'teacher_id' => $sender->role === 'teacher' ? $sender->id : $receiver->id,
+                'student_id' => $sender->role === 'student' ? $sender->id : $receiver->id,
+            ]);
+        }
+
+        // Forward messages
+        foreach ($messageIds as $id) {
+            $originalMessage = Message::findOrFail($id);
+
+            Message::create([
+                'chat_id' => $chat->id,
+                'sender_id' => $sender->id,
+                'type' => $originalMessage->type,
+                'message' => $originalMessage->message,
+                'file' => $originalMessage->file,
+                'forwarded_from' => $originalMessage->sender_id,
+            ]);
+        }
+
+        // Load chat with participants and latest messages
+        $chat = Chat::with(['teacher', 'student', 'messages' => function ($q) {
+            $q->latest()->limit(50);
+        }])->find($chat->id);
+
+        $forwardedChats[] = $chat;
     }
 
-    
+    return response()->json([
+        'success' => true,
+        'chats' => $forwardedChats, // return full chat objects
+    ]);
+}
+
 public function react(Request $request, Message $message)
 {
     $reaction = $message->reactions()->updateOrCreate(
