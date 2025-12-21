@@ -13,6 +13,8 @@ class Message extends Model
         'message',
         'file',
         'edited',
+        'forwarded_from', 
+        'replied_to'
     ];
 
     protected $casts = [
@@ -42,6 +44,10 @@ class Message extends Model
         ->withPivot('deleted')
         ->withTimestamps();
 }
+public function repliedMessage()
+    {
+        return $this->belongsTo(Message::class, 'replied_to');
+    }
 
 public function scopeVisibleFor($query, $userId)
 {

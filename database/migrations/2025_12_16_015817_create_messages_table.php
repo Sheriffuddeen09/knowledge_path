@@ -19,9 +19,12 @@ return new class extends Migration
             $table->text('message')->nullable();
             $table->string('file')->nullable();
             $table->unsignedBigInteger('forwarded_from')->nullable()->after('id');
+           $table->foreignId('replied_to')->nullable()->constrained('messages')->nullOnDelete();
             $table->boolean('edited')->default(false);
             $table->timestamps();
-        });
+
+        
+            });
 
         
     }

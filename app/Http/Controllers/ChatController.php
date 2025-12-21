@@ -81,6 +81,8 @@ use App\Events\MessageSent;
         'type' => 'required|string',
         'message' => 'nullable|string',
         'file' => 'nullable|file|max:20480', // 20MB
+        'replied_to' => 'nullable|exists:messages,id',
+
     ]);
 
     $path = null;
@@ -99,6 +101,7 @@ use App\Events\MessageSent;
         'message' => $request->message,
         'file' => $path,
         'file_name' => $fileName,
+        'replied_to' => $request->replied_to,
     ]);
 
     // Attach message to all chat participants in message_user table
@@ -118,7 +121,10 @@ use App\Events\MessageSent;
     broadcast(new NewMessage($message))->toOthers();
 
 
-    return $message;
+    return Message::with([
+        'sender',
+        'repliedMessage.sender'
+    ])->find($message->id);
 }
 
    
@@ -321,6 +327,9 @@ public function forwardMultiple(Request $request)
         'chats' => $forwardedChats, // return full chat objects
     ]);
 }
+
+
+
 
 public function react(Request $request, Message $message)
 {
