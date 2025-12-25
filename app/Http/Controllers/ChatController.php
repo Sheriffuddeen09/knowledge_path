@@ -11,6 +11,7 @@ use App\Events\TypingEvent;
 use App\Models\User;
 use App\Models\Block;
 use App\Models\MessageReport;
+use App\Models\MessageReaction;
 use App\Events\MessageSent;
 
    class ChatController extends Controller
@@ -55,22 +56,52 @@ use App\Events\MessageSent;
 
 
 // get message function
-   public function messages(Chat $chat)
+  public function messages(Chat $chat)
 {
     $userId = auth()->id();
 
-    // Mark messages as delivered for the current user
+    // Mark messages as delivered
     $chat->messages()
         ->whereNull('delivered_at')
         ->where('sender_id', '!=', $userId)
         ->update(['delivered_at' => now()]);
 
-    // Return messages with sender info including role
+    // ✅ LOAD REACTIONS + USERS
     return $chat->messages()
-        ->with('sender:id,first_name,last_name,role') // make sure role is included
+        ->with([
+            'sender:id,first_name,last_name,role',
+            'reactions.user:id,first_name,last_name' // 👈 THIS IS THE KEY
+        ])
         ->orderBy('created_at')
         ->get();
 }
+
+public function index(Request $request)
+{
+    $userId = $request->user()->id;
+
+    $chats = Chat::where('teacher_id', $userId)
+        ->orWhere('student_id', $userId)
+        ->with([
+            'teacher',
+            'student',
+            'messages' => function ($q) {
+                $q->latest();
+            }
+        ])
+        ->get()
+        ->map(function ($chat) use ($userId) {
+            $chat->unread_count = $chat->messages
+                ->whereNull('seen_at')
+                ->where('sender_id', '!=', $userId)
+                ->count();
+
+            return $chat;
+        });
+
+    return response()->json($chats);
+}
+
 
 
     // Send message
@@ -330,18 +361,34 @@ public function forwardMultiple(Request $request)
 
 
 
+// React Function
 
-public function react(Request $request, Message $message)
+public function toggle(Request $request)
 {
-    $reaction = $message->reactions()->updateOrCreate(
-        ['user_id' => auth()->id()],
-        ['reaction' => $request->reaction]
-    );
+    $request->validate([
+        'message_id' => 'required|exists:messages,id',
+        'emoji' => 'required|string',
+    ]);
 
-    broadcast(new Message($message->id, $reaction))->toOthers();
+    $reaction = MessageReaction::where([
+        'message_id' => $request->message_id,
+        'user_id' => auth()->id(),
+        'emoji' => $request->emoji,
+    ])->first();
 
-    return $reaction;
+    if ($reaction) {
+        $reaction->delete(); // remove reaction
+    } else {
+        MessageReaction::create([
+            'message_id' => $request->message_id,
+            'user_id' => auth()->id(),
+            'emoji' => $request->emoji,
+        ]);
+    }
+
+    return Message::with(['reactions.user'])->find($request->message_id);
 }
+
 
 
 public function toggleBlock(Request $request)

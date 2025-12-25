@@ -56,6 +56,8 @@ class User extends Authenticatable
         'password',
         'email_verified_at',
         'admin_choice',
+        'teacher_profile_completed',
+        'teacher_info',
     ];
 
     // Hidden attributes

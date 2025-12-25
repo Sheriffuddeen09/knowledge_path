@@ -1,16 +1,17 @@
 <?php
 
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Database\Migrations\Migration;
 
 return new class extends Migration
 {
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            // Add after remember_token for clarity
-            $table->timestamp('last_seen_at')->nullable()->after('remember_token');
+            if (!Schema::hasColumn('users', 'last_seen_at')) {
+                $table->datetime('last_seen_at')->nullable();
+            }
         });
     }
 

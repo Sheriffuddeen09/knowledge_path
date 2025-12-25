@@ -14,7 +14,7 @@ return new class extends Migration
     Schema::create('teacher_forms', function ($table) {
         $table->id();
         $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
-        $table->string('course_title');
+        $table->string('coursetitles');
         $table->decimal('course_payment', 10, 2);
         $table->string('currency');
         $table->string('compliment')->nullable();

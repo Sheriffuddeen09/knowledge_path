@@ -11,10 +11,10 @@ class TeacherForm extends Model
 
     protected $fillable = [
         'user_id',
+        'coursetitle_id',
         'qualification',
         'experience',
         'specialization',
-        'course_title',
         'course_payment',
         'currency',
         'compliment',
@@ -22,8 +22,14 @@ class TeacherForm extends Model
         'cv',
     ];
 
+
     public function user()
     {
         return $this->belongsTo(User::class);
     }
+    public function coursetitle()
+{
+    return $this->belongsTo(Coursetitle::class);
+}
+
 }

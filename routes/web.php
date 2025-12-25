@@ -21,7 +21,7 @@ Route::get('/video', function () {
 });
 
 
-Route::get('/', function () {
+Route::get('/users', function () {
     return response()->json(['message' => 'Web working']);
 });
 

@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\Api\ReactionController;
 use App\Http\Controllers\Api\ShareController;
 use App\Models\Category;
+use App\Models\Coursetitle;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\VideoReactionController;
 use App\Http\Controllers\CommentReactionController;
@@ -61,7 +62,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/chats', [ChatController::class,'myChats']);
+    Route::get('/chats', [ChatController::class,'index']);
     Route::get('/chats/{chat}/messages', [ChatController::class,'messages']);
     Route::post('/messages', [ChatController::class,'send']);
     Route::put('/messages/{message}', [ChatController::class,'edit']);
@@ -75,6 +76,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/messages/{message}', [ChatController::class, 'destroy']);
     Route::delete('/messages/{message}/forward', [ChatController::class, 'forward']);
     Route::post('/messages/forward-multiple', [ChatController::class, 'forwardMultiple']);
+    Route::post('/messages/react', [ChatController::class, 'toggle']);
     Route::put('/messages/{message}', [ChatController::class, 'edit']);
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/block', [BlockController::class, 'block']);
@@ -137,13 +139,18 @@ Route::get('/categories', function () {
     return Category::all();
 });
 
+Route::get('/coursetitles', function () {
+    return Coursetitle::all();
+});
+
+
 Route::middleware('auth:sanctum')->group(function(){
     Route::get('/videos', [VideoController::class,'index']);
     Route::post('/videos', [VideoController::class,'store']);
     Route::get('/videos/{video}', [VideoController::class,'show']);
     Route::put('/videos/{video}', [VideoController::class,'update']);
     Route::delete('/videos/{video}', [VideoController::class,'destroy']);
-   // routes/api.php
+   // routes/api.php 
 
 // Library
 Route::middleware('auth:sanctum')->get('/library', [VideoController::class, 'savedVideos']);
@@ -233,7 +240,13 @@ Route::middleware('auth:sanctum')->group(function () {
     ])->group(function () {
 
         Route::get('/admin/teacher-form', [TeacherFormController::class, 'index']);
-        Route::post('/admin/teacher/save', [TeacherFormController::class, 'submitForm']);
+        Route::put('/teacher-form', [TeacherFormController::class, 'update']);
+        Route::get('/teacher-form', [TeacherFormController::class, 'show']);
+
+       Route::middleware('auth:sanctum')->post(
+                '/admin/teacher/save',
+                [TeacherFormController::class, 'store']
+            );
 
         Route::get('/teacher-form', [TeacherFormController::class, 'getTeacherForm'])
         ->middleware('auth:sanctum');
@@ -242,6 +255,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     });
 
+    // dashboard/notifications
     Route::get('/teacher', [TeacherFormController::class, 'allTeachers'])
         ->middleware('auth:sanctum');
 

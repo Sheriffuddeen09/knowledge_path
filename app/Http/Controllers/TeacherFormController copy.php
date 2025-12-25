@@ -8,7 +8,6 @@ use App\Models\Coursetitle;
 use App\Models\TeacherForm;
 use Illuminate\Support\Facades\Storage;
 use App\Rules\MaxWords;
- use Illuminate\Validation\Rule;
 
 class TeacherFormController extends Controller
 {
@@ -39,12 +38,12 @@ class TeacherFormController extends Controller
     $teacherForm = TeacherForm::create([
         'user_id' => $request->user()->id,
         'coursetitle_id' => $request->coursetitle_id,
-        'qualification' => $request->qualification,
-        'experience' => $request->experience,
-        'specialization' => $request->specialization,
+        'qualification' => json_decode($info['qualification'] ?? '[]', true),
+        'experience'    => json_decode($info['experience'] ?? '[]', true),
+        'specialization'=> json_decode($info['specialization'] ?? '[]', true),
+        'compliment'    => json_decode($info['compliment'] ?? '[]', true),
         'course_payment' => $request->course_payment,
         'currency' => $request->currency,
-        'compliment' => $request->compliment,
         'logo' => $request->file('logo')?->store('teacher_logos', 'public'),
         'cv' => $request->file('cv')?->store('teacher_cvs', 'public'),
     ]);
@@ -70,48 +69,45 @@ class TeacherFormController extends Controller
     ]);
 }
 
-
-
-public function allTeachers()
+    public function allTeachers()
 {
     $teachers = \App\Models\User::where('teacher_profile_completed', 1)->get();
 
     $teachers = $teachers->map(function ($user) {
 
-    $info = json_decode($user->teacher_info, true) ?? [];
+        // ✅ DEFINE $info FIRST
+        $info = json_decode($user->teacher_info, true) ?? [];
 
-    // Fetch the actual course title
-    $courseTitle = null;
-    if (!empty($info['coursetitle_id'])) {
-        $courseTitle = \App\Models\Coursetitle::find($info['coursetitle_id'])?->name ?? null;
-    }
+        return [
+            'id' => $user->id,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'gender' => $user->gender,
+            'location' => $user->location,
 
-    // If course is "Other", set display title to "Other" and keep specialization as entered
-    $displayTitle = $courseTitle;
-    if (strtolower($courseTitle ?? '') === 'other') {
-        $displayTitle = 'Other';
-    }
+            // ✅ Assets
+            'logo' => isset($info['logo'])
+                ? asset('storage/' . $info['logo'])
+                : null,
 
-    return [
-        'id' => $user->id,
-        'first_name' => $user->first_name,
-        'last_name' => $user->last_name,
-        'location' => $user->location,
-        'logo' => isset($info['logo']) ? asset('storage/' . $info['logo']) : null,
-        'cv' => isset($info['cv']) ? asset('storage/' . $info['cv']) : null,
+            'cv' => isset($info['cv'])
+                ? asset('storage/' . $info['cv'])
+                : null,
 
-        'coursetitle_id' => $info['coursetitle_id'] ?? null,
-        'coursetitle_name' => $displayTitle,
-        'specialization' => strtolower($courseTitle ?? '') === 'other' ? ($info['specialization'] ?? []) : [],
+            // ✅ Course data
+            'coursetitle_id' => $info['coursetitle_id'] ?? null,
+            'coursetitle_name' => json_decode($info['specialization'] ?? '[]', true)
+                ?? $info['coursetitle_name']
+                ?? 'Arabic Course',
 
-        'course_payment' => $info['course_payment'] ?? null,
-        'currency' => $info['currency'] ?? null,
-        'experience' => $info['experience'] ?? [],
-        'qualification' => $info['qualification'] ?? [],
-        'compliment' => $info['compliment'] ?? [],
-    ];
-});
+            'course_payment' => $info['course_payment'] ?? null,
+            'currency' => $info['currency'] ?? null,
+            'qualification' => json_decode($info['qualification'] ?? '[]', true),
+            'experience'    => json_decode($info['experience'] ?? '[]', true),
+            'compliment'    => json_decode($info['compliment'] ?? '[]', true),
 
+        ];
+    });
 
     return response()->json([
         'status' => true,
@@ -140,6 +136,8 @@ public function allTeachers()
 }
 
 
+
+
 public function show(Request $request)
 {
     $form = TeacherForm::where('user_id', $request->user()->id)->first();
@@ -148,10 +146,10 @@ public function show(Request $request)
         'status' => true,
         'data' => $form ? [
             'coursetitle_id' => $form->coursetitle_id,
-            'qualification' => json_decode($form->qualification, true),
-            'experience' => json_decode($form->experience, true),
-            'specialization' => json_decode($form->specialization, true),
-            'compliment' => json_decode($form->compliment, true),
+            'qualification' => $form->qualification,
+            'experience' => $form->experience,
+            'specialization' => $form->specialization,
+            'compliment' => $form->compliment,
             'course_payment' => $form->course_payment,
             'currency' => $form->currency,
         ] : null
@@ -159,19 +157,12 @@ public function show(Request $request)
 }
 
 
-
-
-public function update(Request $request)
+ public function update(Request $request)
 {
-    $user = $request->user();
+    $form = TeacherForm::where('user_id', $request->user()->id)->firstOrFail();
 
-    // Get the teacher form
-    $form = TeacherForm::where('user_id', $user->id)->firstOrFail();
-
-    // Get the ID of the "Other" course title
     $otherId = Coursetitle::whereRaw('LOWER(name) = ?', ['other'])->value('id');
 
-    // Validate request
     $validator = Validator::make($request->all(), [
         'coursetitle_id' => 'required|exists:coursetitles,id',
 
@@ -181,10 +172,7 @@ public function update(Request $request)
         'experience' => 'nullable|array',
         'experience.*' => 'string|max:255',
 
-        'specialization' => [
-            Rule::requiredIf(fn () => (int)$request->coursetitle_id === (int)$otherId),
-            'array',
-        ],
+        'specialization' => 'required_if:coursetitle_id,' . $otherId . '|nullable|array',
         'specialization.*' => 'string|max:255',
 
         'course_payment' => 'required|numeric',
@@ -201,18 +189,16 @@ public function update(Request $request)
         return response()->json(['errors' => $validator->errors()], 422);
     }
 
-    // Update teacher form
     $form->update([
-        'coursetitle_id' => (int)$request->coursetitle_id,
+        'coursetitle_id' => $request->coursetitle_id,
         'qualification' => $request->qualification,
-        'experience' => $request->experience ?? [],
-        'specialization' => $request->specialization ?? [],
-        'compliment' => $request->compliment ?? [],
+        'experience' => $request->experience,
+        'specialization' => $request->specialization,
+        'compliment' => $request->compliment,
         'course_payment' => $request->course_payment,
         'currency' => $request->currency,
     ]);
 
-    // Handle files
     if ($request->hasFile('logo')) {
         $form->update([
             'logo' => $request->file('logo')->store('teacher_logos', 'public')
@@ -225,35 +211,10 @@ public function update(Request $request)
         ]);
     }
 
-    // 🔹 Sync back to users.teacher_info
-    $user->update([
-        'teacher_info' => json_encode([
-            'coursetitle_id' => (int)$form->coursetitle_id,
-            'qualification' => $form->qualification ?? [],
-            'experience' => $form->experience ?? [],
-            'specialization' => $form->specialization ?? [],
-            'compliment' => $form->compliment ?? [],
-            'course_payment' => $form->course_payment,
-            'currency' => $form->currency,
-            'logo' => $form->logo,
-            'cv' => $form->cv,
-        ])
-    ]);
-
     return response()->json([
         'status' => true,
         'message' => 'Teacher profile updated successfully',
-        'data' => [
-            'coursetitle_id' => (int)$form->coursetitle_id,
-            'qualification' => $form->qualification ?? [],
-            'experience' => $form->experience ?? [],
-            'specialization' => $form->specialization ?? [],
-            'compliment' => $form->compliment ?? [],
-            'course_payment' => $form->course_payment,
-            'currency' => $form->currency,
-            'logo' => $form->logo,
-            'cv' => $form->cv,
-        ]
+        'data' => $form
     ]);
 }
 

@@ -14,7 +14,8 @@ class Message extends Model
         'file',
         'edited',
         'forwarded_from', 
-        'replied_to'
+        'replied_to',
+        'seen_at'
     ];
 
     protected $casts = [
