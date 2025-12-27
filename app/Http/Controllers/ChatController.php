@@ -26,10 +26,14 @@ use App\Events\MessageSent;
 
     $chats = Chat::where('teacher_id', $userId)
         ->orWhere('student_id', $userId)
-        ->with(['teacher', 'student'])
-        ->with(['messages' => function ($q) use ($userId) {
-            $q->latest()->limit(1);
-        }])
+        ->with([
+            'teacher',
+            'student',
+            'blocks',
+            'messages' => function ($q) {
+                $q->latest()->limit(1);
+            }
+        ])
         ->withCount(['messages as unread_count' => function ($q) use ($userId) {
             $q->where('sender_id', '!=', $userId)
               ->whereNull('seen_at');
@@ -38,19 +42,35 @@ use App\Events\MessageSent;
         ->get();
 
     $chats->each(function ($chat) use ($userId) {
+
+        // Latest message
         $chat->latest_message = $chat->messages->first() ?? null;
         unset($chat->messages);
 
-        // Determine the "other user"
+        // Other user
         $other = $chat->teacher_id === $userId ? $chat->student : $chat->teacher;
 
-        // Simple online check: if last_seen within last 60 seconds, online
-        $chat->other_online = $other && $other->last_seen 
+        // Online status
+        $chat->other_online = $other && $other->last_seen
             ? \Carbon\Carbon::parse($other->last_seen)->diffInSeconds(now()) <= 60
+            : false;
+
+        // 🔒 BLOCK INFO
+        $block = $chat->blocks->first();
+
+        $chat->block_info = $block ? [
+            'blocked'      => true,
+            'blocker_id'   => $block->blocker_id,
+            'blocked_id'   => $block->blocked_id,
+            'blocked_by_me'=> $block->blocker_id === $userId,
+        ] : null;
+
+        $chat->is_blocked_for_me = $block
+            ? in_array($userId, [$block->blocker_id, $block->blocked_id])
             : false;
     });
 
-    return $chats;
+    return response()->json($chats);
 }
 
 
@@ -60,17 +80,23 @@ use App\Events\MessageSent;
 {
     $userId = auth()->id();
 
-    // Mark messages as delivered
+    // 🔒 BLOCK CHECK
+    if ($chat->isBlockedFor($userId)) {
+        return response()->json([
+            'message' => 'This chat is blocked'
+        ], 403);
+    }
+
+    // Mark delivered
     $chat->messages()
         ->whereNull('delivered_at')
         ->where('sender_id', '!=', $userId)
         ->update(['delivered_at' => now()]);
 
-    // ✅ LOAD REACTIONS + USERS
     return $chat->messages()
         ->with([
             'sender:id,first_name,last_name,role',
-            'reactions.user:id,first_name,last_name' // 👈 THIS IS THE KEY
+            'reactions.user:id,first_name,last_name'
         ])
         ->orderBy('created_at')
         ->get();
@@ -105,17 +131,25 @@ public function index(Request $request)
 
 
 
-    // Send message
+    // Send message 
    public function send(Request $request)
 {
     $request->validate([
-        'chat_id' => 'required|exists:chats,id',
-        'type' => 'required|string',
-        'message' => 'nullable|string',
-        'file' => 'nullable|file|max:20480', // 20MB
+        'chat_id'    => 'required|exists:chats,id',
+        'type'       => 'required|string',
+        'message'    => 'nullable|string',
+        'file'       => 'nullable|file|max:20480',
         'replied_to' => 'nullable|exists:messages,id',
-
     ]);
+
+    $chat = Chat::findOrFail($request->chat_id);
+
+    // 🔒 BLOCK CHECK (THIS IS THE KEY)
+    if ($chat->isBlockedFor(auth()->id())) {
+        return response()->json([
+            'message' => 'You are blocked in this chat'
+        ], 403);
+    }
 
     $path = null;
     $fileName = null;
@@ -127,62 +161,60 @@ public function index(Request $request)
     }
 
     $message = Message::create([
-        'chat_id' => $request->chat_id,
-        'sender_id' => auth()->id(),
-        'type' => $request->type,     // text, image, video, audio, file
-        'message' => $request->message,
-        'file' => $path,
-        'file_name' => $fileName,
+        'chat_id'    => $chat->id,
+        'sender_id'  => auth()->id(),
+        'type'       => $request->type,
+        'message'    => $request->message,
+        'file'       => $path,
+        'file_name'  => $fileName,
         'replied_to' => $request->replied_to,
     ]);
 
-    // Attach message to all chat participants in message_user table
-    $chat = Chat::with(['teacher', 'student'])->findOrFail($request->chat_id);
-
-    $userIds = collect([
-        $chat->teacher_id,
-        $chat->student_id,
-    ])->filter();
+    // Attach message to both participants
+    $userIds = collect([$chat->teacher_id, $chat->student_id])->filter();
 
     foreach ($userIds as $userId) {
         $message->users()->attach($userId, ['deleted' => false]);
     }
 
-    $message->load('sender');
+    $message->load(['sender', 'repliedMessage.sender']);
 
     broadcast(new NewMessage($message))->toOthers();
 
-
-    return Message::with([
-        'sender',
-        'repliedMessage.sender'
-    ])->find($message->id);
+    return response()->json($message);
 }
 
-   
 
 // sendvoice note function
-    public function sendVoice(Request $request)
+   public function sendVoice(Request $request)
 {
     $request->validate([
-                'chat_id' => 'required|exists:chats,id',
-                'voice' => 'required|file|mimes:webm,mpeg,wav,ogg',
-            ]);
+        'chat_id' => 'required|exists:chats,id',
+        'voice'   => 'required|file|mimes:webm,mpeg,wav,ogg',
+    ]);
+
+    $chat = Chat::findOrFail($request->chat_id);
+
+    // 🔒 BLOCK CHECK
+    if ($chat->isBlockedFor(auth()->id())) {
+        return response()->json([
+            'message' => 'You are blocked in this chat'
+        ], 403);
+    }
 
     $file = $request->file('voice');
+    $path = $file->store('chat_files', 'public');
 
-    // Save the file to storage
-    $path = $file->store('chat_files', 'public'); // this sets $path
-
-    // Save message in database
     $message = Message::create([
-        'chat_id'   => $request->chat_id,
+        'chat_id'   => $chat->id,
         'sender_id' => auth()->id(),
-        'type'      => 'voice', // must match enum
+        'type'      => 'voice',
         'file'      => $path,
     ]);
 
     $message->load('sender');
+
+    broadcast(new NewMessage($message))->toOthers();
 
     return response()->json([
         'message' => $message,
@@ -389,45 +421,6 @@ public function toggle(Request $request)
 
     return Message::with(['reactions.user'])->find($request->message_id);
 }
-
-
-
-public function toggleBlock(Request $request)
-{
-  Block::firstOrCreate([
-    'user_id' => auth()->id(),
-    'blocked_user_id' => $request->user_id,
-  ]);
-
-  return response()->json(['blocked' => true]);
-}
-
-
-public function isBlocked($userId)
-{
-    $blocked = BlockedUser::where(function ($q) use ($userId) {
-        $q->where('blocker_id', auth()->id())
-          ->where('blocked_id', $userId);
-    })
-    ->orWhere(function ($q) use ($userId) {
-        $q->where('blocker_id', $userId)
-          ->where('blocked_id', auth()->id());
-    })
-    ->exists();
-
-    if ($blocked) {
-    return response()->json([
-        'message' => 'You cannot message this user'
-    ], 403);
-}
-
-    return response()->json([
-        'blocked' => $blocked
-    ]);
-}
-
-
-
 
 
 }

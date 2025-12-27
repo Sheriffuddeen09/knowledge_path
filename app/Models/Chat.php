@@ -28,9 +28,21 @@ class Chat extends Model
     }
 
     public function participants()
-{
-    return $this->belongsToMany(User::class, 'chat_user');
-}
+        {
+            return $this->belongsToMany(User::class, 'chat_user');
+        }
+        public function blocks()
+        {
+            return $this->hasMany(ChatBlock::class);
+        }
+
+    public function isBlockedFor($userId)
+        {
+            return $this->blocks()
+                ->where('blocked_id', $userId)
+                ->exists();
+        }
+
 
 }
 $chats = Chat::with('latestMessage')->get();

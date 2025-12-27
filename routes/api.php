@@ -26,6 +26,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProfileVisibilityController;
 use App\Http\Controllers\LiveClassController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\ChatBlockController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ChatReportController;
@@ -60,6 +61,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/live-class/respond/{id}', [LiveClassController::class, 'respond']);
   
 });
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/chats/{chat}/block', [ChatBlockController::class, 'block']);
+    Route::delete('/chats/{chat}/unblock', [ChatBlockController::class, 'unblock']);
+});
+
+
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/chats', [ChatController::class,'index']);
