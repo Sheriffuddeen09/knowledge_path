@@ -12,19 +12,21 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('messages', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('chat_id')->constrained()->onDelete('cascade');
-            $table->foreignId('sender_id')->constrained('users')->onDelete('cascade');
-            $table->enum('type', ['text', 'image', 'voice']);
-            $table->text('message')->nullable();
-            $table->string('file')->nullable();
-            $table->unsignedBigInteger('forwarded_from')->nullable()->after('id');
-           $table->foreignId('replied_to')->nullable()->constrained('messages')->nullOnDelete();
-            $table->boolean('edited')->default(false);
-            $table->timestamps();
+                $table->id();
+                $table->foreignId('chat_id')->constrained()->cascadeOnDelete();
+                $table->foreignId('sender_id')->constrained('users')->cascadeOnDelete();
+                $table->foreignId('receiver_id')->constrained('users')->cascadeOnDelete();
 
-        
+                $table->enum('type', ['text', 'image', 'voice']);
+                $table->text('message')->nullable();
+                $table->string('file')->nullable();
+                $table->timestamp('seen_at')->nullable();
+
+                $table->foreignId('replied_to')->nullable()->constrained('messages')->nullOnDelete();
+                $table->boolean('edited')->default(false);
+                $table->timestamps();
             });
+
 
         
     }

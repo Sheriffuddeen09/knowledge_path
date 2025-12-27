@@ -76,29 +76,29 @@ use App\Events\MessageSent;
         ->get();
 }
 
+
+
 public function index(Request $request)
 {
     $userId = $request->user()->id;
 
-    $chats = Chat::where('teacher_id', $userId)
-        ->orWhere('student_id', $userId)
+    $chats = Chat::where(fn ($q) =>
+            $q->where('teacher_id', $userId)
+              ->orWhere('student_id', $userId)
+        )
         ->with([
             'teacher',
             'student',
-            'latestMessage.sender',
-            'messages' => function ($q) {
-                $q->latest();
+            'latestMessage.sender'
+        ])
+        ->withCount([
+            'messages as unread_count' => function ($q) use ($userId) {
+                $q->where('receiver_id', $userId)
+                  ->whereNull('seen_at');
             }
         ])
-        ->get()
-        ->map(function ($chat) use ($userId) {
-            $chat->unread_count = $chat->messages
-                ->whereNull('seen_at')
-                ->where('sender_id', '!=', $userId)
-                ->count();
-
-            return $chat;
-        });
+        ->latest('updated_at')
+        ->get();
 
     return response()->json($chats);
 }
@@ -192,16 +192,16 @@ public function index(Request $request)
 
 // markSeen function
 
-public function markSeen(Message $message)
+public function markAsRead(Chat $chat)
 {
-    abort_if($message->sender_id === auth()->id(), 403);
-
-    $message->update(['seen_at' => now()]);
-
-    broadcast(new MessageSeen($message))->toOthers();
+    Message::where('chat_id', $chat->id)
+        ->where('receiver_id', auth()->id())
+        ->whereNull('seen_at')
+        ->update(['seen_at' => now()]);
 
     return response()->noContent();
 }
+
 
 
 
@@ -431,3 +431,5 @@ public function isBlocked($userId)
 
 
 }
+
+

@@ -14,12 +14,10 @@ class Message extends Model
         'file',
         'edited',
         'forwarded_from', 
-        'replied_to',
-        'seen_at'
+        'replied_to'
     ];
 
     protected $casts = [
-        'seen_at' => 'datetime',
         'delivered_at' => 'datetime',
         'edited' => 'boolean'
     ];
@@ -42,9 +40,10 @@ class Message extends Model
     public function users()
 {
     return $this->belongsToMany(User::class, 'message_user')
-        ->withPivot('deleted')
+        ->withPivot(['deleted', 'seen_at'])
         ->withTimestamps();
 }
+
 public function repliedMessage()
     {
         return $this->belongsTo(Message::class, 'replied_to');
