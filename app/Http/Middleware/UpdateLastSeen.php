@@ -3,16 +3,16 @@
 namespace App\Http\Middleware;
 
 use Closure;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\Request;
 
 class UpdateLastSeen
 {
-    public function handle($request, Closure $next)
+    public function handle(Request $request, Closure $next)
     {
-        if (Auth::check()) {
-            $user = Auth::user();
-            Cache::put('user-is-online-' . $user->id, true, now()->addMinutes(5));
+        if (auth()->check()) {
+            auth()->user()->forceFill([
+                'last_seen_at' => now(),
+            ])->save();
         }
 
         return $next($request);

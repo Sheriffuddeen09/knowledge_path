@@ -90,6 +90,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/unblock', [BlockController::class, 'unblock']);
     Route::get('/chat/is-blocked/{userId}', [ChatController::class, 'isBlocked']);
     Route::delete('/chats/{chat}/clear', [ChatController::class, 'clearChat']);
+    Route::get('/messages/unread-count', [ChatController::class, 'unreadSendersCount']);
+
 
 });
 
@@ -97,6 +99,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/users/{user}/online-status', [UserController::class, 'onlineStatus']);
     Route::post('/users/online-status-bulk', [UserController::class, 'onlineStatusBulk']);
 });
+
+// routes/api.php
+Route::middleware('auth:sanctum')->get('/users/{user}/status', function (\App\Models\User $user) {
+    return response()->json([
+        'online' => $user->isOnline(),
+        'last_seen_at' => $user->last_seen_at,
+    ]);
+});
+
+
 
 
 

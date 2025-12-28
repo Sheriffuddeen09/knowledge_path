@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
-
+use App\Events\UserOnline;
+use App\Events\UserOffline;
 
 class LoginController extends Controller
 {
@@ -135,6 +136,12 @@ class LoginController extends Controller
         ? '/student/dashboard'
         : '/admin/dashboard';
 
+    $userId = auth()->id();
+
+    if ($userId) {
+        event(new UserOnline((int) $userId));
+    }
+
 
     return response()->json([
         'status' => true,
@@ -150,8 +157,12 @@ class LoginController extends Controller
 
     public function logout(Request $request)
     {
+        event(new UserOffline(auth()->id()));
         $request->user()->tokens()->delete();
-        return response()->json(['message' => 'Logged out']);
+        return response()->json([
+            'status' => true,
+            'message' => 'Logged out'
+        ]);
     }
 }
 

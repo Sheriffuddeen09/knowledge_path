@@ -12,35 +12,33 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
-    ->withMiddleware(function (Middleware $middleware) {
-
-    // Make sure your existing middleware stays
-     $middleware->api([
-        \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-        \App\Http\Middleware\LastSeenMiddleware::class,
-        \App\Http\Middleware\UpdateLastSeen::class,
-
-    ]);
-    // Add your UpdateLastSeen middleware to API routes
-    $middleware->api(append: [
-        \App\Http\Middleware\UpdateLastSeen::class,
-    ]);
-
-    $middleware->web(append: [
-        \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-        \App\Http\Middleware\VerifyCsrfToken::class,
-    ]);
-
-    $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
-})
-
 
     ->withMiddleware(function (Middleware $middleware) {
+
+        // ✅ API middleware (Sanctum + last seen tracking)
+        $middleware->api([
+            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+            \App\Http\Middleware\UpdateLastSeen::class,
+        ]);
+
+        // ✅ Web middleware
+        $middleware->web([
+            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+            \Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class,
+        ]);
+
+        // ✅ Global middleware
+        $middleware->append(
+            \Illuminate\Http\Middleware\HandleCors::class
+        );
+
+        // ✅ Disable CSRF for API
         $middleware->validateCsrfTokens(except: [
-            'api/*'
+            'api/*',
         ]);
     })
 
     ->withExceptions(function (Exceptions $exceptions): void {
         //
-    })->create();
+    })
+    ->create();

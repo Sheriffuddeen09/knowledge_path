@@ -38,20 +38,23 @@ public function unblock(Request $request, Chat $chat)
 {
     $userId = auth()->id();
 
-    $block = $chat->blocks;
+    // ✅ Get the block record (NOT collection)
+    $block = $chat->blocks()->first();
 
     if (!$block) {
         return response()->json(['message' => 'No block found'], 404);
     }
 
-    // Only the blocker can unblock
+    // ✅ Only blocker can unblock
     if ($block->blocker_id !== $userId) {
         return response()->json(['message' => 'You cannot unblock this user'], 403);
     }
 
+    // ✅ Delete block
     $block->delete();
 
     broadcast(new ChatUnblocked($chat))->toOthers();
+
 
     return response()->json([
         'message' => 'User unblocked',

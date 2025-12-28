@@ -76,7 +76,34 @@ use App\Events\MessageSent;
 
 
 // get message function
-  public function messages(Chat $chat)
+//   public function messages(Chat $chat)
+// {
+//     $userId = auth()->id();
+
+//     // 🔒 BLOCK CHECK
+//     if ($chat->isBlockedFor($userId)) {
+//         return response()->json([
+//             'message' => 'This chat is blocked'
+//         ], 403);
+//     }
+
+//     // Mark delivered
+//     $chat->messages()
+//         ->whereNull('delivered_at')
+//         ->where('sender_id', '!=', $userId)
+//         ->update(['delivered_at' => now()]);
+
+//     return $chat->messages()
+//         ->with([
+//             'sender:id,first_name,last_name,role',
+//             'reactions.user:id,first_name,last_name'
+//         ])
+//         ->orderBy('created_at')
+//         ->get();
+// }
+
+
+public function messages(Chat $chat)
 {
     $userId = auth()->id();
 
@@ -87,11 +114,17 @@ use App\Events\MessageSent;
         ], 403);
     }
 
-    // Mark delivered
+    // ✅ Mark messages as DELIVERED (receiver opened chat)
     $chat->messages()
         ->whereNull('delivered_at')
         ->where('sender_id', '!=', $userId)
         ->update(['delivered_at' => now()]);
+
+    // ✅ Mark messages as READ (receiver viewed them)
+    $chat->messages()
+        ->where('is_read', false)
+        ->where('sender_id', '!=', $userId)
+        ->update(['is_read' => true]);
 
     return $chat->messages()
         ->with([
@@ -101,6 +134,7 @@ use App\Events\MessageSent;
         ->orderBy('created_at')
         ->get();
 }
+
 
 public function index(Request $request)
 {
@@ -118,10 +152,20 @@ public function index(Request $request)
         ])
         ->get()
         ->map(function ($chat) use ($userId) {
+
+            // Unread count
             $chat->unread_count = $chat->messages
                 ->whereNull('seen_at')
                 ->where('sender_id', '!=', $userId)
                 ->count();
+
+            // Block info
+            $block = $chat->blocks()->first();
+            $chat->block_info = $block ? [
+                'blocked' => true,
+                'blocker_id' => $block->blocker_id,
+                'blocked_id' => $block->blocked_id,
+            ] : null;
 
             return $chat;
         });
@@ -131,12 +175,13 @@ public function index(Request $request)
 
 
 
+
     // Send message 
    public function send(Request $request)
 {
     $request->validate([
         'chat_id'    => 'required|exists:chats,id',
-        'type'       => 'required|string',
+        'type' => 'required|in:text,image,voice,video,file',
         'message'    => 'nullable|string',
         'file'       => 'nullable|file|max:20480',
         'replied_to' => 'nullable|exists:messages,id',
@@ -168,9 +213,17 @@ public function index(Request $request)
         'file'       => $path,
         'file_name'  => $fileName,
         'replied_to' => $request->replied_to,
+        'is_read' => false
     ]);
 
     // Attach message to both participants
+
+    \Log::info('FILE DEBUG', [
+    'hasFile' => $request->hasFile('file'),
+    'file' => $request->file('file'),
+    'all' => $request->all(),
+]);
+
     $userIds = collect([$chat->teacher_id, $chat->student_id])->filter();
 
     foreach ($userIds as $userId) {
@@ -210,6 +263,7 @@ public function index(Request $request)
         'sender_id' => auth()->id(),
         'type'      => 'voice',
         'file'      => $path,
+        'is_read' => false
     ]);
 
     $message->load('sender');
@@ -222,15 +276,42 @@ public function index(Request $request)
 }
 
 
+// unread Senders Count
+
+
+ public function unreadSendersCount()
+    {
+        $userId = auth()->id();
+
+        $count = \App\Models\Message::where('is_read', false)
+            ->where('sender_id', '!=', $userId)
+            ->whereHas('chat', function ($q) use ($userId) {
+                $q->where('teacher_id', $userId)
+                  ->orWhere('student_id', $userId);
+            })
+            ->distinct('sender_id')
+            ->count('sender_id');
+
+        return response()->json([
+            'unread_senders' => $count
+        ]);
+    }
+
+
+
+
 // markSeen function
 
-public function markSeen(Message $message)
+
+public function markChatSeen($chatId)
 {
-    abort_if($message->sender_id === auth()->id(), 403);
-
-    $message->update(['seen_at' => now()]);
-
-    broadcast(new MessageSeen($message))->toOthers();
+    Message::where('chat_id', $chatId)
+        ->where('receiver_id', auth()->id())
+        ->whereNull('seen_at')
+        ->update([
+            'seen_at' => now(),
+            'is_read' => true
+        ]);
 
     return response()->noContent();
 }

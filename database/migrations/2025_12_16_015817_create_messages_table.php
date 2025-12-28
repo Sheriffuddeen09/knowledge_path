@@ -24,6 +24,7 @@ return new class extends Migration
 
                 $table->foreignId('replied_to')->nullable()->constrained('messages')->nullOnDelete();
                 $table->boolean('edited')->default(false);
+               
                 $table->timestamps();
             });
 

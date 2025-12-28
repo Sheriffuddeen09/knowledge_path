@@ -10,6 +10,7 @@ use App\Models\Video;
 use App\Models\VideoDownload;
 use App\Models\LiveClassRequest;
 use Illuminate\Support\Facades\Cache;
+use Carbon\Carbon;
 
 class User extends Authenticatable
 {
@@ -35,11 +36,15 @@ class User extends Authenticatable
     public function liveRequestsReceived() {
         return $this->hasMany(LiveClassRequest::class, 'teacher_id');
     }
+    
 
-    // Online status
-    public function isOnline() {
-        return Cache::has('user-is-online-' . $this->id);
+    public function isOnline()
+    {
+        if (!$this->last_seen_at) return false;
+
+        return Carbon::parse($this->last_seen_at)->diffInMinutes(now()) < 2;
     }
+
 
     // Mass assignable
     protected $fillable = [
@@ -58,6 +63,7 @@ class User extends Authenticatable
         'admin_choice',
         'teacher_profile_completed',
         'teacher_info',
+        'last_seen_at',
     ];
 
     // Hidden attributes
