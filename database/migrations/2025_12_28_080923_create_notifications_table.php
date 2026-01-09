@@ -11,15 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('assignments', function (Blueprint $table) {
+        Schema::create('notifications', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('teacher_id')->constrained('users')->cascadeOnDelete();
-            $table->string('title');
-            $table->text('description')->nullable();
-            $table->dateTime('due_at');
-            $table->boolean('is_rescheduled')->default(false);
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+            $table->string('type');
+            $table->json('data')->nullable();
+            $table->timestamp('read_at')->nullable();
             $table->timestamps();
         });
+
     }
 
     /**
@@ -27,6 +27,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('assignments');
+        Schema::dropIfExists('notifications');
     }
 };

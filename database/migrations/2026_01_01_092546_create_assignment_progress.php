@@ -11,15 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('assignments', function (Blueprint $table) {
+        Schema::create('assignment_progress', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('teacher_id')->constrained('users')->cascadeOnDelete();
-            $table->string('title');
-            $table->text('description')->nullable();
-            $table->dateTime('due_at');
-            $table->boolean('is_rescheduled')->default(false);
+            $table->foreignId('student_assignment_id');
+            $table->json('answers')->nullable();
+            $table->integer('current_index')->default(0);
+            $table->integer('remaining_seconds');
             $table->timestamps();
         });
+
     }
 
     /**
@@ -27,6 +27,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('assignments');
+        Schema::dropIfExists('assignment_progress');
     }
 };

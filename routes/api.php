@@ -31,6 +31,77 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ChatReportController;
 
+use App\Http\Controllers\AssignmentController;
+use App\Http\Controllers\AssignmentResultController;
+
+use App\Http\Controllers\ExamController;
+use App\Http\Controllers\ExamResultController;
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    // 🔹 Assignments
+    Route::get('/assignments', [AssignmentController::class, 'index']);
+    Route::post('/assignments', [AssignmentController::class, 'store']);
+    Route::get('/assignments/{id}', [AssignmentController::class, 'show']);
+    Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/teacher/assignments/{id}', [AssignmentController::class, 'preview']);
+    Route::post('/assignments/{id}/block', [AssignmentController::class, 'block']);
+    Route::post('/assignments/{id}/unblock', [AssignmentController::class, 'unblock']);});
+    Route::get('/notifications/unread-count', [AssignmentController::class, 'unreadCount']);
+    Route::get('/assignments/{id}/analytics', [AssignmentController::class, 'analytics']);
+    Route::middleware('auth:sanctum')->post('/assignments/save-progress',[AssignmentController::class, 'saveProgress']);
+    Route::post('/student/assignment/{token}/submit',[AssignmentController::class, 'submitByToken']);
+    Route::post('/student/assignments/{token}/start',[AssignmentController::class, 'begin']);
+    Route::post('/student/assignments/{token}/restart',[AssignmentController::class, 'restart']);
+    Route::get('/student/assignments/{token}/resume',[AssignmentController::class, 'resume']);
+    Route::get('/student/assignments/{token}', [AssignmentController::class, 'start']);
+    Route::get('/student/library', [AssignmentController::class, 'library']);
+    Route::post('/student/assignments/reschedule',[AssignmentController::class, 'reschedule'])->middleware('auth:sanctum');
+});
+
+Route::middleware('auth:sanctum')->group(function () {
+    // Results
+    Route::get('/assignment-results', [AssignmentResultController::class, 'index']);
+    Route::get('/assignment-results/{result}', [AssignmentResultController::class, 'show']);
+    Route::delete('/assignment-results/{result}', [AssignmentResultController::class, 'destroy']);
+    Route::get('/assignment-results/{result}/pdf', [AssignmentResultController::class, 'downloadPdf']);
+});
+
+
+
+// Exam 
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    // 🔹 Assignments
+    Route::get('/exams', [ExamController::class, 'index']);
+    Route::post('/exams', [ExamController::class, 'store']);
+    Route::get('/exams/{id}', [ExamController::class, 'show']);
+    Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/teacher/exams/{id}', [ExamController::class, 'preview']);
+    Route::post('/exams/{id}/block', [ExamController::class, 'block']);
+    Route::post('/exams/{id}/unblock', [ExamController::class, 'unblock']);
+});
+    Route::get('/notifications/unread-count', [ExamController::class, 'unreadCount']);
+    Route::get('/exams/{id}/analytics', [ExamController::class, 'analytics']);
+    Route::middleware('auth:sanctum')->post('/exams/save-progress',[ExamController::class, 'saveProgress']);
+    Route::post('/student/exam/{token}/submit',[ExamController::class, 'submitByToken']);
+    Route::post('/student/exams/{token}/start',[ExamController::class, 'begin']);
+    Route::post('/student/exams/{token}/restart',[ExamController::class, 'restart']);
+    Route::get('/student/exams/{token}/resume',[ExamController::class, 'resume']);
+    Route::get('/student/exams/{token}', [ExamController::class, 'start']);
+    Route::get('/student/library/exam', [ExamController::class, 'library']);
+    Route::post('/student/exams/reschedule',[ExamController::class, 'reschedule'])->middleware('auth:sanctum');
+});
+
+Route::middleware('auth:sanctum')->group(function () {
+    // Results
+    Route::get('/exam-results', [ExamResultController::class, 'index']);
+    Route::get('/exam-results/{result}', [ExamResultController::class, 'show']);
+    Route::delete('/exam-results/{result}', [ExamResultController::class, 'destroy']);
+    Route::get('/exam-results/{result}/pdf', [ExamResultController::class, 'downloadPdf']);
+});
+
 
 
 
