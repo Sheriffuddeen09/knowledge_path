@@ -75,10 +75,26 @@ class AssignmentResultController extends Controller
     });
 }
 
+public function destroy(AssignmentResult $assignment)
+{
+    $userId = auth()->id();
 
+    // Sender → delete for everyone
+    if ($assignment->sender_id === $userId) {
+        $assignment->delete();
+        return response()->json([
+            'assignment' => 'Assignment Result deleted for everyone'
+        ]);
+    }
 
+    // Other user → delete only for me
+    $assignment->users()
+        ->updateExistingPivot($userId, ['deleted' => true]);
 
-
+    return response()->json([
+        'assignment' => 'Assignment Result deleted for you'
+    ]);
+}
 
 public function show(AssignmentResult $result)
 {

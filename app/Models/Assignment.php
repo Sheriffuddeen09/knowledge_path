@@ -39,8 +39,9 @@ class Assignment extends Model
 
     public function questions()
     {
-        return $this->hasMany(AssignmentQuestion::class);
+        return $this->hasMany(AssignmentQuestion::class, 'assignment_id');
     }
+
 
     protected static function booted()
     {

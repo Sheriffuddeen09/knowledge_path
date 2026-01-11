@@ -123,38 +123,7 @@ public function show(ExamResult $result)
         abort(403);
     }
 
-public function downloadPdf(AssignmentResult $result)
-{
-    try {
-        $result->load([
-            'student',
-            'assignment.teacher',
-            'assignment.questions',
-            'answers.question',
-        ]);
 
-        abort_if(
-            auth()->id() !== $result->student_id &&
-            auth()->id() !== optional($result->assignment)->teacher_id,
-            403,
-            'You cannot download this result'
-        );
 
-        return Pdf::loadView('pdf.assignment-result', [
-            'result' => $result
-        ])->download('assignment-result.pdf');
-
-    } catch (\Throwable $e) {
-        \Log::error('PDF generation failed', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-
-        return response()->json([
-            'error' => 'PDF generation failed',
-            'message' => $e->getMessage(),
-        ], 500);
-    }
-}
 
 }

@@ -63,8 +63,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Results
     Route::get('/assignment-results', [AssignmentResultController::class, 'index']);
     Route::get('/assignment-results/{result}', [AssignmentResultController::class, 'show']);
-    Route::delete('/assignment-results/{result}', [AssignmentResultController::class, 'destroy']);
-    Route::get('/assignment-results/{result}/pdf', [AssignmentResultController::class, 'downloadPdf']);
+    Route::delete('/assignment-results/{assignment}', [AssignmentResultController::class, 'destroy']);
 });
 
 
@@ -99,7 +98,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/exam-results', [ExamResultController::class, 'index']);
     Route::get('/exam-results/{result}', [ExamResultController::class, 'show']);
     Route::delete('/exam-results/{result}', [ExamResultController::class, 'destroy']);
-    Route::get('/exam-results/{result}/pdf', [ExamResultController::class, 'downloadPdf']);
 });
 
 

@@ -75,34 +75,6 @@ use App\Events\MessageSent;
 
 
 
-// get message function
-//   public function messages(Chat $chat)
-// {
-//     $userId = auth()->id();
-
-//     // 🔒 BLOCK CHECK
-//     if ($chat->isBlockedFor($userId)) {
-//         return response()->json([
-//             'message' => 'This chat is blocked'
-//         ], 403);
-//     }
-
-//     // Mark delivered
-//     $chat->messages()
-//         ->whereNull('delivered_at')
-//         ->where('sender_id', '!=', $userId)
-//         ->update(['delivered_at' => now()]);
-
-//     return $chat->messages()
-//         ->with([
-//             'sender:id,first_name,last_name,role',
-//             'reactions.user:id,first_name,last_name'
-//         ])
-//         ->orderBy('created_at')
-//         ->get();
-// }
-
-
 public function messages(Chat $chat)
 {
     $userId = auth()->id();
