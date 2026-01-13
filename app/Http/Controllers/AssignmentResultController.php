@@ -11,28 +11,30 @@ class AssignmentResultController extends Controller
 {
     // 📌 GET RESULTS
 
- public function index()
+public function index()
 {
     $user = auth()->user();
+
+    $expiryDate = now()->subDays(30);
 
     $query = AssignmentResult::with([
         'assignment.teacher',
         'student'
-    ]);
+    ])
+    // ✅ GLOBAL RULE: hide results older than 30 days
+    ->where('submitted_at', '>=', $expiryDate);
 
     /**
-     * STUDENT VIEW
+     * 🧑‍🎓 STUDENT VIEW
      */
     if ($user->role === 'student') {
         $query
             ->where('hidden_for_student', false)
-            ->whereHas('assignment', function ($q) use ($user) {
-                $q->where('student_id', $user->id);
-            });
+            ->where('student_id', $user->id);
     }
 
     /**
-     * TEACHER VIEW
+     * 👨‍🏫 TEACHER VIEW
      */
     if ($user->role === 'teacher') {
         $query
@@ -48,24 +50,19 @@ class AssignmentResultController extends Controller
         return [
             'id' => $r->id,
 
-            // assignment
-            'assignment_title' => $r->assignment->title,
+            'assignment_title' => optional($r->assignment)->title,
 
-            // Teacher name
-            'teacher' => $r->assignment->teacher
+            'teacher' => optional($r->assignment->teacher)
                 ? $r->assignment->teacher->first_name . ' ' . $r->assignment->teacher->last_name
                 : null,
 
-            // Student name
-            'student' => $r->student
+            'student' => optional($r->student)
                 ? $r->student->first_name . ' ' . $r->student->last_name
                 : null,
 
-            // Score
             'score' => $r->score,
             'total' => $r->total_questions,
 
-            // Safe ratio
             'ratio' => $r->total_questions > 0
                 ? round(($r->score / $r->total_questions) * 100, 1)
                 : 0,
@@ -75,29 +72,13 @@ class AssignmentResultController extends Controller
     });
 }
 
-public function destroy(AssignmentResult $assignment)
-{
-    $userId = auth()->id();
-
-    // Sender → delete for everyone
-    if ($assignment->sender_id === $userId) {
-        $assignment->delete();
-        return response()->json([
-            'assignment' => 'Assignment Result deleted for everyone'
-        ]);
-    }
-
-    // Other user → delete only for me
-    $assignment->users()
-        ->updateExistingPivot($userId, ['deleted' => true]);
-
-    return response()->json([
-        'assignment' => 'Assignment Result deleted for you'
-    ]);
-}
-
 public function show(AssignmentResult $result)
 {
+    // ❌ Block expired results
+    if ($result->submitted_at < now()->subDays(30)) {
+        abort(404, 'This result has expired');
+    }
+
     $result->load([
         'assignment.questions',
         'answers.question',
@@ -107,7 +88,5 @@ public function show(AssignmentResult $result)
 
     return response()->json($result);
 }
-
-
 
 }

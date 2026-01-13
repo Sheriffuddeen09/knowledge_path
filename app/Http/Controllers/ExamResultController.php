@@ -8,28 +8,30 @@ use Barryvdh\DomPDF\Facade\Pdf;
 class ExamResultController extends Controller
 {
     // 📌 GET RESULTS
-   public function index()
+  public function index()
 {
     $user = auth()->user();
+
+    $expiryDate = now()->subDays(30);
 
     $query = ExamResult::with([
         'exam.teacher',
         'student'
-    ]);
+    ])
+    // ✅ GLOBAL RULE: hide results older than 1 days
+    ->where('submitted_at', '>=', $expiryDate);
 
     /**
-     * STUDENT VIEW
+     * 🧑‍🎓 STUDENT VIEW
      */
     if ($user->role === 'student') {
         $query
             ->where('hidden_for_student', false)
-            ->whereHas('exam', function ($q) use ($user) {
-                $q->where('student_id', $user->id);
-            });
+            ->where('student_id', $user->id);
     }
 
     /**
-     * TEACHER VIEW
+     * 👨‍🏫 TEACHER VIEW
      */
     if ($user->role === 'teacher') {
         $query
@@ -45,24 +47,19 @@ class ExamResultController extends Controller
         return [
             'id' => $r->id,
 
-            // Exam
-            'exam_title' => $r->exam->title,
+            'exam_title' => optional($r->exam)->title,
 
-            // Teacher name
-            'teacher' => $r->exam->teacher
+            'teacher' => optional($r->exam->teacher)
                 ? $r->exam->teacher->first_name . ' ' . $r->exam->teacher->last_name
                 : null,
 
-            // Student name
-            'student' => $r->student
+            'student' => optional($r->student)
                 ? $r->student->first_name . ' ' . $r->student->last_name
                 : null,
 
-            // Score
             'score' => $r->score,
             'total' => $r->total_questions,
 
-            // Safe ratio
             'ratio' => $r->total_questions > 0
                 ? round(($r->score / $r->total_questions) * 100, 1)
                 : 0,
@@ -72,10 +69,13 @@ class ExamResultController extends Controller
     });
 }
 
-
-
 public function show(ExamResult $result)
 {
+    // ❌ Block expired results
+    if ($result->submitted_at < now()->subDays(30)) {
+        abort(404, 'This result has expired');
+    }
+
     $result->load([
         'exam.questions',
         'answers.question',
@@ -85,45 +85,4 @@ public function show(ExamResult $result)
 
     return response()->json($result);
 }
-
-
-    public function destroy(ExamResult $result)
-    {
-        $user = auth()->user();
-
-        // STUDENT DELETE
-        if ($user->role === 'student') {
-            abort_if($result->student_id !== $user->id, 403);
-
-            $result->update([
-                'hidden_for_student' => true
-            ]);
-
-            return response()->json([
-                'message' => 'Result removed from your view'
-            ]);
-        }
-
-        // TEACHER DELETE
-        if ($user->role === 'teacher') {
-            abort_if(
-                $result->exam->teacher_id !== $user->id,
-                403
-            );
-
-            $result->update([
-                'hidden_for_teacher' => true
-            ]);
-
-            return response()->json([
-                'message' => 'Result removed from your view'
-            ]);
-        }
-
-        abort(403);
-    }
-
-
-
-
 }

@@ -11,6 +11,6 @@
 
     <p>You can try sending another request to the teacher or choose a different schedule.</p>
 
-    <p>Thank you,<br>Your App Name</p>
+    <p>Thank you,<br>Islam Path Of Knowledge</p>
 </body>
 </html>

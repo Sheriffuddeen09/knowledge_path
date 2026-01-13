@@ -25,10 +25,12 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProfileVisibilityController;
 use App\Http\Controllers\LiveClassController;
+use App\Http\Controllers\StudentFriendController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ChatBlockController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\StudentNotificationController;
 use App\Http\Controllers\ChatReportController;
 
 use App\Http\Controllers\AssignmentController;
@@ -36,6 +38,21 @@ use App\Http\Controllers\AssignmentResultController;
 
 use App\Http\Controllers\ExamController;
 use App\Http\Controllers\ExamResultController;
+
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/student-friend', [StudentFriendController::class, 'studentsToAdd']);
+    Route::get('/student-friend/status/{id}', [StudentFriendController::class, 'relationshipStatus']);
+    Route::post('/student-friend/request', [StudentFriendController::class, 'sendRequest']);
+    Route::get('/student-friend/my-requests', [StudentFriendController::class, 'myRequests']);
+    Route::get('/student-friend/all-requests', [StudentFriendController::class, 'allRequests']);
+    Route::post('/student-friend/respond/{id}', [StudentFriendController::class, 'respond']);
+    Route::get('/friend-notifications/requests', [StudentNotificationController::class, 'requestCount']);
+    Route::delete('//requests/remove-temporary/{id}', [StudentNotificationController::class, 'removeTemporarily']);
+  
+});
+
+// 
 
 Route::middleware('auth:sanctum')->group(function () {
 
@@ -130,6 +147,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/live-class/respond/{id}', [LiveClassController::class, 'respond']);
   
 });
+
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chats/{chat}/block', [ChatBlockController::class, 'block']);
     Route::delete('/chats/{chat}/unblock', [ChatBlockController::class, 'unblock']);
@@ -343,7 +362,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     });
 
-    // dashboard/notifications
+    // dashboard/notifications live-class/request
     Route::get('/teacher', [TeacherFormController::class, 'allTeachers'])
         ->middleware('auth:sanctum');
 

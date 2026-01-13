@@ -11,6 +11,6 @@
 
     <p>You can now join the live class.</p>
 
-    <p>Thank you,<br>Your App Name</p>
+    <p>Thank you,<br>Islam Path Of Knowledge</p>
 </body>
 </html>

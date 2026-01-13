@@ -23,7 +23,6 @@ class VideoController extends Controller
 
     $videos = Video::with([
         'user:id,first_name,last_name,role',
-        'category',
         'reactions.user:id,first_name,last_name,role'
     ])
     ->withCount(['comments', 'views']) // 👈 ADD views
@@ -75,7 +74,6 @@ public function show(Video $video)
     $video = Video::withCount(['comments', 'views']) // 👈 ADD views
     ->with([
         'user:id,first_name,last_name,role',
-        'category',
         'comments.user',
         'comments.replies.user',
         'reactions'
@@ -105,7 +103,6 @@ public function show(Video $video)
 
         $data = $request->validate([
             'description' => 'nullable|string',
-            'category_id' => 'nullable|exists:categories,id',
             'video' => 'required|file|mimetypes:video/mp4,video/quicktime|max:200000',
             'thumbnail' => 'nullable|image|max:2048',
             'is_permissible' => 'required|boolean',
@@ -116,7 +113,6 @@ public function show(Video $video)
 
         $video = Video::create([
             'user_id' => $request->user()->id,
-            'category_id' => $data['category_id'] ?? null,
             'description' => $data['description'] ?? null,
             'video_path' => $videoPath,
             'thumbnail' => $thumb,
@@ -134,7 +130,6 @@ public function show(Video $video)
 
         $data = $request->validate([
             'description' => 'nullable|string',
-            'category_id' => 'nullable|exists:categories,id',
             'thumbnail' => 'nullable|image|max:2048',
         ]);
 
@@ -197,7 +192,6 @@ public function show(Video $video)
                 'id' => $video->id,
                 'title' => $video->title,
                 'video_path' => $video->video_path,
-                'category' => $video->category,
                 'total_likes' => $video->reactions()->where('type', 'like')->count(),
                 'total_comments' => $video->comments()->count(),
                 'total_views' => $video->views()->count(),
@@ -252,7 +246,7 @@ public function download(Request $request, $id)
     }
 
     $saved = $user->library()
-    ->with(['user', 'category'])
+    ->with(['user'])
     ->withCount([
         'comments as total_comments',
         'views as total_views',
@@ -274,7 +268,6 @@ public function download(Request $request, $id)
             'views' => $video->total_views ?? 0,
             'reactions' => $reactionCounts, // all emojis
             'total_comments' => $video->total_comments ?? 0,
-            'category' => $video->category,
             'created_at' => $video->created_at->diffForHumans(),
             'user' => $video->user,
             'video_url' => url('storage/' . $video->video_path),
