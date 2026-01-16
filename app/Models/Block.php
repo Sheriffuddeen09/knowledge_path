@@ -20,4 +20,9 @@ class Block extends Model
     {
         return $this->belongsTo(User::class, 'blocked_user_id');
     }
+
+    public function chat()
+    {
+        return $this->belongsTo(Chat::class);
+    }
 }

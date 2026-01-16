@@ -97,6 +97,7 @@ public function allTeachers()
         'first_name' => $user->first_name,
         'last_name' => $user->last_name,
         'location' => $user->location,
+        'gender' => $user->gender,
         'logo' => isset($info['logo']) ? asset('storage/' . $info['logo']) : null,
         'cv' => isset($info['cv']) ? asset('storage/' . $info['cv']) : null,
 

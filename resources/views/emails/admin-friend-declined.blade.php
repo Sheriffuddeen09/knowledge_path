@@ -4,9 +4,9 @@
     <title>Friend Request Declined</title>
 </head>
 <body>
-    <h2>Hello {{ $requestModel->student->first_name }},</h2>
+    <h2>Hello {{ $requestModel->admin->first_name }},</h2>
 
-    <p>We regret to inform you that your Friend request Send to <strong>{{ $requestModel->student->first_name }} {{ $requestModel->student->last_name }}</strong>
+    <p>We regret to inform you that your Friend request Send to <strong>{{ $requestModel->admin->first_name }} {{ $requestModel->admin->last_name }}</strong>
      have been <strong>declined</strong>.</p>
 
     <p>You can try sending another request to the Student or choose a different Schedule.</p>

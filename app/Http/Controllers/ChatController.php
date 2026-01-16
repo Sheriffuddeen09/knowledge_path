@@ -16,65 +16,6 @@ use App\Events\MessageSent;
 
    class ChatController extends Controller
 {
-
-    
-    // Chat list (left panel)
-
-    public function myChats()
-{
-    $userId = auth()->id();
-
-    $chats = Chat::where('teacher_id', $userId)
-        ->orWhere('student_id', $userId)
-        ->with([
-            'teacher',
-            'student',
-            'blocks',
-            'messages' => function ($q) {
-                $q->latest()->limit(1);
-            }
-        ])
-        ->withCount(['messages as unread_count' => function ($q) use ($userId) {
-            $q->where('sender_id', '!=', $userId)
-              ->whereNull('seen_at');
-        }])
-        ->latest('updated_at')
-        ->get();
-
-    $chats->each(function ($chat) use ($userId) {
-
-        // Latest message
-        $chat->latest_message = $chat->messages->first() ?? null;
-        unset($chat->messages);
-
-        // Other user
-        $other = $chat->teacher_id === $userId ? $chat->student : $chat->teacher;
-
-        // Online status
-        $chat->other_online = $other && $other->last_seen
-            ? \Carbon\Carbon::parse($other->last_seen)->diffInSeconds(now()) <= 60
-            : false;
-
-        // 🔒 BLOCK INFO
-        $block = $chat->blocks->first();
-
-        $chat->block_info = $block ? [
-            'blocked'      => true,
-            'blocker_id'   => $block->blocker_id,
-            'blocked_id'   => $block->blocked_id,
-            'blocked_by_me'=> $block->blocker_id === $userId,
-        ] : null;
-
-        $chat->is_blocked_for_me = $block
-            ? in_array($userId, [$block->blocker_id, $block->blocked_id])
-            : false;
-    });
-
-    return response()->json($chats);
-}
-
-
-
 public function messages(Chat $chat)
 {
     $userId = auth()->id();
@@ -108,43 +49,104 @@ public function messages(Chat $chat)
 }
 
 
-public function index(Request $request)
+public function index()
 {
-    $userId = $request->user()->id;
+    $userId = auth()->id();
 
-    $chats = Chat::where('teacher_id', $userId)
-        ->orWhere('student_id', $userId)
+    $chats = Chat::where(function ($q) use ($userId) {
+            $q->where('teacher_id', $userId)
+              ->orWhere('student_id', $userId)
+              ->orWhere('user_one_id', $userId)
+              ->orWhere('user_two_id', $userId);
+        })
         ->with([
             'teacher',
             'student',
-            'latestMessage.sender',
-            'messages' => function ($q) {
-                $q->latest();
-            }
+            'messages' => fn ($q) => $q->latest()->limit(1),
         ])
-        ->get()
-        ->map(function ($chat) use ($userId) {
+        ->get();
 
-            // Unread count
-            $chat->unread_count = $chat->messages
-                ->whereNull('seen_at')
-                ->where('sender_id', '!=', $userId)
-                ->count();
+    $chats->each(function ($chat) use ($userId) {
 
-            // Block info
-            $block = $chat->blocks()->first();
-            $chat->block_info = $block ? [
-                'blocked' => true,
-                'blocker_id' => $block->blocker_id,
-                'blocked_id' => $block->blocked_id,
-            ] : null;
+        // unread count
+        $chat->unread_count = $chat->messages
+            ->whereNull('seen_at')
+            ->where('sender_id', '!=', $userId)
+            ->count();
 
-            return $chat;
-        });
+        // latest message
+        $chat->latest_message = $chat->messages->first();
+        unset($chat->messages);
+
+        // 👇 DETERMINE OTHER USER (CRITICAL FIX)
+        if ($chat->type === 'student_teacher') {
+            $chat->other_user = $chat->teacher_id == $userId
+                ? $chat->student
+                : $chat->teacher;
+        } else {
+            $otherId = $chat->user_one_id == $userId
+                ? $chat->user_two_id
+                : $chat->user_one_id;
+
+            $chat->other_user = User::find($otherId);
+        }
+    });
 
     return response()->json($chats);
 }
 
+
+// public function index(Request $request)
+// {
+//     $userId = $request->user()->id;
+
+//     $chats = Chat::where(function ($q) use ($userId) {
+//             $q->where('teacher_id', $userId)
+//               ->orWhere('student_id', $userId)
+//               ->orWhere('user_one_id', $userId)
+//               ->orWhere('user_two_id', $userId);
+//         })
+//         ->with([
+//             'teacher',
+//             'student',
+//             'latestMessage.sender',
+//             'messages' => fn ($q) => $q->latest()
+//         ])
+//         ->get()
+//         ->map(function ($chat) use ($userId) {
+
+//             /** ✅ UNREAD COUNT */
+//             $chat->unread_count = $chat->messages
+//                 ->whereNull('seen_at')
+//                 ->where('sender_id', '!=', $userId)
+//                 ->count();
+
+//             /** ✅ BLOCK INFO */
+//             $block = $chat->blocks()->first();
+//             $chat->block_info = $block ? [
+//                 'blocked' => true,
+//                 'blocker_id' => $block->blocker_id,
+//                 'blocked_id' => $block->blocked_id,
+//             ] : null;
+
+//             /** ✅ DETERMINE OTHER USER */
+//             if ($chat->type === 'student_teacher') {
+//                 $chat->other_user = $chat->teacher_id == $userId
+//                     ? $chat->student
+//                     : $chat->teacher;
+//             } else {
+//                 $otherId = $chat->user_one_id == $userId
+//                     ? $chat->user_two_id
+//                     : $chat->user_one_id;
+
+//                 $chat->other_user = User::find($otherId);
+//             }
+
+//             return $chat;
+//         });
+
+//     return response()->json($chats);
+// }
 
 
 

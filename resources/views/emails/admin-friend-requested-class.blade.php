@@ -5,9 +5,9 @@
 </head>
 <body>
 
-    <h2>Hello {{ $requestModel->student->first_name }},</h2>
+    <h2>Hello {{ $requestModel->admin->first_name }},</h2>
     <p>
-        {{ $requestModel->student->first_name }} {{ $requestModel->student->last_name }} have send you Friend request 
+        {{ $requestModel->admin->first_name }} {{ $requestModel->admin->last_name }} have send you Friend request 
 .
     </p>
     <p>Please Review and Respond to the request.</p>

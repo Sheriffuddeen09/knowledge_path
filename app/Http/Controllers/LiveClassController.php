@@ -121,10 +121,13 @@ public function sendRequest(Request $request)
 
     if ($status === 'accepted') {
 
-        Chat::firstOrCreate([
-            'teacher_id' => $requestModel->teacher_id,
-            'student_id' => $requestModel->user_id,
-        ]);
+        Chat::firstOrCreate(
+            [
+                'teacher_id' => $requestModel->teacher_id,
+                'student_id' => $requestModel->user_id,
+                'type' => 'student_teacher',
+            ]
+        );
 
         Mail::to($requestModel->student->email)
             ->send(new LiveClassAccepted($requestModel));

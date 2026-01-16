@@ -3,42 +3,42 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\StudentFriendRequest;
+use App\Models\AdminFriendRequest;
 use Illuminate\Support\Facades\Mail;
-use App\Mail\StudentFriendRequested;
-use App\Mail\StudentFriendAccepted;
-use App\Mail\StudentFriendDeclined;
+use App\Mail\AdminFriendRequested;
+use App\Mail\AdminFriendAccepted;
+use App\Mail\AdminFriendDeclined;
 use App\Models\Chat;
 use App\Models\User;
 
 
 
 
-class StudentFriendController extends Controller
+class AdminFriendController extends Controller
 
 {
-public function studentsToAdd(Request $request)
+public function adminsToAdd(Request $request)
 {
     $user = $request->user();
 
-    if ($user->role !== 'student') {
-        return response()->json(['students' => []]);
+    if ($user->role !== 'admin') {
+        return response()->json(['admins' => []]);
     }
 
-    $students = User::where('role', 'student')
+    $admins = User::where('role', 'admin')
         ->where('id', '!=', $user->id)
 
         // ❌ EXCLUDE anyone with pending or accepted request (any direction)
         ->whereNotExists(function ($q) use ($user) {
             $q->selectRaw(1)
-              ->from('student_friend_requests')
+              ->from('admin_friend_requests')
               ->whereIn('status', ['pending', 'accepted'])
               ->where(function ($x) use ($user) {
-                  $x->whereColumn('student_friend_requests.user_id', $user->id)
-                    ->whereColumn('student_friend_requests.student_id', 'users.id')
+                  $x->whereColumn('admin_friend_requests.user_id', $user->id)
+                    ->whereColumn('admin_friend_requests.admin_id', 'users.id')
                   ->orWhere(function ($y) use ($user) {
-                      $y->whereColumn('student_friend_requests.user_id', 'users.id')
-                        ->whereColumn('student_friend_requests.student_id', $user->id);
+                      $y->whereColumn('admin_friend_requests.user_id', 'users.id')
+                        ->whereColumn('admin_friend_requests.admin_id', $user->id);
                   });
               });
         })
@@ -46,7 +46,7 @@ public function studentsToAdd(Request $request)
         ->get();
 
     return response()->json([
-        'students' => $students
+        'admins' => $admins
     ]);
 }
 
@@ -54,21 +54,21 @@ public function studentsToAdd(Request $request)
 public function sendRequest(Request $request)
 {
     $user = $request->user();
-    $studentId = $request->student_id;
+    $adminId = $request->admin_id;
 
-    if ($user->id == $studentId) {
+    if ($user->id == $adminId) {
         return response()->json([
             'message' => 'You cannot add yourself'
         ], 422);
     }
 
     // Find any existing request between both users
-    $existing = StudentFriendRequest::where(function ($q) use ($user, $studentId) {
+    $existing = AdminFriendRequest::where(function ($q) use ($user, $adminId) {
         $q->where('user_id', $user->id)
-          ->where('student_id', $studentId);
-    })->orWhere(function ($q) use ($user, $studentId) {
-        $q->where('user_id', $studentId)
-          ->where('student_id', $user->id);
+          ->where('admin_id', $adminId);
+    })->orWhere(function ($q) use ($user, $adminId) {
+        $q->where('user_id', $adminId)
+          ->where('admin_id', $user->id);
     })->first();
 
     /**
@@ -92,9 +92,9 @@ public function sendRequest(Request $request)
     /**
      * ✅ Create NEW request with CORRECT direction
      */
-    $requestModel = StudentFriendRequest::create([
+    $requestModel = AdminFriendRequest::create([
         'user_id' => $user->id,       // sender
-        'student_id' => $studentId,   // receiver
+        'admin_id' => $adminId,   // receiver
         'status' => 'pending',
         'hidden_for_requester' => false,
         'hidden_for_requested' => false,
@@ -102,9 +102,9 @@ public function sendRequest(Request $request)
 
 
     // ✅ SAFE MAIL (NULL CHECK)
-    if ($requestModel->student) {
-        Mail::to($requestModel->student->email)
-            ->send(new StudentFriendRequested($requestModel));
+    if ($requestModel->admin) {
+        Mail::to($requestModel->admin->email)
+            ->send(new AdminFriendRequested($requestModel));
     }
 
     return response()->json([
@@ -115,17 +115,17 @@ public function sendRequest(Request $request)
 
 
 
-    // Get requests for the logged-in student
+    // Get requests for the logged-in admin
     public function allRequests(Request $request)
 {
     $user = $request->user();
 
-    if ($user->role !== 'student') {
+    if ($user->role !== 'admin') {
         return response()->json(['requests' => []]);
     }
 
-    $requests = StudentFriendRequest::with('requester')
-        ->where('student_id', $user->id)
+    $requests = AdminFriendRequest::with('requester')
+        ->where('admin_id', $user->id)
         ->where('status', 'pending')
         ->where('hidden_for_requested', false)
         ->latest()
@@ -139,10 +139,10 @@ public function sendRequest(Request $request)
 
     public function respond(Request $request, $id)
 {
-    $student = $request->user();
+    $admin = $request->user();
 
-    $requestModel = StudentFriendRequest::where('id', $id)
-        ->where('student_id', $student->id)
+    $requestModel = AdminFriendRequest::where('id', $id)
+        ->where('admin_id', $admin->id)
         ->firstOrFail();
 
     if (!in_array($request->action, ['accepted', 'declined'])) {
@@ -157,13 +157,13 @@ public function sendRequest(Request $request)
 
     [$one, $two] = collect([
         $requestModel->user_id,
-        $requestModel->student_id
+        $requestModel->admin_id
     ])->sort()->values();
 
     Chat::firstOrCreate([
         'user_one_id' => $one,
         'user_two_id' => $two,
-        'type' => 'student_student',
+        'type' => 'admin_admin',
     ]);
     }
 
@@ -176,7 +176,7 @@ public function sendRequest(Request $request)
 
         if ($requestModel->requester) {
             Mail::to($requestModel->requester->email)
-                ->send(new StudentFriendAccepted($requestModel));
+                ->send(new AdminFriendAccepted($requestModel));
         }
     }
 
@@ -188,9 +188,11 @@ public function sendRequest(Request $request)
 
         if ($requestModel->requester) {
             Mail::to($requestModel->requester->email)
-                ->send(new StudentFriendDeclined($requestModel));
+                ->send(new AdminFriendDeclined($requestModel));
         }
     }
+
+    
 
     return response()->json([
         'message' => 'Request handled',
@@ -200,12 +202,12 @@ public function sendRequest(Request $request)
 
 
 
-    // Get requests sent by the student
+    // Get requests sent by the admin
     public function myRequests(Request $request)
 {
     $user = $request->user();
 
-    $requests = StudentFriendRequest::with('student')
+    $requests = AdminFriendRequest::with('admin')
         ->where('user_id', $user->id)
         ->where('status', 'pending')
         ->where('hidden_for_requester', false)
@@ -217,16 +219,16 @@ public function sendRequest(Request $request)
 
 
 
-public function relationshipStatus(Request $request, $studentId)
+public function relationshipStatus(Request $request, $adminId)
 {
     $user = $request->user();
 
-    $relation = StudentFriendRequest::where(function ($q) use ($user, $studentId) {
+    $relation = AdminFriendRequest::where(function ($q) use ($user, $adminId) {
         $q->where('user_id', $user->id)
-          ->where('student_id', $studentId);
-    })->orWhere(function ($q) use ($user, $studentId) {
-        $q->where('user_id', $studentId)
-          ->where('student_id', $user->id);
+          ->where('admin_id', $adminId);
+    })->orWhere(function ($q) use ($user, $adminId) {
+        $q->where('user_id', $adminId)
+          ->where('admin_id', $user->id);
     })->first();
 
     if (!$relation) {
@@ -242,7 +244,7 @@ public function relationshipStatus(Request $request, $studentId)
             : 'received',
         'chat_id' => $relation->status === 'accepted'
             ? optional(
-                Chat::whereJsonContains('participants', [$user->id, $studentId])->first()
+                Chat::whereJsonContains('participants', [$user->id, $adminId])->first()
               )->id
             : null
     ]);
@@ -251,13 +253,13 @@ public function relationshipStatus(Request $request, $studentId)
 
 public function removeTemporarily($id)
 {
-    $request = StudentFriendRequest::where(function ($q) {
+    $request = AdminFriendRequest::where(function ($q) {
         $q->where('user_id', auth()->id())
-          ->orWhere('student_id', auth()->id());
+          ->orWhere('admin_id', auth()->id());
     })
     ->where(function ($q) use ($id) {
         $q->where('user_id', $id)
-          ->orWhere('student_id', $id);
+          ->orWhere('admin_id', $id);
     })
     ->firstOrFail();
 
@@ -271,7 +273,7 @@ public function removeTemporarily($id)
 
 public function accept($id)
 {
-    $friend = StudentFriendRequest::where('id', $id)
+    $friend = AdminFriendRequest::where('id', $id)
         ->where('receiver_id', auth()->id())
         ->firstOrFail();
 
@@ -289,7 +291,7 @@ public function relation(Request $request, $profileId)
 {
     $userId = $request->user()->id;
 
-    $relation = StudentFriendRequest::where(function ($q) use ($userId, $profileId) {
+    $relation = AdminFriendRequest::where(function ($q) use ($userId, $profileId) {
         $q->where('sender_id', $userId)
           ->where('receiver_id', $profileId);
     })->orWhere(function ($q) use ($userId, $profileId) {
@@ -322,16 +324,16 @@ public function show($id, Request $request)
     $user = User::findOrFail($id);
 
     // 🔑 CHECK BOTH DIRECTIONS
-    $relation = StudentFriendRequest::where(function ($q) use ($authId, $id) {
+    $relation = AdminFriendRequest::where(function ($q) use ($authId, $id) {
         $q->where('user_id', $authId)
-          ->where('student_id', $id);
+          ->where('admin_id', $id);
     })->orWhere(function ($q) use ($authId, $id) {
         $q->where('user_id', $id)
-          ->where('student_id', $authId);
+          ->where('admin_id', $authId);
     })->first();
 
     return response()->json([
-        'student' => $user,
+        'admin' => $user,
         'status'  => $relation?->status ?? 'none',
     ]);
 }

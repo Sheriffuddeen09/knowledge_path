@@ -3,21 +3,21 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\StudentFriendRequest;
+use App\Models\AdminFriendRequest;
 use App\Models\Message;
 
-class StudentNotificationController extends Controller
+class AdminNotificationController extends Controller
 {
     public function requestCount(Request $request)
     {
         $user = $request->user();
 
-        if ($user->role === 'student') {
-            $count = StudentFriendRequest::where('student_id', $user->id)
+        if ($user->role === 'admin') {
+            $count = AdminFriendRequest::where('admin_id', $user->id)
                 ->where('status', 'pending')
                 ->count();
         } else {
-            $count = StudentFriendRequest::where('user_id', $user->id)
+            $count = AdminFriendRequest::where('user_id', $user->id)
                 ->where('status', 'pending')
                 ->count();
         }
