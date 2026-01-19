@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ExamResult;
 use Barryvdh\DomPDF\Facade\Pdf;
 
+
 class ExamResultController extends Controller
 {
     // 📌 GET RESULTS
@@ -71,18 +72,20 @@ class ExamResultController extends Controller
 
 public function show(ExamResult $result)
 {
-    // ❌ Block expired results
     if ($result->submitted_at < now()->subDays(30)) {
         abort(404, 'This result has expired');
     }
 
     $result->load([
-        'exam.questions',
-        'answers.question',
-        'student',
-        'exam.teacher'
+        'exam.questions:id,exam_id,question,option_a,option_b,option_c,option_d,correct_answer',
+        'answers:id,exam_result_id,question_id,selected_answer',
+        'student:id,first_name,last_name',
+        'exam.teacher:id,first_name,last_name'
     ]);
 
     return response()->json($result);
 }
+
+
+
 }

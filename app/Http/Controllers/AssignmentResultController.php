@@ -74,19 +74,22 @@ public function index()
 
 public function show(AssignmentResult $result)
 {
-    // ❌ Block expired results
+    // Expire after 30 days
     if ($result->submitted_at < now()->subDays(30)) {
         abort(404, 'This result has expired');
     }
 
     $result->load([
-        'assignment.questions',
-        'answers.question',
-        'student',
-        'assignment.teacher'
+        'assignment.questions:id,assignment_id,question,option_a,option_b,option_c,option_d,correct_answer',
+        'answers:id,assignment_result_id,question_id,selected_answer,student_id',
+        'student:id,first_name,last_name',
+        'assignment.teacher:id,first_name,last_name'
     ]);
 
     return response()->json($result);
 }
+
+
+
 
 }

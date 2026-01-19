@@ -34,17 +34,17 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\StudentNotificationController;
 use App\Http\Controllers\AdminNotificationController;
 use App\Http\Controllers\ChatReportController;
-
 use App\Http\Controllers\AssignmentController;
 use App\Http\Controllers\AssignmentResultController;
-
 use App\Http\Controllers\ExamController;
 use App\Http\Controllers\ExamResultController;
+use App\Http\Controllers\StudentBadgeController;
 
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/student-friend/relation/{profileId}', [StudentFriendController::class, 'relation']);
     Route::get('/student/profile/{id}', [StudentFriendController::class, 'show']);
+    Route::get('/student/profile/accepted/{id}', [StudentFriendController::class, 'showAccepted']);
     Route::get('/student-friend', [StudentFriendController::class, 'studentsToAdd']);
     Route::post('/student-friend/request', [StudentFriendController::class, 'sendRequest']);
     Route::get('/student-friend/my-requests', [StudentFriendController::class, 'myRequests']);
@@ -59,6 +59,7 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin-friend/relation/{profileId}', [AdminFriendController::class, 'relation']);
     Route::get('/admin/profile/{id}', [AdminFriendController::class, 'show']);
+    Route::get('/admin/profile/accepted/{id}', [AdminFriendController::class, 'showAccepted']);
     Route::get('/admin-friend', [AdminFriendController::class, 'adminsToAdd']);
     Route::post('/admin-friend/request', [AdminFriendController::class, 'sendRequest']);
     Route::get('/admin-friend/my-requests', [AdminFriendController::class, 'myRequests']);
@@ -70,6 +71,14 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // 
+
+
+Route::middleware('auth:sanctum')->get(
+    '/student/badges',
+    [StudentBadgeController::class, 'badges']
+);
+
+
 
 Route::middleware('auth:sanctum')->group(function () {
 

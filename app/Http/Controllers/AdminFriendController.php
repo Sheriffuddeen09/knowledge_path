@@ -338,4 +338,52 @@ public function show($id, Request $request)
     ]);
 }
 
+public function showAccepted($id, Request $request)
+{
+    $authId = $request->user()->id;
+    $isOwner = $authId == $id;
+
+    $acceptedRelations = AdminFriendRequest::where('status', 'accepted')
+        ->where(function ($q) use ($id) {
+            $q->where('user_id', $id)
+              ->orWhere('admin_id', $id);
+        })
+        ->with([
+            'user:id,first_name,last_name',
+            'admin:id,first_name,last_name'
+        ])
+        ->get();
+
+    $acceptedAdmins = $acceptedRelations->map(function ($relation) use ($id, $authId, $isOwner) {
+
+        $admin = $relation->user_id == $id
+            ? $relation->admin
+            : $relation->user;
+
+        // ✅ OWNER ALWAYS ACCEPTED
+        if ($isOwner) {
+            $admin->status = 'accepted';
+            return $admin;
+        }
+
+        // ✅ CORRECT visitor relation lookup
+        $visitorRelation = AdminFriendRequest::where(function ($q) use ($authId, $id) {
+        $q->where('user_id', $authId)
+          ->where('admin_id', $id);
+        })->orWhere(function ($q) use ($authId, $id) {
+            $q->where('user_id', $id)
+            ->where('admin_id', $authId);
+        })->first();
+
+        $admin->status = $visitorRelation?->status ?? 'none';
+
+        return $admin;
+    })->values();
+
+    return response()->json([
+        'acceptedAdmins' => $acceptedAdmins,
+        'isOwner' => $isOwner,
+    ]);
+}
+
 }

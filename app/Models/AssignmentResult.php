@@ -28,9 +28,10 @@ class AssignmentResult extends Model
     }
 
     // 📝 Answers (FILTERED BY STUDENT)
-    public function answers()
-    {
-        return $this->hasMany(AssignmentAnswer::class, 'assignment_id', 'assignment_id')
-            ->where('student_id', $this->student_id);
-    }
+   public function answers()
+        {
+            return $this->hasMany(AssignmentAnswer::class, 'assignment_result_id');
+        }
+
+
 }

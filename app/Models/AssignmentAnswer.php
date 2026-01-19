@@ -7,15 +7,17 @@ use Illuminate\Database\Eloquent\Model;
 class AssignmentAnswer extends Model
 {
     protected $fillable = [
-        'assignment_id',
-        'question_id',
-        'student_id',
-        'selected_answer',
-    ];
+    'assignment_result_id', // ✅ REQUIRED
+    'assignment_id',
+    'question_id',
+    'student_id',
+    'selected_answer',
+];
 
-    public function question()
+
+    public function result()
     {
-        return $this->belongsTo(AssignmentQuestion::class, 'question_id');
+        return $this->belongsTo(AssignmentResult::class, 'assignment_id');
     }
 }
 

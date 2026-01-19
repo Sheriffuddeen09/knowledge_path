@@ -336,4 +336,54 @@ public function show($id, Request $request)
     ]);
 }
 
+public function showAccepted($id, Request $request)
+{
+    $authId = $request->user()->id;
+    $isOwner = $authId == $id;
+
+    $acceptedRelations = StudentFriendRequest::where('status', 'accepted')
+        ->where(function ($q) use ($id) {
+            $q->where('user_id', $id)
+              ->orWhere('student_id', $id);
+        })
+        ->with([
+            'user:id,first_name,last_name',
+            'student:id,first_name,last_name'
+        ])
+        ->get();
+
+    $acceptedStudents = $acceptedRelations->map(function ($relation) use ($id, $authId, $isOwner) {
+
+        $student = $relation->user_id == $id
+            ? $relation->student
+            : $relation->user;
+
+        // ✅ OWNER ALWAYS ACCEPTED
+        if ($isOwner) {
+            $student->status = 'accepted';
+            return $student;
+        }
+
+        // ✅ CORRECT visitor relation lookup
+        $visitorRelation = StudentFriendRequest::where(function ($q) use ($authId, $id) {
+        $q->where('user_id', $authId)
+          ->where('student_id', $id);
+        })->orWhere(function ($q) use ($authId, $id) {
+            $q->where('user_id', $id)
+            ->where('student_id', $authId);
+        })->first();
+
+        $student->status = $visitorRelation?->status ?? 'none';
+
+        return $student;
+    })->values();
+
+    return response()->json([
+        'acceptedStudents' => $acceptedStudents,
+        'isOwner' => $isOwner,
+    ]);
+}
+
+
+
 }

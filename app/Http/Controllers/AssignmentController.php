@@ -15,13 +15,13 @@ use App\Models\Notification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
-
+use App\Models\StudentBadge;
 
 
 
 class AssignmentController extends Controller
 {
-    // GET /api/assignments
+    // GET /api/assignments submit
     public function index()
 {
     return Assignment::withCount('submissions')
@@ -46,37 +46,6 @@ class AssignmentController extends Controller
 
         return response()->json($assignment);
     }
-
-
- public function reset(Assignment $assignment)
-{
-    // Ownership check
-    if ($assignment->teacher_id !== auth()->id()) {
-        abort(403);
-    }
-
-    // ❌ If any student has attempted → block reset
-    $attempted = AssignmentSubmission::where('assignment_id', $assignment->id)
-        ->exists();
-
-    if ($attempted) {
-        return response()->json([
-            'message' => 'Cannot reset. Assignment has been attempted.'
-        ], 409);
-    }
-
-    // ✅ Reset = generate new token + extend due date
-    $assignment->update([
-        'access_token' => Str::uuid(),
-        'due_at' => now()->addDays(1),
-        'is_rescheduled' => false,
-    ]);
-
-    return response()->json([
-        'message' => 'Assignment reset successfully',
-        'assignment' => $assignment
-    ]);
-}
 
 
 
@@ -164,24 +133,34 @@ public function submit(Request $request, Assignment $assignment)
     $studentId = auth()->id();
 
     if (!$request->filled('answers') || count($request->answers) === 0) {
-        return response()->json([
-            'message' => 'Cannot submit empty assignment'
-        ], 422);
+        return response()->json(['message' => 'Cannot submit empty assignment'], 422);
     }
 
     // Prevent resubmission
     if (
         AssignmentResult::where('assignment_id', $assignment->id)
             ->where('student_id', $studentId)
-            ->whereNotNull('submitted_at')
             ->exists()
     ) {
         return response()->json(['message' => 'Already submitted'], 409);
     }
 
-    $submission = AssignmentSubmission::where('assignment_id', $assignment->id)
-        ->where('student_id', $studentId)
-        ->firstOrFail();
+    $totalQuestions = $assignment->questions()->count();
+    $isLate = now()->greaterThan($assignment->due_at);
+
+    if (count($request->answers) !== $totalQuestions) {
+        return response()->json(['message' => 'Please answer all questions'], 422);
+    }
+
+    // ✅ CREATE RESULT FIRST
+    $result = AssignmentResult::create([
+        'assignment_id' => $assignment->id,
+        'student_id' => $studentId,
+        'score' => 0, // temp
+        'total_questions' => $totalQuestions,
+        'is_late' => $isLate,
+        'submitted_at' => now(),
+    ]);
 
     $score = 0;
 
@@ -189,6 +168,7 @@ public function submit(Request $request, Assignment $assignment)
         $question = AssignmentQuestion::findOrFail($questionId);
 
         AssignmentAnswer::create([
+            'assignment_result_id' => $result->id, // ✅ NOW IT EXISTS
             'assignment_id' => $assignment->id,
             'question_id' => $questionId,
             'student_id' => $studentId,
@@ -200,39 +180,52 @@ public function submit(Request $request, Assignment $assignment)
         }
     }
 
-    $isLate = now()->greaterThan($assignment->due_at);
+    // ✅ UPDATE SCORE AFTER LOOP
+    $percentage = ($score / $totalQuestions) * 100;
+    $grade = $this->gradeResult($percentage);
 
-    // ✅ CREATE RESULT
-    AssignmentResult::create([
-        'assignment_id' => $assignment->id,
-        'student_id' => $studentId,
+    $result->update([
         'score' => $score,
-        'total_questions' => $assignment->questions()->count(),
-        'is_late' => $isLate,
-        'submitted_at' => now(),
     ]);
 
-    // ✅ MARK SUBMISSION AS SUBMITTED (THIS FIXES LIBRARY)
-    $submission->update([
-        'submitted_at' => now(),
-        'locked' => 1,
-    ]);
-
-    // Notify teacher
-    Notification::create([
-        'user_id' => $assignment->teacher_id,
-        'type' => 'assignment_submitted',
-        'data' => [
+    // ✅ SAVE BADGES
+    if ($grade['badges'] > 0) {
+        StudentBadge::create([
             'student_id' => $studentId,
-            'assignment_id' => $assignment->id,
-            'score' => $score,
-        ],
-    ]);
+            'badges' => $grade['badges'],
+            'source' => 'assignment',
+        ]);
+    }
 
     return response()->json([
         'score' => $score,
+        'percentage' => round($percentage, 1),
+        'badges' => $grade['badges'],
+        'result_id' => $result->id,
         'is_late' => $isLate,
     ]);
+}
+
+
+private function gradeResult(float $percentage): array
+{
+    if ($percentage >= 75) {
+        return ['label' => 'Excellent', 'badges' => 5];
+    }
+
+    if ($percentage >= 65) {
+        return ['label' => 'Very Good', 'badges' => 3];
+    }
+
+    if ($percentage >= 50) {
+        return ['label' => 'Good', 'badges' => 2];
+    }
+
+    if ($percentage >= 40) {
+        return ['label' => 'Pass', 'badges' => 1];
+    }
+
+    return ['label' => 'Fail', 'badges' => 0];
 }
 
 

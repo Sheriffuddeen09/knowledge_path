@@ -24,4 +24,12 @@ class StudentFriendRequest extends Model
     {
         return $this->belongsTo(User::class, 'student_id');
     }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+
+
 }

@@ -15,7 +15,7 @@ use App\Models\Notification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
-
+use App\Models\StudentBadge;
 
 
 
@@ -120,7 +120,7 @@ public function store(Request $request)
         DB::rollBack();
 
         return response()->json([
-            'error' => $e->getMessage(), // 🔥 TEMP DEBUG
+            'error' => $e->getMessage(), // 🔥 TEMP DEBUG submit
         ], 500);
     }
 }
@@ -131,24 +131,34 @@ public function submit(Request $request, Exam $exam)
     $studentId = auth()->id();
 
     if (!$request->filled('answers') || count($request->answers) === 0) {
-        return response()->json([
-            'message' => 'Cannot submit empty exam'
-        ], 422);
+        return response()->json(['message' => 'Cannot submit empty exam'], 422);
     }
 
     // Prevent resubmission
     if (
         ExamResult::where('exam_id', $exam->id)
             ->where('student_id', $studentId)
-            ->whereNotNull('submitted_at')
             ->exists()
     ) {
         return response()->json(['message' => 'Already submitted'], 409);
     }
 
-    $submission = ExamSubmission::where('exam_id', $exam->id)
-        ->where('student_id', $studentId)
-        ->firstOrFail();
+    $totalQuestions = $exam->questions()->count();
+    $isLate = now()->greaterThan($exam->due_at);
+
+    if (count($request->answers) !== $totalQuestions) {
+        return response()->json(['message' => 'Please answer all questions'], 422);
+    }
+
+    // ✅ CREATE RESULT FIRST
+    $result = ExamResult::create([
+        'exam_id' => $exam->id,
+        'student_id' => $studentId,
+        'score' => 0, // temp
+        'total_questions' => $totalQuestions,
+        'is_late' => $isLate,
+        'submitted_at' => now(),
+    ]);
 
     $score = 0;
 
@@ -156,6 +166,7 @@ public function submit(Request $request, Exam $exam)
         $question = ExamQuestion::findOrFail($questionId);
 
         ExamAnswer::create([
+            'exam_result_id' => $result->id, // ✅ NOW IT EXISTS
             'exam_id' => $exam->id,
             'question_id' => $questionId,
             'student_id' => $studentId,
@@ -167,39 +178,54 @@ public function submit(Request $request, Exam $exam)
         }
     }
 
-    $isLate = now()->greaterThan($exam->due_at);
+    // ✅ UPDATE SCORE AFTER LOOP
+    $percentage = ($score / $totalQuestions) * 100;
+    $grade = $this->gradeResult($percentage);
 
-    // ✅ CREATE RESULT
-    ExamResult::create([
-        'exam_id' => $exam->id,
-        'student_id' => $studentId,
+    $result->update([
         'score' => $score,
-        'total_questions' => $exam->questions()->count(),
-        'is_late' => $isLate,
-        'submitted_at' => now(),
     ]);
 
-    // ✅ MARK SUBMISSION AS SUBMITTED (THIS FIXES LIBRARY)
-    $submission->update([
-        'submitted_at' => now(),
-        'locked' => 1,
-    ]);
-
-    // Notify teacher
-    Notification::create([
-        'user_id' => $exam->teacher_id,
-        'type' => 'exam_submitted',
-        'data' => [
+    // ✅ SAVE BADGES
+    if ($grade['badges'] > 0) {
+        StudentBadge::create([
             'student_id' => $studentId,
-            'exam_id' => $exam->id,
-            'score' => $score,
-        ],
-    ]);
+            'badges' => $grade['badges'],
+            'source' => 'exam',
+        ]);
+    }
 
     return response()->json([
         'score' => $score,
+        'percentage' => round($percentage, 1),
+        'badges' => $grade['badges'],
+        'result_id' => $result->id,
         'is_late' => $isLate,
     ]);
+}
+
+
+//create
+
+private function gradeResult(float $percentage): array
+{
+    if ($percentage >= 75) {
+        return ['label' => 'Excellent', 'badges' => 5];
+    }
+
+    if ($percentage >= 65) {
+        return ['label' => 'Very Good', 'badges' => 3];
+    }
+
+    if ($percentage >= 50) {
+        return ['label' => 'Good', 'badges' => 2];
+    }
+
+    if ($percentage >= 40) {
+        return ['label' => 'Pass', 'badges' => 1];
+    }
+
+    return ['label' => 'Fail', 'badges' => 0];
 }
 
 
@@ -239,7 +265,7 @@ public function unreadCount()
         ->count();
 }
 
-
+//submit
 public function submitByToken(Request $request, string $token)
 {
     $exam = Exam::where('access_token', $token)
