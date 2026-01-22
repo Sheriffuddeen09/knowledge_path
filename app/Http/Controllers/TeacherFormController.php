@@ -258,4 +258,56 @@ public function update(Request $request)
     ]);
 }
 
+
+public function myTeacherProfile(Request $request)
+{
+    $user = $request->user(); // 👈 authenticated teacher only
+
+    if (!$user->teacher_profile_completed) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Teacher profile not completed'
+        ], 403);
+    }
+
+    $info = json_decode($user->teacher_info, true) ?? [];
+
+    // Fetch course title
+    $courseTitle = null;
+    if (!empty($info['coursetitle_id'])) {
+        $courseTitle = \App\Models\Coursetitle::find($info['coursetitle_id'])?->name ?? null;
+    }
+
+    $displayTitle = strtolower($courseTitle ?? '') === 'other'
+        ? 'Other'
+        : $courseTitle;
+
+    return response()->json([
+        'status' => true,
+        'teacher' => [
+            'id' => $user->id,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'location' => $user->location,
+            'gender' => $user->gender,
+
+            'logo' => isset($info['logo']) ? asset('storage/' . $info['logo']) : null,
+            'cv' => isset($info['cv']) ? asset('storage/' . $info['cv']) : null,
+
+            'coursetitle_id' => $info['coursetitle_id'] ?? null,
+            'coursetitle_name' => $displayTitle,
+            'specialization' => strtolower($courseTitle ?? '') === 'other'
+                ? ($info['specialization'] ?? [])
+                : [],
+
+            'course_payment' => $info['course_payment'] ?? null,
+            'currency' => $info['currency'] ?? null,
+            'experience' => $info['experience'] ?? [],
+            'qualification' => $info['qualification'] ?? [],
+            'compliment' => $info['compliment'] ?? [],
+        ]
+    ]);
+}
+
+
 }

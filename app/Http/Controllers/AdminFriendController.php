@@ -386,4 +386,47 @@ public function showAccepted($id, Request $request)
     ]);
 }
 
+public function showAcceptedIndex(Request $request) 
+{
+    $authId = $request->user()->id;
+
+    // Since this is dashboard-only, user is ALWAYS owner
+    $isOwner = true;
+
+    $acceptedRelations = AdminFriendRequest::where('status', 'accepted')
+        ->where(function ($q) use ($authId) {
+            $q->where('user_id', $authId)
+              ->orWhere('admin_id', $authId);
+        })
+        ->with([
+            'user:id,first_name,last_name',
+            'admin:id,first_name,last_name'
+        ])
+        ->get();
+
+    $acceptedAdmins = $acceptedRelations
+        ->map(function ($relation) use ($authId) {
+
+            // Get the OTHER person in the relationship
+            $admin = $relation->user_id == $authId
+                ? $relation->admin
+                : $relation->user;
+
+            $admin->status = 'accepted';
+
+            return $admin;
+        })
+        ->values()
+        ->map(function ($admin, $index) {
+            $admin->index = $index + 1; // ✅ Dashboard index
+            return $admin;
+        });
+
+    return response()->json([
+        'acceptedAdmins' => $acceptedAdmins,
+        'isOwner' => true,
+    ]);
+}
+
+
 }

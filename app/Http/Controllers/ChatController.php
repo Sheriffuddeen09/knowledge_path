@@ -38,6 +38,7 @@ public function messages(Chat $chat)
         ->where('is_read', false)
         ->where('sender_id', '!=', $userId)
         ->update(['is_read' => true]);
+        
 
     return $chat->messages()
         ->with([

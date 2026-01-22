@@ -385,5 +385,46 @@ public function showAccepted($id, Request $request)
 }
 
 
+public function acceptedIndex(Request $request) 
+{
+    $authId = $request->user()->id;
+
+    // Since this is dashboard-only, user is ALWAYS owner
+    $isOwner = true;
+
+    $acceptedRelations = StudentFriendRequest::where('status', 'accepted')
+        ->where(function ($q) use ($authId) {
+            $q->where('user_id', $authId)
+              ->orWhere('student_id', $authId);
+        })
+        ->with([
+            'user:id,first_name,last_name',
+            'student:id,first_name,last_name'
+        ])
+        ->get();
+
+    $acceptedStudents = $acceptedRelations
+        ->map(function ($relation) use ($authId) {
+
+            // Get the OTHER person in the relationship
+            $student = $relation->user_id == $authId
+                ? $relation->student
+                : $relation->user;
+
+            $student->status = 'accepted';
+
+            return $student;
+        })
+        ->values()
+        ->map(function ($student, $index) {
+            $student->index = $index + 1; // ✅ Dashboard index
+            return $student;
+        });
+
+    return response()->json([
+        'acceptedStudents' => $acceptedStudents,
+        'isOwner' => true,
+    ]);
+}
 
 }

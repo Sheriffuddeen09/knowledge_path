@@ -39,12 +39,15 @@ use App\Http\Controllers\AssignmentResultController;
 use App\Http\Controllers\ExamController;
 use App\Http\Controllers\ExamResultController;
 use App\Http\Controllers\StudentBadgeController;
+use App\Http\Controllers\AnalyticsController;
+use App\Http\Controllers\BlockController;
 
-
+///
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/student-friend/relation/{profileId}', [StudentFriendController::class, 'relation']);
     Route::get('/student/profile/{id}', [StudentFriendController::class, 'show']);
     Route::get('/student/profile/accepted/{id}', [StudentFriendController::class, 'showAccepted']);
+    Route::get('/student/me', [StudentFriendController::class, 'acceptedIndex']);
     Route::get('/student-friend', [StudentFriendController::class, 'studentsToAdd']);
     Route::post('/student-friend/request', [StudentFriendController::class, 'sendRequest']);
     Route::get('/student-friend/my-requests', [StudentFriendController::class, 'myRequests']);
@@ -55,11 +58,18 @@ Route::middleware('auth:sanctum')->group(function () {
   
 });
 
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/analytics/students', [AnalyticsController::class, 'studentAnalytics']); 
+    Route::get('/analytics/accuracy', [AnalyticsController::class, 'accuracy']); 
+    Route::get('/analytics/performance', [AnalyticsController::class, 'performanceSplit']);
+});
+
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin-friend/relation/{profileId}', [AdminFriendController::class, 'relation']);
     Route::get('/admin/profile/{id}', [AdminFriendController::class, 'show']);
     Route::get('/admin/profile/accepted/{id}', [AdminFriendController::class, 'showAccepted']);
+    Route::get('/admin/me', [AdminFriendController::class, 'showAcceptedIndex']);
     Route::get('/admin-friend', [AdminFriendController::class, 'adminsToAdd']);
     Route::post('/admin-friend/request', [AdminFriendController::class, 'sendRequest']);
     Route::get('/admin-friend/my-requests', [AdminFriendController::class, 'myRequests']);
@@ -391,6 +401,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // dashboard/notifications live-class/request
     Route::get('/teacher', [TeacherFormController::class, 'allTeachers'])
         ->middleware('auth:sanctum');
+    Route::get('/teacher-single', [TeacherFormController::class, 'myTeacherProfile'])
+    ->middleware('auth:sanctum');
 
     Route::get('/admin/dashboard', function () {
         return response()->json(['message' => 'Admin dashboard']);
