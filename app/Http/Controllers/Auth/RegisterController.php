@@ -98,9 +98,8 @@ class RegisterController extends Controller
         'dob' => 'required|date',
         'phone' => 'required|string|unique:users,phone',
         'email' => 'required|email|unique:users,email',
-        'phone' => 'required|string|unique:users,phone',
+        'phone_country_code' => 'required|string',
         'location' => 'required|string',
-        'location_country_code' => 'required|string',
         'gender' => 'required|in:male,female,other',
         'role' => 'required|in:student,admin',
         'password' => 'required|string|min:8|confirmed'
@@ -126,7 +125,6 @@ class RegisterController extends Controller
         'phone' => $request->phone,
         'phone_country_code' => $request->phone_country_code,
         'location' => $request->location,
-        'location_country_code' => $request->location_country_code,
         'email' => $request->email,
         'gender' => $request->gender,
         'role' => $request->role,

@@ -62,6 +62,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/analytics/students', [AnalyticsController::class, 'studentAnalytics']); 
     Route::get('/analytics/accuracy', [AnalyticsController::class, 'accuracy']); 
     Route::get('/analytics/performance', [AnalyticsController::class, 'performanceSplit']);
+    Route::get('/analytics/accuracyId', [AnalyticsController::class, 'accuracyId']); 
+    Route::get('/analytics/performanceId', [AnalyticsController::class, 'performanceSplitId']);
 });
 
 
@@ -326,6 +328,7 @@ Route::post('/send-otp', [OtpController::class, 'sendOtp']);
 Route::post('/verify-otp', [OtpController::class, 'verifyOtp']);
 
 Route::post('/register', [RegisterController::class, 'register']);
+Route::post('/notification-badge', [RegisterController::class, 'myNotifications']);
 Route::post('/login', [LoginController::class, 'login']);
 Route::middleware('auth:sanctum')->post('/logout', [LoginController::class, 'logout']);
 Route::post('/check', [RegisterController::class, 'checkBeforeNext']);
@@ -401,8 +404,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // dashboard/notifications live-class/request
     Route::get('/teacher', [TeacherFormController::class, 'allTeachers'])
         ->middleware('auth:sanctum');
-    Route::get('/teacher-single', [TeacherFormController::class, 'myTeacherProfile'])
+    Route::get('/teacher-single/{id}', [TeacherFormController::class, 'myTeacherProfile'])
     ->middleware('auth:sanctum');
+    
 
     Route::get('/admin/dashboard', function () {
         return response()->json(['message' => 'Admin dashboard']);

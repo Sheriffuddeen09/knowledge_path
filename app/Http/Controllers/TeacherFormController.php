@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use App\Models\Coursetitle;
 use App\Models\TeacherForm;
+use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use App\Rules\MaxWords;
  use Illuminate\Validation\Rule;
@@ -259,23 +260,17 @@ public function update(Request $request)
 }
 
 
-public function myTeacherProfile(Request $request)
+public function myTeacherProfile($id)
 {
-    $user = $request->user(); // 👈 authenticated teacher only
-
-    if (!$user->teacher_profile_completed) {
-        return response()->json([
-            'status' => false,
-            'message' => 'Teacher profile not completed'
-        ], 403);
-    }
+    $user = User::where('id', $id)
+        ->where('admin_choice', 'arabic_teacher')
+        ->firstOrFail();
 
     $info = json_decode($user->teacher_info, true) ?? [];
 
-    // Fetch course title
     $courseTitle = null;
     if (!empty($info['coursetitle_id'])) {
-        $courseTitle = \App\Models\Coursetitle::find($info['coursetitle_id'])?->name ?? null;
+        $courseTitle = \App\Models\Coursetitle::find($info['coursetitle_id'])?->name;
     }
 
     $displayTitle = strtolower($courseTitle ?? '') === 'other'
@@ -291,15 +286,15 @@ public function myTeacherProfile(Request $request)
             'location' => $user->location,
             'gender' => $user->gender,
 
-            'logo' => isset($info['logo']) ? asset('storage/' . $info['logo']) : null,
-            'cv' => isset($info['cv']) ? asset('storage/' . $info['cv']) : null,
+            // ❌ private info excluded
+            // 'email' => ❌
+            // 'phone' => ❌
 
-            'coursetitle_id' => $info['coursetitle_id'] ?? null,
+            'logo' => isset($info['logo']) ? asset('storage/'.$info['logo']) : null,
+            'cv' => isset($info['cv']) ? asset('storage/'.$info['cv']) : null,
+
             'coursetitle_name' => $displayTitle,
-            'specialization' => strtolower($courseTitle ?? '') === 'other'
-                ? ($info['specialization'] ?? [])
-                : [],
-
+            'specialization' => $info['specialization'] ?? [],
             'course_payment' => $info['course_payment'] ?? null,
             'currency' => $info['currency'] ?? null,
             'experience' => $info['experience'] ?? [],
@@ -308,6 +303,7 @@ public function myTeacherProfile(Request $request)
         ]
     ]);
 }
+
 
 
 }
