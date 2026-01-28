@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Hash;
 use App\Models\User;
+use App\Models\StudentBadge;
 use App\Models\OtpVerification;
 use Carbon\Carbon;
 use App\Mail\OtpMail;
@@ -133,6 +134,16 @@ class RegisterController extends Controller
     ]);
 
     $otpRecord->delete();
+
+    // Give starter badges ONLY to students
+        if ($user->role === 'student') {
+            StudentBadge::create([
+                'student_id' => $user->id,
+                'badges' => 30,
+                'source' => 'registration',
+            ]);
+        }
+
 
     // Automatically log the user in
     Auth::login($user);

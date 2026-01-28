@@ -54,7 +54,6 @@ class User extends Authenticatable
         'phone',
         'phone_country_code',
         'location',
-        'location_country_code',
         'email',
         'gender',
         'role',

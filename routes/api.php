@@ -41,8 +41,18 @@ use App\Http\Controllers\ExamResultController;
 use App\Http\Controllers\StudentBadgeController;
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\BlockController;
+use App\Http\Controllers\PostController;
 
 ///
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/posts', [PostController::class, 'store']);
+    Route::get('/posts-get', [PostController::class, 'index']);
+    Route::post('/posts-get/{id}', [PostController::class, 'show']);
+    Route::post('/comment', [PostController::class, 'comment']);
+    Route::post('/toggle', [PostController::class, 'toggle']);
+});
+
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/student-friend/relation/{profileId}', [StudentFriendController::class, 'relation']);
     Route::get('/student/profile/{id}', [StudentFriendController::class, 'show']);
