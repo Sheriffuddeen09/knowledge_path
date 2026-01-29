@@ -42,14 +42,18 @@ use App\Http\Controllers\StudentBadgeController;
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\BlockController;
 use App\Http\Controllers\PostController;
+use App\Http\Controllers\PostReactionController;
 
-///
+///reactions
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/posts', [PostController::class, 'store']);
     Route::get('/posts-get', [PostController::class, 'index']);
     Route::post('/posts-get/{id}', [PostController::class, 'show']);
     Route::post('/comment', [PostController::class, 'comment']);
     Route::post('/toggle', [PostController::class, 'toggle']);
+    Route::post('/post/{id}/reaction', [PostReactionController::class, 'store']);
+    Route::delete('/post/{id}/reaction', [PostReactionController::class, 'destroy']);
+    Route::get('/post/{id}/reactions', [PostReactionController::class, 'index']);
 });
 
 

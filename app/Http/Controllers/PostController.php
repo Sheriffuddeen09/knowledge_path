@@ -7,6 +7,9 @@ use App\Models\Post;
 use App\Models\PostView;
 use App\Models\PostReaction;
 use App\Models\PostComment;
+use Illuminate\Support\Str;
+use App\Models\PostMedia;
+
 
 
 
@@ -15,16 +18,28 @@ class PostController extends Controller
     
 public function store(Request $request)
 {
-    $request->validate([
-        'content' => 'nullable|string',
 
-        // multiple images
-        'images' => 'nullable|array',
-        'images.*' => 'image|mimes:jpg,jpeg,png,webp|max:5120',
+        $request->validate([
+            'content' => 'nullable|string',
+            'images' => 'nullable|array',
+            'images.*' => 'image|mimes:jpg,jpeg,png,webp|max:5120',
+            'video' => 'nullable|file|mimes:mp4,mov|max:51200',
+        ]);
 
-        // single video
-        'video' => 'nullable|file|mimes:mp4,mov|max:51200', // 50MB
-    ]);
+        // ✅ WORD COUNT SAFETY CHECK
+        if ($request->filled('content')) {
+            $text = preg_replace('/([a-z])([A-Z])/', '$1 $2', $request->content);
+            $text = preg_replace('/\s+/', ' ', trim($text));
+
+            $wordCount = str_word_count($text);
+
+            if ($wordCount > 50) {
+                return response()->json([
+                    'message' => "Text is too long. Maximum allowed is 50 words."
+                ], 422);
+            }
+        }
+
 
     // empty post check
     if (
@@ -82,7 +97,8 @@ public function store(Request $request)
         $posts = Post::with([
                 'user:id,first_name,last_name,image',
                 'reactions',
-                'comments'
+                'comments',
+                'media'
             ])
             ->latest()
             ->get()
@@ -90,21 +106,22 @@ public function store(Request $request)
                 return [
                     'id' => $post->id,
                     'content' => $post->content,
-                    'image' => $post->image ? asset('storage/' . $post->image) : null,
-                    'video' => $post->video ? asset('storage/' . $post->video) : null,
-                    'views' => $post->views,
+
+                    'media' => $post->media->map(fn ($m) => [
+                        'id' => $m->id,
+                        'type' => $m->type, // image | video
+                        'url' => asset('storage/' . $m->path),
+                    ]),
+
                     'created_at' => $post->created_at->diffForHumans(),
 
                     'user' => [
                         'id' => $post->user->id,
-                        'name' => $post->user->first_name . ' ' . $post->user->last_name,
-                        'avatar' => $post->user->image
-                            ? asset('storage/' . $post->user->image)
-                            : null
+                        'name' => $post->user->first_name.' '.$post->user->last_name,
                     ],
 
                     'reactions_count' => $post->reactions->count(),
-                    'comments_count' => $post->comments->count()
+                    'comments_count' => $post->comments->count(),
                 ];
             });
 
