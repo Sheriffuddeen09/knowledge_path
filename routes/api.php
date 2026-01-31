@@ -43,18 +43,32 @@ use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\BlockController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PostReactionController;
+use App\Http\Controllers\PostCommentController;
 
 ///reactions
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/posts', [PostController::class, 'store']);
     Route::get('/posts-get', [PostController::class, 'index']);
-    Route::post('/posts-get/{id}', [PostController::class, 'show']);
-    Route::post('/comment', [PostController::class, 'comment']);
-    Route::post('/toggle', [PostController::class, 'toggle']);
+    Route::post('/posts-get/{post}', [PostController::class, 'show']);
+
+    // Post Reactions
     Route::post('/post/{id}/reaction', [PostReactionController::class, 'store']);
     Route::delete('/post/{id}/reaction', [PostReactionController::class, 'destroy']);
     Route::get('/post/{id}/reactions', [PostReactionController::class, 'index']);
+
+    // Comment 
+    Route::get('/posts/{post}/comments', [PostCommentController::class, 'index']);
+    Route::post('/posts/{post}/comments', [PostCommentController::class, 'store']);
+    Route::post('/comments/{comment}/react', [PostCommentController::class, 'react']);
+    Route::put('/comments/{comment}', [PostCommentController::class, 'update']);
+    Route::delete('/comments/{comment}', [PostCommentController::class, 'destroy']);
+
+
+    Route::middleware('auth:sanctum')->get('/admin/reports', [VideoController::class, 'reportedVideos']);
+    Route::post('/videos/{video}/share', [ShareController::class,'share']);
 });
+    
+
 
 
 Route::middleware('auth:sanctum')->group(function () {

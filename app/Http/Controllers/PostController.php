@@ -26,20 +26,6 @@ public function store(Request $request)
             'video' => 'nullable|file|mimes:mp4,mov|max:51200',
         ]);
 
-        // ✅ WORD COUNT SAFETY CHECK
-        if ($request->filled('content')) {
-            $text = preg_replace('/([a-z])([A-Z])/', '$1 $2', $request->content);
-            $text = preg_replace('/\s+/', ' ', trim($text));
-
-            $wordCount = str_word_count($text);
-
-            if ($wordCount > 50) {
-                return response()->json([
-                    'message' => "Text is too long. Maximum allowed is 50 words."
-                ], 422);
-            }
-        }
-
 
     // empty post check
     if (
@@ -133,44 +119,39 @@ public function store(Request $request)
 
 public function show(Post $post)
 {
-    PostView::firstOrCreate([
-        'post_id' => $post->id,
-        'user_id' => auth()->id()
+    $post->load([
+        'user:id,first_name,last_name,image',
+        'media',
+        'reactions',
+        'comments.user',
+        'comments.replies.user',
     ]);
 
-    $post->increment('views');
+    return response()->json([
+        'post' => [
+            'id' => $post->id,
+            'content' => $post->content,
+            'created_at' => $post->created_at->diffForHumans(),
+
+            'user' => [
+                'id' => $post->user->id,
+                'name' => $post->user->first_name.' '.$post->user->last_name,
+                'image' => $post->user->image,
+            ],
+
+            'media' => $post->media->map(fn ($m) => [
+                'id' => $m->id,
+                'type' => $m->type,
+                'url' => asset('storage/'.$m->path),
+            ]),
+
+            'reactions_count' => $post->reactions->count(),
+            'comments_count' => $post->comments->count(),
+        ]
+    ]);
 }
 
 
-public function comment(Request $request)
-{
-    $request->validate([
-        'post_id' => 'required|exists:posts,id',
-        'content' => 'required|string',
-        'parent_id' => 'nullable|exists:comments,id'
-    ]);
 
-    return PostComment::create([
-        'post_id' => $request->post_id,
-        'user_id' => auth()->id(),
-        'content' => $request->content,
-        'parent_id' => $request->parent_id
-    ]);
-}
-
-
-public function toggle(Request $request)
-{
-    $reaction = PostReaction::updateOrCreate(
-        [
-            'user_id' => auth()->id(),
-            'reactable_id' => $request->id,
-            'reactable_type' => $request->type,
-        ],
-        ['type' => $request->reaction]
-    );
-
-    return $reaction;
-}
 
 }

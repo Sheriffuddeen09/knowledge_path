@@ -44,24 +44,25 @@ class PostReactionController extends Controller
 
     // POST upsert reaction (create or update)
     public function store(Request $request, $post_id)
-    {
-        $request->validate(['emoji'=>'required|string|max:10']);
-        $user = Auth::user();
-        if (!$user) return response()->json(['error'=>'Unauthenticated'],401);
+{
+    $request->validate(['emoji'=>'required|string|max:10']);
 
-        PostReaction::updateOrCreate(
-                [
-                    'post_id' => $post_id,
-                    'user_id' => $user->id,
-                ],
-                [
-                    'emoji' => $request->emoji,
-                    'type'  => 'post', // ✅ REQUIRED
-                ]
-            );
+    $user = Auth::user();
+    if (!$user) return response()->json(['error'=>'Unauthenticated'],401);
 
-        return $this->broadcastAndReturn($post_id);
-    }
+    PostReaction::updateOrCreate(
+        [
+            'post_id' => $post_id,
+            'user_id' => $user->id,
+        ],
+        [
+            'emoji' => $request->emoji,
+            'type'  => 'post',
+        ]
+    );
+
+    return $this->broadcastAndReturn($post_id);
+}
 
     // DELETE reaction (unlike)
     public function destroy($post_id)
