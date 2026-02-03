@@ -44,14 +44,16 @@ use App\Http\Controllers\BlockController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PostReactionController;
 use App\Http\Controllers\PostCommentController;
+use App\Http\Controllers\PostReportController;
+use App\Http\Controllers\CommentReportController;
 
-///reactions
+///report
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/posts', [PostController::class, 'store']);
     Route::get('/posts-get', [PostController::class, 'index']);
     Route::post('/posts-get/{post}', [PostController::class, 'show']);
 
-    // Post Reactions
+    // Post Reactions reply
     Route::post('/post/{id}/reaction', [PostReactionController::class, 'store']);
     Route::delete('/post/{id}/reaction', [PostReactionController::class, 'destroy']);
     Route::get('/post/{id}/reactions', [PostReactionController::class, 'index']);
@@ -59,13 +61,20 @@ Route::middleware('auth:sanctum')->group(function () {
     // Comment 
     Route::get('/posts/{post}/comments', [PostCommentController::class, 'index']);
     Route::post('/posts/{post}/comments', [PostCommentController::class, 'store']);
-    Route::post('/comments/{comment}/react', [PostCommentController::class, 'react']);
-    Route::put('/comments/{comment}', [PostCommentController::class, 'update']);
-    Route::delete('/comments/{comment}', [PostCommentController::class, 'destroy']);
-
-
+    Route::post('/posts/{comment}/reaction', [PostCommentController::class, 'react']);
+    Route::get('/posts/{comment}/reactions', [PostCommentController::class, 'reactions']);
+    Route::put('/posts/{comment}/comment', [PostCommentController::class, 'update']);
+    Route::delete('/posts/{comment}/comment', [PostCommentController::class, 'destroy']);
+    
     Route::middleware('auth:sanctum')->get('/admin/reports', [VideoController::class, 'reportedVideos']);
     Route::post('/videos/{video}/share', [ShareController::class,'share']);
+
+    //Report
+    Route::post('/posts/report', [PostReportController::class, 'store']);
+    Route::get('/posts/reports', [PostReportController::class, 'index']);
+
+    Route::post('/comment/report', [CommentReportController::class, 'store']);
+    Route::get('/comment/reports', [CommentReportController::class, 'index']);
 });
     
 
@@ -413,28 +422,21 @@ Route::middleware('auth:sanctum')->group(function () {
         EnsureTeacherChoice::class
     ])->group(function () {
 
-        Route::get('/admin/teacher-form', [TeacherFormController::class, 'index']);
         Route::put('/teacher-form', [TeacherFormController::class, 'update']);
-        Route::get('/teacher-form', [TeacherFormController::class, 'show']);
 
        Route::middleware('auth:sanctum')->post(
                 '/admin/teacher/save',
                 [TeacherFormController::class, 'store']
             );
 
-        Route::get('/teacher-form', [TeacherFormController::class, 'getTeacherForm'])
-        ->middleware('auth:sanctum');
-
-        
-
     });
 
-    // dashboard/notifications live-class/request
     Route::get('/teacher', [TeacherFormController::class, 'allTeachers'])
+        ->middleware('auth:sanctum');
+        Route::get('/teacher-single', [TeacherFormController::class, 'singleTeachers'])
         ->middleware('auth:sanctum');
     Route::get('/teacher-single/{id}', [TeacherFormController::class, 'myTeacherProfile'])
     ->middleware('auth:sanctum');
-    
 
     Route::get('/admin/dashboard', function () {
         return response()->json(['message' => 'Admin dashboard']);

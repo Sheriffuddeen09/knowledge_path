@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+
 class PostReaction extends Model
 {
     protected $fillable = [
@@ -21,13 +22,5 @@ class PostReaction extends Model
     public function post()
     {
         return $this->belongsTo(Post::class);
-    }
-    public function media()
-    {
-        return $this->belongsTo(PostMedia::class);
-    }
-    public function reactionable()
-    {
-        return $this->morphTo();
     }
 }

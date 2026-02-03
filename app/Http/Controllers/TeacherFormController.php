@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use App\Rules\MaxWords;
  use Illuminate\Validation\Rule;
+ use Illuminate\Support\Facades\Auth;
 
 class TeacherFormController extends Controller
 {
@@ -120,47 +121,6 @@ public function allTeachers()
         'teachers' => $teachers
     ]);
 }
-
-
-    // TeacherFormController.php
-    public function getTeacherForm()
-{
-    $user = auth()->user();
-
-    $teacherForm = $user ? json_decode($user->teacher_info, true) : null;
-
-    if ($teacherForm) {
-        // Convert logo and cv to full URLs
-        $teacherForm['logo'] = isset($teacherForm['logo']) ? asset('storage/' . $teacherForm['logo']) : null;
-        $teacherForm['cv'] = isset($teacherForm['cv']) ? asset('storage/' . $teacherForm['cv']) : null;
-    }
-
-    return response()->json([
-        'status' => true,
-        'teacherForm' => $teacherForm
-    ]);
-}
-
-
-public function show(Request $request)
-{
-    $form = TeacherForm::where('user_id', $request->user()->id)->first();
-
-    return response()->json([
-        'status' => true,
-        'data' => $form ? [
-            'coursetitle_id' => $form->coursetitle_id,
-            'qualification' => json_decode($form->qualification, true),
-            'experience' => json_decode($form->experience, true),
-            'specialization' => json_decode($form->specialization, true),
-            'compliment' => json_decode($form->compliment, true),
-            'course_payment' => $form->course_payment,
-            'currency' => $form->currency,
-        ] : null
-    ]);
-}
-
-
 
 
 public function update(Request $request)
@@ -304,6 +264,56 @@ public function myTeacherProfile($id)
     ]);
 }
 
+
+
+public function singleTeachers()
+{
+    $user = Auth::user();
+
+    if (!$user || $user->admin_choice !== 'arabic_teacher') {
+        return response()->json([
+            'status' => false,
+            'message' => 'Unauthorized'
+        ], 403);
+    }
+
+    $info = json_decode($user->teacher_info, true) ?? [];
+
+    $courseTitle = null;
+    if (!empty($info['coursetitle_id'])) {
+        $courseTitle = \App\Models\Coursetitle::find($info['coursetitle_id'])?->name;
+    }
+
+    $displayTitle = strtolower($courseTitle ?? '') === 'other'
+        ? 'Other'
+        : $courseTitle;
+
+    return response()->json([
+        'status' => true,
+        'teacher' => [
+            'id' => $user->id,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'location' => $user->location,
+            'gender' => $user->gender,
+
+            // private info excluded
+            // 'email' => ❌
+            // 'phone' => ❌
+
+            'logo' => isset($info['logo']) ? asset('storage/'.$info['logo']) : null,
+            'cv' => isset($info['cv']) ? asset('storage/'.$info['cv']) : null,
+
+            'coursetitle_name' => $displayTitle,
+            'specialization' => $info['specialization'] ?? [],
+            'course_payment' => $info['course_payment'] ?? null,
+            'currency' => $info['currency'] ?? null,
+            'experience' => $info['experience'] ?? [],
+            'qualification' => $info['qualification'] ?? [],
+            'compliment' => $info['compliment'] ?? [],
+        ]
+    ]);
+}
 
 
 }

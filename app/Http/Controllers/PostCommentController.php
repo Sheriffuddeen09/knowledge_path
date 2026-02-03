@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Post;
 use App\Models\PostComment;
+use App\Models\PostCommentReaction;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class PostCommentController extends Controller
 {
@@ -49,16 +52,6 @@ class PostCommentController extends Controller
     $body = $request->body ?? '';
 
     // 🔥 Mention user if replying
-    if ($request->parent_id) {
-        $parent = PostComment::with('user')->find($request->parent_id);
-
-        if ($parent) {
-            $body = '@' .
-                $parent->user->first_name . ' ' .
-                $parent->user->last_name . ' ' .
-                $body;
-        }
-    }
 
     $comment = PostComment::create([
         'post_id'  => $post->id,
@@ -86,31 +79,77 @@ class PostCommentController extends Controller
 
 
 
-    public function react(Request $request, PostComment $comment)
+ public function react(Request $request, $commentId)
 {
-    $request->validate([
-        'emoji' => 'required|string'
-    ]);
+    $request->validate(['emoji' => 'required|string|max:10']);
 
-    $reaction = $comment->reactions()
-        ->updateOrCreate(
-            [
-                'user_id' => auth()->id(),
-            ],
-            [
-                'emoji' => $request->emoji,
-            ]
-        );
+    $comment = PostComment::findOrFail($commentId);
+
+    PostCommentReaction::updateOrCreate(
+        [
+            'comment_id' => $comment->id,
+            'user_id' => auth()->id(),
+        ],
+        [
+            'emoji' => $request->emoji,
+        ]
+    );
+
+    // reload reactions
+    $comment->load('reactions.user');
+
+    $grouped = $comment->reactions
+        ->groupBy('emoji')
+        ->map(function ($items) {
+            return $items->map(fn($r) => [
+                'id' => $r->user->id,
+                'name' => $r->user->name,
+            ]);
+        });
+
+    $myReaction = $comment->reactions()
+        ->where('user_id', auth()->id())
+        ->value('emoji');
 
     return response()->json([
-        'reaction' => $reaction
+        'status' => true,
+        'reactions' => $grouped,
+        'my_reaction' => $myReaction,
     ]);
 }
 
 
-    public function update(Request $request, PostComment $comment)
+
+public function reactions($commentId)
 {
-    $this->authorize('update', $comment);
+    $comment = PostComment::with('reactions.user')->findOrFail($commentId);
+
+    $grouped = $comment->reactions
+        ->groupBy('emoji')
+        ->map(function ($items) {
+            return $items->map(fn($r) => [
+                'id' => $r->user->id,
+                'name' => $r->user->first_name.' '.$r->user->last_name,
+            ]);
+        });
+
+    $myReaction = null;
+    if (auth()->check()) {
+        $myReaction = $comment->reactions()
+            ->where('user_id', auth()->id())
+            ->value('emoji');
+    }
+
+    return response()->json([
+        'reactions' => $grouped,
+        'my_reaction' => $myReaction,
+    ]);
+}
+
+
+
+    public function update(Request $request, PostComment $comment)
+    {
 
     $data = $request->validate([
         'body' => 'required|string|min:1'
@@ -135,7 +174,6 @@ class PostCommentController extends Controller
 
     public function destroy(PostComment $comment)
 {
-    $this->authorize('delete', $comment);
 
     $comment->delete();
 
