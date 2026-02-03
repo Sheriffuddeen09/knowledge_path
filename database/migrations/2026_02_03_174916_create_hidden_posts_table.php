@@ -11,18 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('posts', function (Blueprint $table) {
+        Schema::create('hidden_posts', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-
-            $table->text('content')->nullable(); // text
-            $table->string('image')->nullable();
-            $table->string('video')->nullable();
-
-            $table->unsignedInteger('views')->default(0);
-            $table->unsignedInteger('shares')->default(0);
-
+            $table->foreignId('post_id')->constrained()->cascadeOnDelete();
+            $table->timestamp('hidden_until')->nullable(); // when it should reappear
             $table->timestamps();
+
+            $table->unique(['user_id', 'post_id']);
         });
 
     }
@@ -32,6 +28,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('posts');
+        Schema::dropIfExists('hidden_posts');
     }
 };

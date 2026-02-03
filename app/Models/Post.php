@@ -34,5 +34,10 @@ class Post extends Model
         return $this->hasMany(PostMedia::class);
     }
 
+    public function hiddenBy()
+    {
+        return $this->hasMany(HiddenPost::class);
+    }
+
     
 }

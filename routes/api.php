@@ -51,12 +51,14 @@ use App\Http\Controllers\CommentReportController;
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/posts', [PostController::class, 'store']);
     Route::get('/posts-get', [PostController::class, 'index']);
-    Route::post('/posts-get/{post}', [PostController::class, 'show']);
+    Route::get('/posts/{post}', [PostController::class, 'show']);
 
     // Post Reactions reply
     Route::post('/post/{id}/reaction', [PostReactionController::class, 'store']);
     Route::delete('/post/{id}/reaction', [PostReactionController::class, 'destroy']);
     Route::get('/post/{id}/reactions', [PostReactionController::class, 'index']);
+    Route::post('/posts/{post}/hide', [PostController::class, 'hide'])->middleware('auth:sanctum');
+
 
     // Comment 
     Route::get('/posts/{post}/comments', [PostCommentController::class, 'index']);

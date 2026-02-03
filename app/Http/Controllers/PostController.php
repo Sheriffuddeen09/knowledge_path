@@ -9,6 +9,8 @@ use App\Models\PostReaction;
 use App\Models\PostComment;
 use Illuminate\Support\Str;
 use App\Models\PostMedia;
+use Carbon\Carbon;
+
 
 
 
@@ -27,7 +29,7 @@ public function store(Request $request)
         ]);
 
 
-    // empty post check
+    // empty post show
     if (
         !$request->content &&
         !$request->hasFile('images') &&
@@ -150,6 +152,28 @@ public function show(Post $post)
         ]
     ]);
 }
+
+
+public function hide(Post $post)
+{
+    $userId = auth()->id();
+
+    // Hide for 7 days (change as you like)
+    $hiddenUntil = Carbon::now()->addDays(7);
+
+    HiddenPost::updateOrCreate(
+        [
+            'user_id' => $userId,
+            'post_id' => $post->id,
+        ],
+        [
+            'hidden_until' => $hiddenUntil,
+        ]
+    );
+
+    return response()->json(['message' => 'Post hidden for you']);
+}
+
 
 
 
