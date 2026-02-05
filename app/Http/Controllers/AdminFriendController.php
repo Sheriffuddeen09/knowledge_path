@@ -6,10 +6,13 @@ use Illuminate\Http\Request;
 use App\Models\AdminFriendRequest;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\AdminFriendRequested;
+use App\Mail\HiddenAdminFriendRequest;
 use App\Mail\AdminFriendAccepted;
 use App\Mail\AdminFriendDeclined;
 use App\Models\Chat;
 use App\Models\User;
+use Carbon\Carbon;
+
 
 
 
@@ -251,24 +254,31 @@ public function relationshipStatus(Request $request, $adminId)
 }
 
 
-public function removeTemporarily($id)
+
+public function removeTemporarily(AdminFriendRequest $admin)
 {
-    $request = AdminFriendRequest::where(function ($q) {
-        $q->where('user_id', auth()->id())
-          ->orWhere('admin_id', auth()->id());
-    })
-    ->where(function ($q) use ($id) {
-        $q->where('user_id', $id)
-          ->orWhere('admin_id', $id);
-    })
-    ->firstOrFail();
+    $userId = auth()->id();
 
-    $request->update([
-        'removed_until' => now()->addDays(30)
+    // Hide for 7 days
+    $hiddenUntil = now()->addDays(7);
+
+    HiddenAdminFriendRequest::updateOrCreate(
+        [
+            'user_id' => $userId,
+            'admin_id' => $admin->id,
+        ],
+        [
+            'hidden_until' => $hiddenUntil,
+        ]
+    );
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Admin Friend Request hidden for you',
+        'hidden_until' => $hiddenUntil
     ]);
-
-    return response()->json(['message' => 'Removed for 30 days']);
 }
+
 
 
 public function accept($id)

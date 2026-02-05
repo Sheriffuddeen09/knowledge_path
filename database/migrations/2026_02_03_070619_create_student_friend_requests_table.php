@@ -20,7 +20,7 @@ class CreateStudentFriendRequestsTable extends Migration
             $table->boolean('hidden_for_requested')->default(false);
 
             // temporary removal
-            $table->timestamp('removed_until')->nullable();
+            $table->boolean('is_hidden')->default(false);
 
             $table->timestamps();
 

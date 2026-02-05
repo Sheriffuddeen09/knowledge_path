@@ -10,6 +10,8 @@ use App\Mail\StudentFriendAccepted;
 use App\Mail\StudentFriendDeclined;
 use App\Models\Chat;
 use App\Models\User;
+use App\Models\HiddenStudentFriendRequest;
+use Carbon\Carbon;
 
 
 
@@ -28,7 +30,7 @@ public function studentsToAdd(Request $request)
     $students = User::where('role', 'student')
         ->where('id', '!=', $user->id)
 
-        // ❌ EXCLUDE anyone with pending or accepted request (any direction)
+        // ❌ Exclude anyone with pending or accepted request (any direction)
         ->whereNotExists(function ($q) use ($user) {
             $q->selectRaw(1)
               ->from('student_friend_requests')
@@ -40,6 +42,19 @@ public function studentsToAdd(Request $request)
                       $y->whereColumn('student_friend_requests.user_id', 'users.id')
                         ->whereColumn('student_friend_requests.student_id', $user->id);
                   });
+              });
+        })
+
+        // ❌ Exclude users whose request is hidden by me and still active
+        ->whereNotExists(function ($q) use ($user) {
+            $q->selectRaw(1)
+              ->from('student_friend_requests as sfr')
+              ->join('hidden_student_friend_requests as h', 'h.student_id', '=', 'sfr.id')
+              ->where('h.user_id', $user->id)
+              ->where('h.hidden_until', '>', now())
+              ->where(function ($x) use ($user) {
+                  $x->whereColumn('sfr.user_id', 'users.id')
+                    ->orWhereColumn('sfr.student_id', 'users.id');
               });
         })
 
@@ -251,22 +266,47 @@ public function relationshipStatus(Request $request, $studentId)
 
 public function removeTemporarily($id)
 {
-    $request = StudentFriendRequest::where(function ($q) {
-        $q->where('user_id', auth()->id())
-          ->orWhere('student_id', auth()->id());
-    })
-    ->where(function ($q) use ($id) {
-        $q->where('user_id', $id)
-          ->orWhere('student_id', $id);
-    })
-    ->firstOrFail();
+    $student = StudentFriendRequest::find($id);
 
-    $request->update([
-        'removed_until' => now()->addDays(30)
-    ]);
+    if (!$student) {
+        return response()->json(['message' => 'Request not found'], 404);
+    }
 
-    return response()->json(['message' => 'Removed for 30 days']);
+    $userId = auth()->id();
+    $hiddenUntil = now()->addDays(7);
+
+    HiddenStudentFriendRequest::updateOrCreate(
+        [
+            'user_id' => $userId,
+            'student_id' => $student->id,
+        ],
+        [
+            'hidden_until' => $hiddenUntil,
+        ]
+    );
+
+    return response()->json(['message' => 'Student Friend Request hidden for you']);
 }
+
+
+// public function removeTemporarily($id)
+// {
+//     $request = StudentFriendRequest::where(function ($q) {
+//         $q->where('user_id', auth()->id())
+//           ->orWhere('student_id', auth()->id());
+//     })
+//     ->where(function ($q) use ($id) {
+//         $q->where('user_id', $id)
+//           ->orWhere('student_id', $id);
+//     })
+//     ->firstOrFail();
+
+//     $request->update([
+//         'removed_until' => now()->addDays(30)
+//     ]);
+
+//     return response()->json(['message' => 'Removed for 30 days']);
+// }
 
 
 public function accept($id)

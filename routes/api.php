@@ -47,7 +47,7 @@ use App\Http\Controllers\PostCommentController;
 use App\Http\Controllers\PostReportController;
 use App\Http\Controllers\CommentReportController;
 
-///report
+///remove
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/posts', [PostController::class, 'store']);
     Route::get('/posts-get', [PostController::class, 'index']);
@@ -93,7 +93,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/student-friend/all-requests', [StudentFriendController::class, 'allRequests']);
     Route::post('/student-friend/respond/{id}', [StudentFriendController::class, 'respond']);
     Route::get('/friend-notifications/requests', [StudentNotificationController::class, 'requestCount']);
-    Route::delete('/requests/remove-temporary/{id}', [StudentFriendController::class, 'removeTemporarily']);
+    Route::post('/student-requests/{id}/hide', [StudentFriendController::class, 'removeTemporarily']);
+
+
   
 });
 
@@ -117,7 +119,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin-friend/all-requests', [AdminFriendController::class, 'allRequests']);
     Route::post('/admin-friend/respond/{id}', [AdminFriendController::class, 'respond']);
     Route::get('/friend-notification/requests', [AdminNotificationController::class, 'requestCount']);
-    Route::delete('/requests/remove-temporary/{id}', [AdminFriendController::class, 'removeTemporarily']);
+    Route::delete('/requests/remove-admin/{id}', [AdminFriendController::class, 'removeTemporarily']);
   
 });
 

@@ -9,6 +9,7 @@ use App\Models\PostReaction;
 use App\Models\PostComment;
 use Illuminate\Support\Str;
 use App\Models\PostMedia;
+use App\Models\HiddenPost;
 use Carbon\Carbon;
 
 
@@ -80,44 +81,49 @@ public function store(Request $request)
 }
 
 
-    public function index()
-    {
-        $posts = Post::with([
-                'user:id,first_name,last_name,image',
-                'reactions',
-                'comments',
-                'media'
-            ])
-            ->latest()
-            ->get()
-            ->map(function ($post) {
-                return [
-                    'id' => $post->id,
-                    'content' => $post->content,
+   public function index()
+{
+    $posts = Post::whereDoesntHave('hiddenBy', function ($q) {
+            $q->where('user_id', auth()->id())
+              ->where('hidden_until', '>', now());
+        })
+        ->with([
+            'user:id,first_name,last_name,image',
+            'reactions',
+            'comments',
+            'media'
+        ])
+        ->latest()
+        ->get()
+        ->map(function ($post) {
+            return [
+                'id' => $post->id,
+                'content' => $post->content,
 
-                    'media' => $post->media->map(fn ($m) => [
-                        'id' => $m->id,
-                        'type' => $m->type, // image | video
-                        'url' => asset('storage/' . $m->path),
-                    ]),
+                'media' => $post->media->map(fn ($m) => [
+                    'id' => $m->id,
+                    'type' => $m->type, // image | video
+                    'url' => asset('storage/' . $m->path),
+                ]),
 
-                    'created_at' => $post->created_at->diffForHumans(),
+                'created_at' => $post->created_at->diffForHumans(),
 
-                    'user' => [
-                        'id' => $post->user->id,
-                        'name' => $post->user->first_name.' '.$post->user->last_name,
-                    ],
+                'user' => [
+                    'id' => $post->user->id,
+                    'name' => $post->user->first_name.' '.$post->user->last_name,
+                ],
 
-                    'reactions_count' => $post->reactions->count(),
-                    'comments_count' => $post->comments->count(),
-                ];
-            });
+                'reactions_count' => $post->reactions->count(),
+                'comments_count' => $post->comments->count(),
+            ];
+        });
 
-        return response()->json([
-            'status' => true,
-            'posts' => $posts
-        ]);
-    }
+    return response()->json([
+        'status' => true,
+        'posts' => $posts
+    ]);
+}
+        
 
 public function show(Post $post)
 {

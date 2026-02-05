@@ -14,7 +14,7 @@ class AdminFriendRequest extends Model
         'status',
         'hidden_for_requester',
         'hidden_for_requested',
-        'removed_until',
+        'hidden_until',
     ];
 
     public function requester()
@@ -31,4 +31,11 @@ class AdminFriendRequest extends Model
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+    
+    public function hiddenBy()
+        {
+            return $this->hasMany(HiddenAdminFriendRequest::class, 'admin_id');
+        }
+
+
 }
