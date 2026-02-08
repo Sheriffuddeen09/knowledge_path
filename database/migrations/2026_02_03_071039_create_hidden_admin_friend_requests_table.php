@@ -11,14 +11,21 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('hidden_admin_friend_requests', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('admin_id')->constrained('admin_friend_requests')->cascadeOnDelete();
-            $table->timestamp('hidden_until');
-            $table->timestamps();
+        $table->id();
 
-            $table->unique(['user_id', 'admin_id']); // prevent duplicates
-        });
+        $table->foreignId('user_id')->constrained()->cascadeOnDelete(); 
+        // who hid it
+
+        $table->foreignId('admin_friend_request_id')
+            ->constrained('admin_friend_requests')
+            ->cascadeOnDelete();
+
+        $table->timestamp('hidden_until')->nullable();
+        $table->timestamps();
+
+        $table->unique(['user_id', 'admin_friend_request_id']);
+    });
+
 
 
     }

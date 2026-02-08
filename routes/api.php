@@ -58,9 +58,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/post/{id}/reaction', [PostReactionController::class, 'destroy']);
     Route::get('/post/{id}/reactions', [PostReactionController::class, 'index']);
     Route::post('/posts/{post}/hide', [PostController::class, 'hide'])->middleware('auth:sanctum');
+    Route::get('/download-post/{id}', [PostController::class, 'download']);
 
 
-    // Comment 
+    // Comment library
     Route::get('/posts/{post}/comments', [PostCommentController::class, 'index']);
     Route::post('/posts/{post}/comments', [PostCommentController::class, 'store']);
     Route::post('/posts/{comment}/reaction', [PostCommentController::class, 'react']);
@@ -68,10 +69,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/posts/{comment}/comment', [PostCommentController::class, 'update']);
     Route::delete('/posts/{comment}/comment', [PostCommentController::class, 'destroy']);
     
-    Route::middleware('auth:sanctum')->get('/admin/reports', [VideoController::class, 'reportedVideos']);
-    Route::post('/videos/{video}/share', [ShareController::class,'share']);
 
-    //Report
+    // Library
+    Route::middleware('auth:sanctum')->get('/post/library', [PostController::class, 'library']);
+    Route::middleware('auth:sanctum')->delete('/post/library/{post}', [PostController::class, 'removeFromLibrary']);
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/post/{post}/save-to-library', [PostController::class, 'save']);
+    });
+
+    //Report 
     Route::post('/posts/report', [PostReportController::class, 'store']);
     Route::get('/posts/reports', [PostReportController::class, 'index']);
 
@@ -93,7 +99,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/student-friend/all-requests', [StudentFriendController::class, 'allRequests']);
     Route::post('/student-friend/respond/{id}', [StudentFriendController::class, 'respond']);
     Route::get('/friend-notifications/requests', [StudentNotificationController::class, 'requestCount']);
-    Route::post('/student-requests/{id}/hide', [StudentFriendController::class, 'removeTemporarily']);
+    Route::post('/student-request/hide/{id}', [StudentFriendController::class, 'removeTemporarily']);
+
 
 
   
@@ -119,12 +126,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin-friend/all-requests', [AdminFriendController::class, 'allRequests']);
     Route::post('/admin-friend/respond/{id}', [AdminFriendController::class, 'respond']);
     Route::get('/friend-notification/requests', [AdminNotificationController::class, 'requestCount']);
-    Route::delete('/requests/remove-admin/{id}', [AdminFriendController::class, 'removeTemporarily']);
+    Route::post('/admin-request/hide/{id}', [AdminFriendController::class, 'removeTemporarily']);
   
 });
 
-// 
-
+//download
 
 Route::middleware('auth:sanctum')->get(
     '/student/badges',

@@ -10,6 +10,9 @@ use App\Models\PostComment;
 use Illuminate\Support\Str;
 use App\Models\PostMedia;
 use App\Models\HiddenPost;
+use App\Models\PostDownload;
+use App\Models\PostSave;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 
@@ -111,6 +114,7 @@ public function store(Request $request)
                 'user' => [
                     'id' => $post->user->id,
                     'name' => $post->user->first_name.' '.$post->user->last_name,
+                    'role' => $post->user->role,
                 ],
 
                 'reactions_count' => $post->reactions->count(),
@@ -144,7 +148,8 @@ public function show(Post $post)
             'user' => [
                 'id' => $post->user->id,
                 'name' => $post->user->first_name.' '.$post->user->last_name,
-                'image' => $post->user->image,
+                'role' => $post->user->role,
+
             ],
 
             'media' => $post->media->map(fn ($m) => [
@@ -181,7 +186,88 @@ public function hide(Post $post)
 }
 
 
+public function download(Request $request, $id)
+{
+    try {
+        Log::info("Download start", ['post_id' => $id]);
+
+        $user = $request->user();
+        $post = Post::with('media')->findOrFail($id);
+
+        if ($user) {
+            PostDownload::updateOrCreate([
+                'user_id' => $user->id,
+                'post_id' => $post->id,
+            ]);
+        }
+
+        // get first media (or choose logic you want)
+        $media = $post->media->first();
+
+        if (!$media) {
+            return response()->json(['error' => 'No media to download'], 400);
+        }
+
+        $path = storage_path('app/public/' . $media->path);
+
+        if (!file_exists($path)) {
+            return response()->json(['error' => 'File not found', 'path' => $path], 404);
+        }
+
+        if ($media->type === 'video') {
+            $filename = 'IPK-video.mp4';
+            $mime = 'video/mp4';
+        } elseif ($media->type === 'image') {
+            $filename = 'IPK-image.jpg';
+            $mime = 'image/jpeg';
+        } else {
+            return response()->json(['error' => 'This post cannot be downloaded'], 400);
+        }
+
+        return response()->download($path, $filename, [
+            'Content-Type' => $mime
+        ]);
+
+    } catch (\Throwable $e) {
+        Log::error("Download failed", [
+            'message' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'error' => 'Download crashed',
+            'message' => $e->getMessage(),
+        ], 500);
+    }
+}
 
 
+public function save(Post $post)
+{
+    PostSave::firstOrCreate([
+        'user_id' => auth()->id(),
+        'post_id' => $post->id,
+    ]);
+
+    return response()->json(['status' => true, 'message' => 'Saved']);
+}
+
+public function library()
+{
+    $posts = Post::whereHas('saves', function ($q) {
+        $q->where('user_id', auth()->id());
+    })
+    ->with(['media', 'user:id,first_name,last_name,role']) // 👈 load user
+    ->latest()
+    ->get();
+
+    return response()->json(['status' => true, 'posts' => $posts]);
+}
+
+
+   public function removeFromLibrary(Post $post)
+{
+    auth()->user()->library()->detach($post->id);
+    return response()->json(['status' => true]);
+}
 
 }

@@ -39,5 +39,9 @@ class Post extends Model
         return $this->hasMany(HiddenPost::class);
     }
 
-    
+     public function saves()
+        {
+            return $this->belongsToMany(User::class, 'post_saves')
+                        ->withTimestamps();
+        }
 }

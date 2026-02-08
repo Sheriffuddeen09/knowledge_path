@@ -32,7 +32,7 @@ class StudentFriendRequest extends Model
 
     public function hiddenBy()
         {
-            return $this->hasMany(HiddenStudentFriendRequest::class, 'student_id');
+            return $this->hasMany(HiddenStudentFriendRequest::class, 'student_friend_request_id');
         }
 
 

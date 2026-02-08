@@ -17,9 +17,16 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable;
 
     // Relationships
-    public function library() {
-        return $this->belongsToMany(Video::class, 'libraries');
-    }
+    // public function library() {
+    //     return $this->belongsToMany(Video::class, 'libraries');
+    // }
+
+    public function library()
+{
+    return $this->belongsToMany(Post::class, 'post_saves')
+                ->withTimestamps();
+}
+
 
     public function downloads() {
         return $this->hasMany(VideoDownload::class);

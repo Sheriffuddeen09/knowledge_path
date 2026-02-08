@@ -2,7 +2,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\LoginController;
-use App\Models\Video;
+use App\Models\Post;
 use App\Http\Controllers\VideoStreamController;
 
 Route::get('/video/stream/{video}', [VideoStreamController::class, 'stream'])
@@ -16,8 +16,8 @@ Route::get('/reset-password/{token}', function ($token) {
 })->name('password.reset');
 
 
-Route::get('/video', function () {
-    return Video::all();
+Route::get('/posts-get', function () {
+    return Post::all();
 });
 
 

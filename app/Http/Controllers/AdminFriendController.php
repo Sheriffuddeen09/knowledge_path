@@ -255,29 +255,28 @@ public function relationshipStatus(Request $request, $adminId)
 
 
 
-public function removeTemporarily(AdminFriendRequest $admin)
+public function removeTemporarily($adminId)
 {
     $userId = auth()->id();
 
-    // Hide for 7 days
-    $hiddenUntil = now()->addDays(7);
+    // Optional: prevent hiding yourself
+    if ($userId == $adminId) {
+        return response()->json(['message' => 'You cannot hide yourself'], 400);
+    }
 
     HiddenAdminFriendRequest::updateOrCreate(
         [
-            'user_id' => $userId,
-            'admin_id' => $admin->id,
+            'user_id' => $userId,          // who is hiding
+            'admin_id' => $adminId, // who is being hidden
         ],
         [
-            'hidden_until' => $hiddenUntil,
+            'hidden_until' => now()->addDays(7),
         ]
     );
 
-    return response()->json([
-        'status' => true,
-        'message' => 'Admin Friend Request hidden for you',
-        'hidden_until' => $hiddenUntil
-    ]);
+    return response()->json(['message' => 'Friend hidden for 7 days']);
 }
+
 
 
 
