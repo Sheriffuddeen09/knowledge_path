@@ -182,7 +182,8 @@ public function index()
 
     $message = Message::create([
         'chat_id'    => $chat->id,
-        'sender_id'  => auth()->id(),
+        'user_id' => auth()->id(),
+        'sender_id' => auth()->id(),
         'type'       => $request->type,
         'message'    => $request->message,
         'file'       => $path,
@@ -235,6 +236,7 @@ public function index()
 
     $message = Message::create([
         'chat_id'   => $chat->id,
+        'user_id' => auth()->id(),
         'sender_id' => auth()->id(),
         'type'      => 'voice',
         'file'      => $path,
@@ -417,8 +419,10 @@ public function forwardMultiple(Request $request)
             $chat = Chat::create([
                 'teacher_id' => $sender->role === 'teacher' ? $sender->id : $receiver->id,
                 'student_id' => $sender->role === 'student' ? $sender->id : $receiver->id,
+                'type' => 'private', 
             ]);
         }
+
 
         // Forward messages
         foreach ($messageIds as $id) {
@@ -427,6 +431,7 @@ public function forwardMultiple(Request $request)
             Message::create([
                 'chat_id' => $chat->id,
                 'sender_id' => $sender->id,
+                'user_id' => auth()->id(),
                 'type' => $originalMessage->type,
                 'message' => $originalMessage->message,
                 'file' => $originalMessage->file,

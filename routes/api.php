@@ -46,8 +46,11 @@ use App\Http\Controllers\PostReactionController;
 use App\Http\Controllers\PostCommentController;
 use App\Http\Controllers\PostReportController;
 use App\Http\Controllers\CommentReportController;
+use App\Http\Controllers\PostStreamController;
 
-///remove
+
+Route::get('/video/stream/{video}', [PostStreamController::class, 'stream']);
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/posts', [PostController::class, 'store']);
     Route::get('/posts-get', [PostController::class, 'index']);
@@ -58,7 +61,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/post/{id}/reaction', [PostReactionController::class, 'destroy']);
     Route::get('/post/{id}/reactions', [PostReactionController::class, 'index']);
     Route::post('/posts/{post}/hide', [PostController::class, 'hide'])->middleware('auth:sanctum');
-    Route::get('/download-post/{id}', [PostController::class, 'download']);
+    Route::get('/download/video/{post}', [PostController::class, 'downloadVideo']);
+    Route::get('/download/image/{media}', [PostController::class, 'downloadImage']);
+
 
 
     // Comment library
@@ -77,12 +82,22 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/post/{post}/save-to-library', [PostController::class, 'save']);
     });
 
-    //Report 
+    //Report  badge
     Route::post('/posts/report', [PostReportController::class, 'store']);
     Route::get('/posts/reports', [PostReportController::class, 'index']);
 
     Route::post('/comment/report', [CommentReportController::class, 'store']);
     Route::get('/comment/reports', [CommentReportController::class, 'index']);
+
+    // Share and View
+    Route::post('/post/{post}/share', [PostController::class, 'share']);
+    Route::post('/chats/{chatId}/messages', [PostController::class, 'sharePost'])
+    ->middleware('auth:sanctum');
+
+
+    Route::post('/post/{post}/view', [PostController::class, 'view']);
+
+
 });
     
 
@@ -227,6 +242,7 @@ Route::middleware('auth:sanctum')->get('/live-class/teacher-requests-summary', [
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/live-class/request', [LiveClassController::class, 'sendRequest']);
+    Route::post('/student/watch-ad', [LiveClassController::class, 'watchAd']);
     Route::get('/live-class/my-requests', [LiveClassController::class, 'myRequests']);
     Route::get('/live-class/all-requests', [LiveClassController::class, 'allRequests']);
     Route::post('/live-class/respond/{id}', [LiveClassController::class, 'respond']);
@@ -240,7 +256,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 
-// 
+// request
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/chats', [ChatController::class,'index']);
     Route::get('/chats/{chat}/messages', [ChatController::class,'messages']);

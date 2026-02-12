@@ -8,6 +8,7 @@ use App\Models\PostView;
 use App\Models\PostReaction;
 use App\Models\PostComment;
 use Illuminate\Support\Str;
+use App\Models\Message;
 use App\Models\PostMedia;
 use App\Models\HiddenPost;
 use App\Models\PostDownload;
@@ -87,40 +88,42 @@ public function store(Request $request)
    public function index()
 {
     $posts = Post::whereDoesntHave('hiddenBy', function ($q) {
-            $q->where('user_id', auth()->id())
-              ->where('hidden_until', '>', now());
-        })
-        ->with([
-            'user:id,first_name,last_name,image',
-            'reactions',
-            'comments',
-            'media'
-        ])
-        ->latest()
-        ->get()
-        ->map(function ($post) {
-            return [
-                'id' => $post->id,
-                'content' => $post->content,
+        $q->where('user_id', auth()->id())
+          ->where('hidden_until', '>', now());
+    })
+    ->with([
+        'user:id,first_name,last_name,image',
+        'reactions',
+        'comments',
+        'media'
+    ])
+    ->withCount(['reactions', 'comments', 'shares']) // 👈 add this
+    ->latest()
+    ->get()
+    ->map(function ($post) {
+        return [
+            'id' => $post->id,
+            'content' => $post->content,
 
-                'media' => $post->media->map(fn ($m) => [
-                    'id' => $m->id,
-                    'type' => $m->type, // image | video
-                    'url' => asset('storage/' . $m->path),
-                ]),
+            'media' => $post->media->map(fn ($m) => [
+                'id' => $m->id,
+                'type' => $m->type,
+                'url' => asset('storage/' . $m->path),
+            ]),
 
-                'created_at' => $post->created_at->diffForHumans(),
+            'created_at' => $post->created_at->diffForHumans(),
 
-                'user' => [
-                    'id' => $post->user->id,
-                    'name' => $post->user->first_name.' '.$post->user->last_name,
-                    'role' => $post->user->role,
-                ],
+            'user' => [
+                'id' => $post->user->id,
+                'name' => $post->user->first_name.' '.$post->user->last_name,
+                'role' => $post->user->role,
+            ],
 
-                'reactions_count' => $post->reactions->count(),
-                'comments_count' => $post->comments->count(),
-            ];
-        });
+            'reactions_count' => $post->reactions_count,
+            'comments_count'  => $post->comments_count,
+            'shares_count'    => $post->shares_count, // 👈 now included
+        ];
+    });
 
     return response()->json([
         'status' => true,
@@ -186,58 +189,57 @@ public function hide(Post $post)
 }
 
 
-public function download(Request $request, $id)
+public function downloadVideo(Request $request, $postId)
 {
-    try {
-        Log::info("Download start", ['post_id' => $id]);
+    $user = $request->user();
 
-        $user = $request->user();
-        $post = Post::with('media')->findOrFail($id);
+    $post = Post::with('media')->findOrFail($postId);
+    $media = $post->media->firstWhere('type', 'video');
 
-        if ($user) {
-            PostDownload::updateOrCreate([
-                'user_id' => $user->id,
-                'post_id' => $post->id,
-            ]);
-        }
-
-        // get first media (or choose logic you want)
-        $media = $post->media->first();
-
-        if (!$media) {
-            return response()->json(['error' => 'No media to download'], 400);
-        }
-
-        $path = storage_path('app/public/' . $media->path);
-
-        if (!file_exists($path)) {
-            return response()->json(['error' => 'File not found', 'path' => $path], 404);
-        }
-
-        if ($media->type === 'video') {
-            $filename = 'IPK-video.mp4';
-            $mime = 'video/mp4';
-        } elseif ($media->type === 'image') {
-            $filename = 'IPK-image.jpg';
-            $mime = 'image/jpeg';
-        } else {
-            return response()->json(['error' => 'This post cannot be downloaded'], 400);
-        }
-
-        return response()->download($path, $filename, [
-            'Content-Type' => $mime
-        ]);
-
-    } catch (\Throwable $e) {
-        Log::error("Download failed", [
-            'message' => $e->getMessage(),
-        ]);
-
-        return response()->json([
-            'error' => 'Download crashed',
-            'message' => $e->getMessage(),
-        ], 500);
+    if (!$media) {
+        return response()->json(['error' => 'No video found'], 404);
     }
+
+    if ($user) {
+        PostDownload::updateOrCreate([
+            'user_id' => $user->id,
+            'post_id' => $post->id,
+        ]);
+    }
+
+    $path = storage_path('app/public/' . $media->path);
+
+    if (!file_exists($path)) {
+        return response()->json(['error' => 'File not found'], 404);
+    }
+
+    return response()->download($path, 'IPK-video.mp4', [
+        'Content-Type' => 'video/mp4'
+    ]);
+}
+
+public function downloadImage(Request $request, $mediaId)
+{
+    $user = $request->user();
+
+    $media = PostMedia::where('type', 'image')->findOrFail($mediaId);
+
+    $path = storage_path('app/public/' . $media->path);
+
+    if (!file_exists($path)) {
+        return response()->json(['error' => 'File not found'], 404);
+    }
+
+    if ($user) {
+        PostDownload::updateOrCreate([
+            'user_id' => $user->id,
+            'post_id' => $media->post_id,
+        ]);
+    }
+
+    return response()->download($path, 'IPK-image.jpg', [
+        'Content-Type' => 'image/jpeg'
+    ]);
 }
 
 
@@ -268,6 +270,83 @@ public function library()
 {
     auth()->user()->library()->detach($post->id);
     return response()->json(['status' => true]);
+}
+
+
+public function share(Post $post)
+{
+    $userId = auth()->id();
+
+    // Check if already shared
+    $alreadyShared = $post->shares()
+        ->where('user_id', $userId)
+        ->exists();
+
+    if (!$alreadyShared) {
+        $post->shares()->create([
+            'user_id' => $userId,
+        ]);
+
+        // increment counter
+        $post->increment('shares_count');
+    }
+
+    return response()->json([
+        'status' => true,
+        'already_shared' => $alreadyShared,
+    ]);
+}
+
+
+public function sharePost(Request $request, $chatId)
+{
+    try {
+        $request->validate([
+            'type' => 'required|string',
+            'message' => 'required|string',
+            'post_id' => 'required|exists:posts,id',
+        ]);
+
+        if (!auth()->check()) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $message = Message::create([
+            'chat_id' => $chatId,
+            'user_id' => auth()->id(),
+            'sender_id' => auth()->id(),
+            'type' => $request->type,
+            'message' => $request->message,
+        ]);
+
+        // ✅ increment post share count
+        $post = Post::find($request->post_id);
+        $post->increment('shares_count');
+
+        return response()->json([
+            'status' => true,
+            'message' => $message,
+            'shares_count' => $post->fresh()->shares_count
+        ]);
+    } catch (\Throwable $e) {
+        \Log::error('sharePost error', [
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'status' => false,
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+}
+
+
+
+
+public function view(Post $post)
+{
+    $post->increment('views');
+    return response()->json(['views' => $post->views]);
 }
 
 }

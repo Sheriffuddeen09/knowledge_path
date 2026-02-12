@@ -25,5 +25,21 @@ class StudentBadgeController extends Controller
     }
 
     
+    public function watchAd(Request $request)
+{
+    $student = $request->user();
+
+    // add 5 badges
+    StudentBadge::create([
+        'student_id' => $student->id,
+        'badges' => 5,
+        'source' => 'ads'
+    ]);
+
+    $total = StudentBadge::where('student_id', $student->id)->sum('badges');
+
+    return response()->json(['total' => $total]);
+}
+
 
 }

@@ -11,26 +11,23 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('posts', function (Blueprint $table) {
+        Schema::create('post_shares', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('post_id')->constrained()->cascadeOnDelete();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->text('content')->nullable(); // text
-            $table->string('image')->nullable();
-            $table->string('video')->nullable();
-            $table->boolean('is_hidden')->default(false);
-            $table->unsignedInteger('views')->default(0);
-            $table->unsignedInteger('shares')->default(0);
             $table->timestamps();
+
+            // optional: prevent same user from sharing same post multiple times
+            $table->unique(['post_id', 'user_id']);
         });
 
     }
 
     /**
-     * 
      * Reverse the migrations.
      */
     public function down(): void
     {
-        Schema::dropIfExists('posts');
+        Schema::dropIfExists('post_shares');
     }
 };

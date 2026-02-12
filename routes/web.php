@@ -3,11 +3,15 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Models\Post;
-use App\Http\Controllers\VideoStreamController;
+use App\Http\Controllers\PostStreamController;
 
-Route::get('/video/stream/{video}', [VideoStreamController::class, 'stream'])
+
+
+Route::get('/video/stream/{video}', [PostStreamController::class, 'stream'])
     ->name('video.stream')
     ->middleware('signed');
+
+
 
 
 Route::get('/reset-password/{token}', function ($token) {

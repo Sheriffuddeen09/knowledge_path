@@ -9,23 +9,25 @@ use App\Mail\StudentRequestedLiveClass;
 use App\Mail\LiveClassAccepted;
 use App\Mail\LiveClassDeclined;
 use App\Models\Chat;
+use App\Models\StudentBadge;
 
 
 
 class LiveClassController extends Controller
 {
 
+
+
 public function sendRequest(Request $request)
 {
     $user = $request->user();
     $teacherId = $request->teacher_id;
 
-    // Find any existing request (regardless of cleared flags)
     $existing = LiveClassRequest::where('user_id', $user->id)
         ->where('teacher_id', $teacherId)
         ->first();
 
-    // ❌ Block if pending or accepted AND student has not cleared
+    // ❌ Block duplicates
     if ($existing && in_array($existing->status, ['pending', 'accepted']) && !$existing->cleared_by_student) {
         return response()->json([
             'status' => false,
@@ -33,15 +35,27 @@ public function sendRequest(Request $request)
         ], 409);
     }
 
-    // ✅ Resend if declined OR student has cleared previous request
+    // Check badges
+    $total = StudentBadge::where('student_id', $user->id)->sum('badges');
+    if ($total < 20) {
+        return response()->json(['message' => 'Not enough badges'], 400);
+    }
+
+    // ✅ Subtract 20 now
+    StudentBadge::create([
+        'student_id' => $user->id,
+        'badges' => -20,
+        'source' => 'unlock'
+    ]);
+
+    // ✅ Resend
     if ($existing && ($existing->status === 'declined' || $existing->cleared_by_student)) {
         $existing->update([
             'status' => 'pending',
             'cleared_by_student' => false,
-            'cleared_by_teacher' => false, // 🔹 Reset so teacher sees it
+            'cleared_by_teacher' => false,
         ]);
 
-        // Send email to teacher
         Mail::to($existing->teacher->email)
             ->send(new StudentRequestedLiveClass($existing));
 
@@ -49,16 +63,16 @@ public function sendRequest(Request $request)
             'status' => true,
             'message' => 'Request sent successfully',
             'request' => $existing,
+            'total' => StudentBadge::where('student_id', $user->id)->sum('badges'),
         ]);
     }
 
-    // ✅ New request (no existing request)
+    // ✅ New request
     $requestModel = LiveClassRequest::create([
         'user_id' => $user->id,
         'teacher_id' => $teacherId,
     ]);
 
-    // Send email to teacher
     Mail::to($requestModel->teacher->email)
         ->send(new StudentRequestedLiveClass($requestModel));
 
@@ -66,6 +80,7 @@ public function sendRequest(Request $request)
         'status' => true,
         'message' => 'Request sent successfully',
         'request' => $requestModel,
+        'total' => StudentBadge::where('student_id', $user->id)->sum('badges'),
     ]);
 }
 
@@ -136,7 +151,14 @@ public function sendRequest(Request $request)
     if ($status === 'declined') {
         Mail::to($requestModel->student->email)
             ->send(new LiveClassDeclined($requestModel));
+        
+         StudentBadge::create([
+        'student_id' => $requestModel->user_id,
+        'badges' => 20,
+        'source' => 'refund'
+    ]);
     }
+
 
     return response()->json([
         'status' => true,
@@ -144,6 +166,7 @@ public function sendRequest(Request $request)
         'request' => $requestModel,
     ]);
 }
+
 
     // Get requests sent by the student
     public function myRequests(Request $request)

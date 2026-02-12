@@ -19,7 +19,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api([
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
             \App\Http\Middleware\UpdateLastSeen::class,
-            \App\Http\Middleware\SetCrossOriginHeaders::class,
         ]);
 
         // ✅ Web middleware
