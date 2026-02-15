@@ -85,7 +85,8 @@ public function store(Request $request)
 }
 
 
-   public function index()
+    
+public function index()
 {
     $posts = Post::whereDoesntHave('hiddenBy', function ($q) {
         $q->where('user_id', auth()->id())
@@ -93,35 +94,29 @@ public function store(Request $request)
     })
     ->with([
         'user:id,first_name,last_name,image',
-        'reactions',
-        'comments',
-        'media'
+        'media',
     ])
-    ->withCount(['reactions', 'comments', 'shares']) // 👈 add this
-    ->latest()
+    ->withCount(['reactions', 'comments', 'shares'])
+    ->inRandomOrder()   // ✅ RANDOM
     ->get()
     ->map(function ($post) {
         return [
             'id' => $post->id,
             'content' => $post->content,
-
             'media' => $post->media->map(fn ($m) => [
                 'id' => $m->id,
                 'type' => $m->type,
                 'url' => asset('storage/' . $m->path),
             ]),
-
             'created_at' => $post->created_at->diffForHumans(),
-
             'user' => [
                 'id' => $post->user->id,
                 'name' => $post->user->first_name.' '.$post->user->last_name,
                 'role' => $post->user->role,
             ],
-
             'reactions_count' => $post->reactions_count,
             'comments_count'  => $post->comments_count,
-            'shares_count'    => $post->shares_count, // 👈 now included
+            'shares_count'    => $post->shares_count,
         ];
     });
 
@@ -130,7 +125,7 @@ public function store(Request $request)
         'posts' => $posts
     ]);
 }
-        
+
 
 public function show(Post $post)
 {
@@ -349,4 +344,168 @@ public function view(Post $post)
     return response()->json(['views' => $post->views]);
 }
 
+
+public function myPosts()
+{
+    $userId = auth()->id();
+
+    $posts = Post::where('user_id', $userId)
+        ->with([
+            'user:id,first_name,last_name,role,image',
+            'media'
+        ])
+        ->withCount(['reactions', 'comments', 'shares'])
+        ->latest()
+        ->get()
+        ->map(function ($post) {
+            return [
+                'id' => $post->id,
+                'content' => $post->content,
+
+                'media' => $post->media->map(fn ($m) => [
+                    'id' => $m->id,
+                    'type' => $m->type,
+                    'url' => asset('storage/' . $m->path),
+                ]),
+
+                'created_at' => $post->created_at->diffForHumans(),
+
+                'user' => [
+                    'id' => $post->user->id,
+                    'name' => $post->user->first_name . ' ' . $post->user->last_name,
+                    'role' => $post->user->role,
+                ],
+
+                'reactions_count' => $post->reactions_count,
+                'comments_count'  => $post->comments_count,
+                'shares_count'    => $post->shares_count,
+            ];
+        });
+
+    return response()->json([
+        'status' => true,
+        'posts' => $posts
+    ]);
 }
+
+public function userPosts($id)
+{
+    $posts = Post::where('user_id', $id)
+        ->with([
+            'user:id,first_name,last_name,role',
+            'media'
+        ])
+        ->withCount(['reactions', 'comments', 'shares'])
+        ->latest()
+        ->get()
+        ->map(function ($post) {
+            return [
+                'id' => $post->id,
+                'content' => $post->content,
+
+                'media' => $post->media->map(fn ($m) => [
+                    'id' => $m->id,
+                    'type' => $m->type,
+                    'url' => asset('storage/' . $m->path),
+                ]),
+
+                'created_at' => $post->created_at->diffForHumans(),
+
+                'user' => [
+                    'id' => $post->user->id,
+                    'name' => $post->user->first_name . ' ' . $post->user->last_name,
+                    'role' => $post->user->role,
+                ],
+
+                'reactions_count' => $post->reactions_count,
+                'comments_count'  => $post->comments_count,
+                'shares_count'    => $post->shares_count,
+            ];
+        });
+
+    return response()->json([
+        'status' => true,
+        'posts' => $posts
+    ]);
+}
+
+
+public function destroy(Post $post)
+{
+    if ($post->user_id !== auth()->id()) {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
+
+    // Optionally delete media files here
+
+    $post->delete();
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Post deleted'
+    ]);
+}
+
+public function update(Request $request, Post $post)
+{
+    if ($post->user_id !== auth()->id()) {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
+
+    $request->validate([
+        'content' => 'required|string'
+    ]);
+
+    $post->update([
+        'content' => $request->content
+    ]);
+
+    return response()->json([
+        'status' => true,
+        'post' => $post
+    ]);
+}
+
+public function destroyImage($id)
+{
+    $media = PostMedia::findOrFail($id);
+
+    if ($media->post->user_id !== auth()->id()) {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
+
+    $post = $media->post;
+
+    // Delete file
+    \Storage::disk('public')->delete($media->path);
+
+    // Delete media record
+    $media->delete();
+
+    // 🔥 Reload media relationship
+    $post->load('media');
+
+    // 🔥 If no media AND no content → delete post
+    if ($post->media->count() === 0 && empty($post->content)) {
+        $post->delete();
+
+        return response()->json([
+            'status' => true,
+            'media_id' => $id,
+            'post_deleted' => true,
+            'post_id' => $post->id
+        ]);
+    }
+
+    return response()->json([
+        'status' => true,
+        'media_id' => $id,
+        'post_deleted' => false,
+        'post_id' => $post->id
+    ]);
+}
+
+
+
+}
+

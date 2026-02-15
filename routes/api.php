@@ -98,6 +98,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/post/{post}/view', [PostController::class, 'view']);
 
 
+    // Single user Post
+
+    Route::get('/posts-single', [PostController::class, 'myPosts']);
+    Route::get('/users/{id}/posts-single', [PostController::class, 'userPosts']);
+    Route::delete('/posts-single/{post}', [PostController::class, 'destroy'])->middleware('auth:sanctum');
+    Route::put('/posts-single/{post}', [PostController::class, 'update'])->middleware('auth:sanctum');
+    Route::delete('/image/media/{id}', [PostController::class, 'destroyImage']);
+
 });
     
 
