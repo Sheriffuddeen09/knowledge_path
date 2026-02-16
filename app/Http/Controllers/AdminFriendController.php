@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\AdminFriendRequest;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\AdminFriendRequested;
-use App\Mail\HiddenUser;
+use App\Models\HiddenUser;
 use App\Mail\AdminFriendAccepted;
 use App\Mail\AdminFriendDeclined;
 use App\Models\Chat;
