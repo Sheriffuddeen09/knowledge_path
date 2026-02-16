@@ -14,9 +14,6 @@ use App\Models\User;
 use Carbon\Carbon;
 
 
-
-
-
 class AdminFriendController extends Controller
 
 {
