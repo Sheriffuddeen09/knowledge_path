@@ -10,7 +10,7 @@ use App\Mail\StudentFriendAccepted;
 use App\Mail\StudentFriendDeclined;
 use App\Models\Chat;
 use App\Models\User;
-use App\Models\HiddenStudentFriendRequest;
+use App\Models\HiddenUser;
 use Carbon\Carbon;
 
 
@@ -265,24 +265,31 @@ public function relationshipStatus(Request $request, $studentId)
 }
 
 
-public function removeTemporarily($studentId)
+
+public function hideUser($hiddenUserId)
 {
     $userId = auth()->id();
 
-    // Optional: prevent hiding yourself
-    if ($userId == $studentId) {
-        return response()->json(['message' => 'You cannot hide yourself'], 400);
+    if ($userId == $hiddenUserId) {
+        return response()->json([
+            'message' => 'You cannot hide yourself'
+        ], 400);
     }
 
-    HiddenStudentFriendRequest::create([
-        'user_id' => auth()->id(),
-        'student_friend_request_id' => $studentId->id, // MUST be real ID
-        'hidden_until' => now()->addDays(7),
+    HiddenUser::updateOrCreate(
+        [
+            'user_id' => $userId,
+            'hidden_user_id' => $hiddenUserId,
+        ]
+    );
+
+    return response()->json([
+        'message' => 'User removed from friend list'
     ]);
-
-
-    return response()->json(['message' => 'Friend hidden for 7 days']);
 }
+
+
+
 
 public function accept($id)
 {

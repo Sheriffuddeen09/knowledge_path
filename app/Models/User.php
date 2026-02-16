@@ -44,6 +44,16 @@ class User extends Authenticatable
         return $this->hasMany(LiveClassRequest::class, 'teacher_id');
     }
     
+    public function hiddenUsers()
+    {
+        return $this->hasMany(HiddenUser::class);
+    }
+
+    public function hiddenByUsers()
+    {
+        return $this->hasMany(HiddenUser::class, 'hidden_user_id');
+    }
+
 
     public function isOnline()
     {

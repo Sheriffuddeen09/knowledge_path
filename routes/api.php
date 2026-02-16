@@ -122,7 +122,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/student-friend/all-requests', [StudentFriendController::class, 'allRequests']);
     Route::post('/student-friend/respond/{id}', [StudentFriendController::class, 'respond']);
     Route::get('/friend-notifications/requests', [StudentNotificationController::class, 'requestCount']);
-    Route::post('/student-request/hide/{id}', [StudentFriendController::class, 'removeTemporarily']);
+    Route::post('/student-request/hide/{hiddenUserId}', [StudentFriendController::class, 'hideUser']);
 
 
 
@@ -149,7 +149,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin-friend/all-requests', [AdminFriendController::class, 'allRequests']);
     Route::post('/admin-friend/respond/{id}', [AdminFriendController::class, 'respond']);
     Route::get('/friend-notification/requests', [AdminNotificationController::class, 'requestCount']);
-    Route::post('/admin-request/hide/{id}', [AdminFriendController::class, 'removeTemporarily']);
+    Route::post('/admin-request/hide/{hiddenUserId}', [AdminFriendController::class, 'hideUser']);
+
   
 });
 

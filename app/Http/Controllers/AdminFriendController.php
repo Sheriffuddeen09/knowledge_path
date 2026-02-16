@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\AdminFriendRequest;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\AdminFriendRequested;
-use App\Mail\HiddenAdminFriendRequest;
+use App\Mail\HiddenUser;
 use App\Mail\AdminFriendAccepted;
 use App\Mail\AdminFriendDeclined;
 use App\Models\Chat;
@@ -255,28 +255,27 @@ public function relationshipStatus(Request $request, $adminId)
 
 
 
-public function removeTemporarily($adminId)
+public function hideUser($hiddenUserId)
 {
     $userId = auth()->id();
 
-    // Optional: prevent hiding yourself
-    if ($userId == $adminId) {
-        return response()->json(['message' => 'You cannot hide yourself'], 400);
+    if ($userId == $hiddenUserId) {
+        return response()->json([
+            'message' => 'You cannot hide yourself'
+        ], 400);
     }
 
-    HiddenAdminFriendRequest::updateOrCreate(
+    HiddenUser::updateOrCreate(
         [
-            'user_id' => $userId,          // who is hiding
-            'admin_id' => $adminId, // who is being hidden
-        ],
-        [
-            'hidden_until' => now()->addDays(7),
+            'user_id' => $userId,
+            'hidden_user_id' => $hiddenUserId,
         ]
     );
 
-    return response()->json(['message' => 'Friend hidden for 7 days']);
+    return response()->json([
+        'message' => 'User removed from friend list'
+    ]);
 }
-
 
 
 
