@@ -86,39 +86,109 @@ public function store(Request $request)
 
 
     
+// public function index()
+// {
+//     $posts = Post::whereDoesntHave('hiddenBy', function ($q) {
+//         $q->where('user_id', auth()->id())
+//           ->where('hidden_until', '>', now());
+//     })
+//     ->with([
+//         'user:id,first_name,last_name,image',
+//         'media',
+//     ])
+//     ->withCount(['reactions', 'comments', 'shares'])
+//     ->inRandomOrder()   // ✅ RANDOM
+//     ->get()
+//     ->map(function ($post) {
+//         return [
+//             'id' => $post->id,
+//             'content' => $post->content,
+//             'media' => $post->media->map(fn ($m) => [
+//                 'id' => $m->id,
+//                 'type' => $m->type,
+//                 'url' => asset('storage/' . $m->path),
+//             ]),
+//             'created_at' => $post->created_at->diffForHumans(),
+//             'user' => [
+//                 'id' => $post->user->id,
+//                 'name' => $post->user->first_name.' '.$post->user->last_name,
+//                 'role' => $post->user->role,
+//             ],
+//             'reactions_count' => $post->reactions_count,
+//             'comments_count'  => $post->comments_count,
+//             'shares_count'    => $post->shares_count,
+//         ];
+//     });
+
+//     return response()->json([
+//         'status' => true,
+//         'posts' => $posts
+//     ]);
+// }
+
 public function index()
 {
-    $posts = Post::whereDoesntHave('hiddenBy', function ($q) {
-        $q->where('user_id', auth()->id())
-          ->where('hidden_until', '>', now());
-    })
-    ->with([
-        'user:id,first_name,last_name,image',
-        'media',
-    ])
-    ->withCount(['reactions', 'comments', 'shares'])
-    ->inRandomOrder()   // ✅ RANDOM
-    ->get()
-    ->map(function ($post) {
-        return [
-            'id' => $post->id,
-            'content' => $post->content,
-            'media' => $post->media->map(fn ($m) => [
-                'id' => $m->id,
-                'type' => $m->type,
-                'url' => asset('storage/' . $m->path),
-            ]),
-            'created_at' => $post->created_at->diffForHumans(),
-            'user' => [
-                'id' => $post->user->id,
-                'name' => $post->user->first_name.' '.$post->user->last_name,
-                'role' => $post->user->role,
-            ],
-            'reactions_count' => $post->reactions_count,
-            'comments_count'  => $post->comments_count,
-            'shares_count'    => $post->shares_count,
-        ];
-    });
+    $posts = Post::whereDoesntHave('views', function ($q) {
+            $q->where('user_id', auth()->id());
+        })
+        ->where(function ($query) {
+
+            $query->where('visibility', 'public')
+
+                  ->orWhere(function ($q) {
+                      $q->where('visibility', 'private')
+                        ->where('user_id', auth()->id());
+                  });
+
+        })
+        ->with([
+            'user:id,first_name,last_name,image',
+            'media',
+            'originalPost.user',
+            'originalPost.media'
+        ])
+        ->withCount(['reactions', 'comments', 'shares'])
+        ->latest()   // OR change to inRandomOrder()
+        ->get()
+        ->map(function ($post) {
+
+            return [
+                'id' => $post->id,
+                'content' => $post->content,
+
+                'media' => $post->media->map(fn ($m) => [
+                    'id' => $m->id,
+                    'type' => $m->type,
+                    'url' => asset('storage/' . $m->path),
+                ]),
+
+                'original_post' => $post->originalPost ? [
+                    'id' => $post->originalPost->id,
+                    'content' => $post->originalPost->content,
+                    'media' => $post->originalPost->media->map(fn ($m) => [
+                        'id' => $m->id,
+                        'type' => $m->type,
+                        'url' => asset('storage/' . $m->path),
+                    ]),
+                    'user' => [
+                        'id' => $post->originalPost->user->id,
+                        'name' => $post->originalPost->user->first_name . ' ' .
+                                $post->originalPost->user->last_name,
+                    ]
+                ] : null,
+
+                'created_at' => $post->created_at->diffForHumans(),
+
+                'user' => [
+                    'id' => $post->user->id,
+                    'name' => $post->user->first_name.' '.$post->user->last_name,
+                ],
+
+                'reactions_count' => $post->reactions_count,
+                'comments_count'  => $post->comments_count,
+                'shares_count'    => $post->shares_count,
+            ];
+        });
 
     return response()->json([
         'status' => true,
@@ -505,6 +575,21 @@ public function destroyImage($id)
     ]);
 }
 
+public function repost($id)
+{
+    $original = Post::findOrFail($id);
+
+    $repost = Post::create([
+        'user_id' => auth()->id(),
+        'original_post_id' => $original->id,
+        'visibility' => 'public',
+    ]);
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Reposted successfully'
+    ]);
+}
 
 
 }

@@ -90,11 +90,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/comment/reports', [CommentReportController::class, 'index']);
 
     // Share and View
+    
+    Route::post('/posts/{id}/repost', [PostController::class, 'repost']);
     Route::post('/post/{post}/share', [PostController::class, 'share']);
     Route::post('/chats/{chatId}/messages', [PostController::class, 'sharePost'])
     ->middleware('auth:sanctum');
 
-
+    Route::post('/posts/{id}/view', [PostController::class, 'markAsViewed']);
     Route::post('/post/{post}/view', [PostController::class, 'view']);
 
 

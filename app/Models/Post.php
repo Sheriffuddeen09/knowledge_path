@@ -49,4 +49,19 @@ class Post extends Model
         return $this->hasMany(PostShare::class);
     }
 
+    public function originalPost()
+    {
+        return $this->belongsTo(Post::class, 'original_post_id');
+    }
+
+    public function reposts()
+    {
+        return $this->hasMany(Post::class, 'original_post_id');
+    }
+
+    public function views()
+    {
+        return $this->hasMany(PostView::class);
+    }
+
 }

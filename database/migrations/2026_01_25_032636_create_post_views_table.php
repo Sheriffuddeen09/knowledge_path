@@ -11,12 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('post_views', function (Blueprint $table) {
+       Schema::create('post_views', function (Blueprint $table) {
             $table->id();
+
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->foreignId('post_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('user_id')->nullable();
+
             $table->timestamps();
+
+            $table->unique(['user_id', 'post_id']);
         });
+
 
     }
 
