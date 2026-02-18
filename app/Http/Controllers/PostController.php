@@ -28,10 +28,12 @@ public function store(Request $request)
 
         $request->validate([
             'content' => 'nullable|string',
+            'visibility' => 'required|in:public,friends,private',
             'images' => 'nullable|array',
             'images.*' => 'image|mimes:jpg,jpeg,png,webp|max:5120',
             'video' => 'nullable|file|mimes:mp4,mov|max:51200',
         ]);
+
 
 
     // empty post show
@@ -51,9 +53,11 @@ public function store(Request $request)
     }
 
     $post = Post::create([
-        'user_id' => auth()->id(),
-        'content' => $request->content,
-    ]);
+            'user_id' => auth()->id(),
+            'content' => $request->content,
+            'visibility' => $request->visibility, // 👈 IMPORTANT
+        ]);
+
 
     // ✅ save images
     if ($request->hasFile('images')) {
@@ -128,17 +132,27 @@ public function store(Request $request)
 
 public function index()
 {
-    $posts = Post::whereDoesntHave('views', function ($q) {
-            $q->where('user_id', auth()->id());
+    $friendIds = auth()->user()->allFriendIds()->toArray();
+
+    $posts = Post::where(function ($query) use ($friendIds) {
+
+        // PUBLIC
+        $query->where('visibility', 'public')
+
+        // PRIVATE (only owner)
+        ->orWhere(function ($q) {
+            $q->where('visibility', 'private')
+            ->where('user_id', auth()->id());
         })
-        ->where(function ($query) {
 
-            $query->where('visibility', 'public')
-
-                  ->orWhere(function ($q) {
-                      $q->where('visibility', 'private')
-                        ->where('user_id', auth()->id());
-                  });
+        // FRIENDS (owner + friends)
+        ->orWhere(function ($q) use ($friendIds) {
+            $q->where('visibility', 'friends')
+            ->where(function ($sub) use ($friendIds) {
+                $sub->where('user_id', auth()->id())
+                    ->orWhereIn('user_id', $friendIds);
+            });
+        });
 
         })
         ->with([
@@ -147,14 +161,26 @@ public function index()
             'originalPost.user',
             'originalPost.media'
         ])
-        ->withCount(['reactions', 'comments', 'shares'])
-        ->latest()   // OR change to inRandomOrder()
+        ->withCount([
+            'reactions',
+            'comments',
+            'shares',
+            'reposts'
+        ])
+        ->latest()
         ->get()
         ->map(function ($post) {
 
             return [
                 'id' => $post->id,
                 'content' => $post->content,
+
+                'is_repost' => $post->original_post_id ? true : false,
+
+                'reposted_by' => $post->original_post_id ? [
+                    'id' => $post->user->id,
+                    'name' => $post->user->first_name.' '.$post->user->last_name,
+                ] : null,
 
                 'media' => $post->media->map(fn ($m) => [
                     'id' => $m->id,
@@ -165,17 +191,22 @@ public function index()
                 'original_post' => $post->originalPost ? [
                     'id' => $post->originalPost->id,
                     'content' => $post->originalPost->content,
+
                     'media' => $post->originalPost->media->map(fn ($m) => [
                         'id' => $m->id,
                         'type' => $m->type,
                         'url' => asset('storage/' . $m->path),
                     ]),
-                    'user' => [
+
+                    'user' => $post->originalPost->user ? [
                         'id' => $post->originalPost->user->id,
-                        'name' => $post->originalPost->user->first_name . ' ' .
-                                $post->originalPost->user->last_name,
-                    ]
+                        'name' =>
+                            $post->originalPost->user->first_name . ' ' .
+                            $post->originalPost->user->last_name,
+                    ] : null
+
                 ] : null,
+
 
                 'created_at' => $post->created_at->diffForHumans(),
 
@@ -187,6 +218,10 @@ public function index()
                 'reactions_count' => $post->reactions_count,
                 'comments_count'  => $post->comments_count,
                 'shares_count'    => $post->shares_count,
+                'reposts_count' => $post->original_post_id
+                ? $post->originalPost->reposts()->count()
+                : $post->reposts_count,
+
             ];
         });
 
@@ -579,6 +614,24 @@ public function repost($id)
 {
     $original = Post::findOrFail($id);
 
+    if ($original->user_id === auth()->id()) {
+        return response()->json([
+            'status' => false,
+            'message' => 'You cannot repost your own post'
+        ], 403);
+    }
+
+    $existing = Post::where('user_id', auth()->id())
+        ->where('original_post_id', $original->id)
+        ->first();
+
+    if ($existing) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Already reposted'
+        ], 400);
+    }
+
     $repost = Post::create([
         'user_id' => auth()->id(),
         'original_post_id' => $original->id,
@@ -587,10 +640,9 @@ public function repost($id)
 
     return response()->json([
         'status' => true,
-        'message' => 'Reposted successfully'
+        'repost_id' => $repost->id
     ]);
 }
-
 
 }
 

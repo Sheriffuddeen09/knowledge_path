@@ -11,7 +11,9 @@ class Post extends Model
         'content',
         'image',
         'video',
-        'views'
+        'views',
+        'visibility',
+        'original_post_id'
     ];
 
     public function user()
@@ -63,5 +65,14 @@ class Post extends Model
     {
         return $this->hasMany(PostView::class);
     }
+
+    public function friends()
+    {
+        return $this->belongsToMany(User::class, 'friends')
+            ->wherePivot('status', 'accepted');
+    }
+
+
+
 
 }

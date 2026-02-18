@@ -11,16 +11,18 @@ use App\Models\VideoDownload;
 use App\Models\LiveClassRequest;
 use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+
 
 class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
     public function library()
-{
-    return $this->belongsToMany(Post::class, 'post_saves')
-                ->withTimestamps();
-}
+    {
+        return $this->belongsToMany(Post::class, 'post_saves')
+                    ->withTimestamps();
+    }
 
 
     public function downloads() {
@@ -56,6 +58,63 @@ class User extends Authenticatable
 
         return Carbon::parse($this->last_seen_at)->diffInMinutes(now()) < 2;
     }
+
+    public function acceptedStudentFriends()
+    {
+    return $this->belongsToMany(
+        User::class,
+        'student_friend_requests',
+        'user_id',
+        'student_id'
+    )->wherePivot('status', 'accepted');
+    }
+
+    public function acceptedAdminFriends()
+    {
+        return $this->belongsToMany(
+            User::class,
+            'admin_friend_requests',
+            'user_id',
+            'admin_id'
+        )->wherePivot('status', 'accepted');
+    }
+
+    public function allFriendIds()
+{
+    $studentFriends = \DB::table('student_friend_requests')
+        ->where('status', 'accepted')
+        ->where(function ($q) {
+            $q->where('user_id', $this->id)
+              ->orWhere('student_id', $this->id);
+        })
+        ->get();
+
+    $studentIds = $studentFriends->map(function ($row) {
+        return $row->user_id == $this->id
+            ? $row->student_id
+            : $row->user_id;
+    });
+
+    $adminFriends = \DB::table('admin_friend_requests')
+        ->where('status', 'accepted')
+        ->where(function ($q) {
+            $q->where('user_id', $this->id)
+              ->orWhere('admin_id', $this->id);
+        })
+        ->get();
+
+    $adminIds = $adminFriends->map(function ($row) {
+        return $row->user_id == $this->id
+            ? $row->admin_id
+            : $row->user_id;
+    });
+
+    return $studentIds
+        ->merge($adminIds)
+        ->unique()
+        ->values();
+}
+
 
 
     // Mass assignable

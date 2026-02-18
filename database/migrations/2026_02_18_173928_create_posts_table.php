@@ -21,6 +21,12 @@ return new class extends Migration
             $table->unsignedInteger('views')->default(0);
             $table->unsignedInteger('shares')->default(0);
             $table->timestamps();
+            $table->foreignId('original_post_id')
+                    ->nullable()
+                    ->constrained('posts')
+                    ->nullOnDelete();
+            $table->enum('visibility', ['public','friends','private'])
+              ->default('public');
         });
 
     }
