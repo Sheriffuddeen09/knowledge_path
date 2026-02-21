@@ -134,25 +134,30 @@ public function index()
 {
     $friendIds = auth()->user()->allFriendIds()->toArray();
 
-    $posts = Post::where(function ($query) use ($friendIds) {
+    $viewedPostIds = PostView::where('user_id', auth()->id())
+        ->pluck('post_id')
+        ->toArray();
 
-        // PUBLIC
-        $query->where('visibility', 'public')
+    $posts = Post::whereNotIn('id', $viewedPostIds) // 🔥 THIS WAS MISSING
+        ->where(function ($query) use ($friendIds) {
 
-        // PRIVATE (only owner)
-        ->orWhere(function ($q) {
-            $q->where('visibility', 'private')
-            ->where('user_id', auth()->id());
-        })
+            // PUBLIC
+            $query->where('visibility', 'public')
 
-        // FRIENDS (owner + friends)
-        ->orWhere(function ($q) use ($friendIds) {
-            $q->where('visibility', 'friends')
-            ->where(function ($sub) use ($friendIds) {
-                $sub->where('user_id', auth()->id())
-                    ->orWhereIn('user_id', $friendIds);
+            // PRIVATE (only owner)
+            ->orWhere(function ($q) {
+                $q->where('visibility', 'private')
+                  ->where('user_id', auth()->id());
+            })
+
+            // FRIENDS
+            ->orWhere(function ($q) use ($friendIds) {
+                $q->where('visibility', 'friends')
+                  ->where(function ($sub) use ($friendIds) {
+                      $sub->where('user_id', auth()->id())
+                          ->orWhereIn('user_id', $friendIds);
+                  });
             });
-        });
 
         })
         ->with([
@@ -171,57 +176,37 @@ public function index()
         ->get()
         ->map(function ($post) {
 
+            $isRepost = !is_null($post->original_post_id);
+            $basePost = $isRepost ? $post->originalPost : $post;
+
             return [
                 'id' => $post->id,
-                'content' => $post->content,
+                'is_repost' => $isRepost,
+                'original_post_id' => $post->original_post_id, // 🔥 ADD THIS
 
-                'is_repost' => $post->original_post_id ? true : false,
-
-                'reposted_by' => $post->original_post_id ? [
+                'reposted_by' => $isRepost ? [
                     'id' => $post->user->id,
                     'name' => $post->user->first_name.' '.$post->user->last_name,
                 ] : null,
 
-                'media' => $post->media->map(fn ($m) => [
+                'content' => $basePost->content,
+
+                'media' => $basePost->media->map(fn ($m) => [
                     'id' => $m->id,
                     'type' => $m->type,
                     'url' => asset('storage/' . $m->path),
                 ]),
 
-                'original_post' => $post->originalPost ? [
-                    'id' => $post->originalPost->id,
-                    'content' => $post->originalPost->content,
-
-                    'media' => $post->originalPost->media->map(fn ($m) => [
-                        'id' => $m->id,
-                        'type' => $m->type,
-                        'url' => asset('storage/' . $m->path),
-                    ]),
-
-                    'user' => $post->originalPost->user ? [
-                        'id' => $post->originalPost->user->id,
-                        'name' =>
-                            $post->originalPost->user->first_name . ' ' .
-                            $post->originalPost->user->last_name,
-                    ] : null
-
-                ] : null,
-
-
-                'created_at' => $post->created_at->diffForHumans(),
-
                 'user' => [
-                    'id' => $post->user->id,
-                    'name' => $post->user->first_name.' '.$post->user->last_name,
+                    'id' => $basePost->user->id,
+                    'name' => $basePost->user->first_name.' '.$basePost->user->last_name,
                 ],
 
-                'reactions_count' => $post->reactions_count,
-                'comments_count'  => $post->comments_count,
-                'shares_count'    => $post->shares_count,
-                'reposts_count' => $post->original_post_id
-                ? $post->originalPost->reposts()->count()
-                : $post->reposts_count,
-
+                'created_at' => $post->created_at->diffForHumans(),
+                'reactions_count' => $basePost->reactions_count ?? 0,
+                'comments_count'  => $basePost->comments_count ?? 0,
+                'shares_count'    => $basePost->shares_count ?? 0,
+                'reposts_count'   => $basePost->reposts_count ?? 0,
             ];
         });
 
@@ -230,6 +215,7 @@ public function index()
         'posts' => $posts
     ]);
 }
+
 
 
 public function show(Post $post)
@@ -443,10 +429,31 @@ public function sharePost(Request $request, $chatId)
 
 
 
-public function view(Post $post)
+// public function view(Post $post)
+// {
+//     $post->increment('views');
+//     return response()->json(['views' => $post->views]);
+// } 
+
+
+public function addView($id)
 {
-    $post->increment('views');
-    return response()->json(['views' => $post->views]);
+    $post = Post::findOrFail($id);
+
+    $alreadyViewed = PostView::where('post_id', $post->id)
+        ->where('user_id', auth()->id())
+        ->exists();
+
+    if (!$alreadyViewed) {
+        PostView::create([
+            'post_id' => $post->id,
+            'user_id' => auth()->id(),
+        ]);
+
+        $post->increment('views');
+    }
+
+    return response()->json(['status' => true]);
 }
 
 
@@ -644,5 +651,31 @@ public function repost($id)
     ]);
 }
 
+// public function undoRepost($id)
+// {
+//     $repost = Post::where('id', $id)
+//         ->where('user_id', auth()->id())
+//         ->whereNotNull('original_post_id')
+//         ->first();
+
+//     if ($repost) {
+//         $repost->delete();
+//     }
+
+//     return response()->json([
+//         'status' => true
+//     ]);
+// }
+
+public function undoRepost(Post $post)
+{
+
+    $post->delete();
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Post deleted'
+    ]);
+}
 }
 

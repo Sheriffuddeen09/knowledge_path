@@ -96,8 +96,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chats/{chatId}/messages', [PostController::class, 'sharePost'])
     ->middleware('auth:sanctum');
 
-    Route::post('/posts/{id}/view', [PostController::class, 'markAsViewed']);
-    Route::post('/post/{post}/view', [PostController::class, 'view']);
+    Route::post('/post/{id}/view', [PostController::class, 'addView']);
+    Route::delete('/posts/{id}/undo-repost', [PostController::class, 'undoRepost']);
+
 
 
     // Single user Post
