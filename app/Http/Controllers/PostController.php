@@ -668,20 +668,25 @@ public function undoRepost(Post $post)
 }
 
 
-public function Search (Request $request)
+public function Search(Request $request)
 {
-
-$users = User::where('first_name', 'like', "%{$request->q}%")
+    $users = User::where('first_name', 'like', "%{$request->q}%")
         ->orWhere('last_name', 'like', "%{$request->q}%")
         ->limit(20)
-        ->get(['id', 'first_name', 'last_name']);
+        ->get(['id', 'first_name', 'last_name', 'role', 'image']);
 
-        return response()->json([
-            'users' => $users->map(fn($u) => [
-                'id' => $u->id,
-                'name' => $u->first_name. ' '.$u->last_name
-            ])
-        ]);
+    return response()->json([
+        'users' => $users->map(fn($u) => [
+            'id' => $u->id,
+            'name' => $u->first_name . ' ' . $u->last_name,
+            'role' => $u->role ?? 'user',
+            'image' => $u->image 
+                ? asset('storage/' . $u->image)
+                : null
+        ])
+    ]);
 }
+
+
 }
 
