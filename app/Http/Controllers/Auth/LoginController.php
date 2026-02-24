@@ -164,6 +164,31 @@ class LoginController extends Controller
             'message' => 'Logged out'
         ]);
     }
+
+   public function deleteAccount(Request $request)
+{
+    $user = auth()->user();
+
+    if (!$user) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Unauthorized'
+        ], 401);
+    }
+
+    if (method_exists($user, 'tokens')) {
+        $user->tokens()->delete();
+    }
+
+    $user->delete();
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Account Deleted'
+    ]);
+}
+
+
 }
 
 

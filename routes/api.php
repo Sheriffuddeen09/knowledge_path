@@ -96,8 +96,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chats/{chatId}/messages', [PostController::class, 'sharePost'])
     ->middleware('auth:sanctum');
 
-    Route::post('/post/{id}/view', [PostController::class, 'addView']);
+    Route::post('/posts/{id}/view', [PostController::class, 'addView']);
     Route::delete('/posts/{id}/undo-repost', [PostController::class, 'undoRepost']);
+
+    // Search
+    Route::get('/search-users', [PostController::class, 'Search']);
+    Route::delete('/search-users', [LoginController::class, 'deleteAccount']);
 
 
 
@@ -406,7 +410,12 @@ Route::post('/register', [RegisterController::class, 'register']);
 Route::post('/notification-badge', [RegisterController::class, 'myNotifications']);
 Route::post('/login', [LoginController::class, 'login']);
 Route::middleware('auth:sanctum')->post('/logout', [LoginController::class, 'logout']);
+Route::middleware('auth:sanctum')->delete('/delete-account', [LoginController::class, 'deleteAccount']);
+
+
+
 Route::post('/check', [RegisterController::class, 'checkBeforeNext']);
+
 
 Route::post('/check-email', function (Illuminate\Http\Request $request) {
     $exists = \App\Models\User::where('email', $request->email)->exists();

@@ -12,6 +12,7 @@ use App\Models\Message;
 use App\Models\PostMedia;
 use App\Models\HiddenPost;
 use App\Models\PostDownload;
+use App\Models\User;
 use App\Models\PostSave;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -176,40 +177,42 @@ public function index()
         ->get()
         ->map(function ($post) {
 
-            $isRepost = !is_null($post->original_post_id);
-            $basePost = $isRepost ? $post->originalPost : $post;
+    $isRepost = !is_null($post->original_post_id);
 
-            return [
-                'id' => $post->id,
-                'is_repost' => $isRepost,
-                'original_post_id' => $post->original_post_id, // 🔥 ADD THIS
+    $basePost = $post->original_post_id
+        ? $post->rootOriginal()
+        : $post;
 
-                'reposted_by' => $isRepost ? [
-                    'id' => $post->user->id,
-                    'name' => $post->user->first_name.' '.$post->user->last_name,
-                ] : null,
+    return [
+        'id' => $post->id,
+        'is_repost' => $isRepost,
+        'original_post_id' => $post->original_post_id,
 
-                'content' => $basePost->content,
+        'reposted_by' => $isRepost ? [
+            'id' => $post->user->id,
+            'name' => $post->user->first_name.' '.$post->user->last_name,
+        ] : null,
 
-                'media' => $basePost->media->map(fn ($m) => [
-                    'id' => $m->id,
-                    'type' => $m->type,
-                    'url' => asset('storage/' . $m->path),
-                ]),
+        'content' => $basePost->content,
 
-                'user' => [
-                    'id' => $basePost->user->id,
-                    'name' => $basePost->user->first_name.' '.$basePost->user->last_name,
-                ],
+        'media' => $basePost->media->map(fn ($m) => [
+            'id' => $m->id,
+            'type' => $m->type,
+            'url' => asset('storage/' . $m->path),
+        ]),
 
-                'created_at' => $post->created_at->diffForHumans(),
-                'reactions_count' => $basePost->reactions_count ?? 0,
-                'comments_count'  => $basePost->comments_count ?? 0,
-                'shares_count'    => $basePost->shares_count ?? 0,
-                'reposts_count'   => $basePost->reposts_count ?? 0,
-            ];
-        });
+        'user' => [
+            'id' => $basePost->user->id,
+            'name' => $basePost->user->first_name.' '.$basePost->user->last_name,
+        ],
 
+        'created_at' => $post->created_at->diffForHumans(),
+        'reactions_count' => $basePost->reactions_count ?? 0,
+        'comments_count'  => $basePost->comments_count ?? 0,
+        'shares_count'    => $basePost->shares_count ?? 0,
+        'reposts_count'   => $basePost->reposts_count ?? 0,
+    ];
+});
     return response()->json([
         'status' => true,
         'posts' => $posts
@@ -617,7 +620,7 @@ public function destroyImage($id)
     ]);
 }
 
-public function repost($id)
+public function repost(Request $request, $id)
 {
     $original = Post::findOrFail($id);
 
@@ -642,30 +645,16 @@ public function repost($id)
     $repost = Post::create([
         'user_id' => auth()->id(),
         'original_post_id' => $original->id,
-        'visibility' => 'public',
+        'visibility' => $request->visibility ?? 'public',
     ]);
 
     return response()->json([
         'status' => true,
+        'message' => 'Reposted successfully',
         'repost_id' => $repost->id
     ]);
 }
 
-// public function undoRepost($id)
-// {
-//     $repost = Post::where('id', $id)
-//         ->where('user_id', auth()->id())
-//         ->whereNotNull('original_post_id')
-//         ->first();
-
-//     if ($repost) {
-//         $repost->delete();
-//     }
-
-//     return response()->json([
-//         'status' => true
-//     ]);
-// }
 
 public function undoRepost(Post $post)
 {
@@ -676,6 +665,23 @@ public function undoRepost(Post $post)
         'status' => true,
         'message' => 'Post deleted'
     ]);
+}
+
+
+public function Search (Request $request)
+{
+
+$users = User::where('first_name', 'like', "%{$request->q}%")
+        ->orWhere('last_name', 'like', "%{$request->q}%")
+        ->limit(20)
+        ->get(['id', 'first_name', 'last_name']);
+
+        return response()->json([
+            'users' => $users->map(fn($u) => [
+                'id' => $u->id,
+                'name' => $u->first_name. ' '.$u->last_name
+            ])
+        ]);
 }
 }
 

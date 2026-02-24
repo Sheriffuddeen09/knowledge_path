@@ -26,6 +26,17 @@ class Post extends Model
         return $this->hasMany(PostReaction::class);
     }
 
+    public function rootOriginal()
+    {
+        $post = $this;
+
+        while ($post->originalPost) {
+            $post = $post->originalPost;
+        }
+
+        return $post;
+    }
+
     public function comments()
     {
         return $this->hasMany(PostComment::class);
