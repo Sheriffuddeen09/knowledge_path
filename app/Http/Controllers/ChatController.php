@@ -257,24 +257,41 @@ public function index()
 
 
  public function unreadSendersCount()
-    {
-        $userId = auth()->id();
+{
+    $userId = auth()->id();
 
-        $count = \App\Models\Message::where('is_read', false)
-            ->where('sender_id', '!=', $userId)
-            ->whereHas('chat', function ($q) use ($userId) {
-                $q->where('teacher_id', $userId)
-                  ->orWhere('student_id', $userId);
-            })
-            ->distinct('sender_id')
-            ->count('sender_id');
+    $count = \App\Models\Message::whereNull('seen_at')
+        ->where('sender_id', '!=', $userId)
+        ->whereHas('chat', function ($q) use ($userId) {
+            $q->where('teacher_id', $userId)
+              ->orWhere('student_id', $userId);
+        })
+        ->distinct('sender_id')
+        ->count('sender_id');
 
-        return response()->json([
-            'unread_senders' => $count
+    return response()->json([
+        'unread_senders' => $count
+    ]);
+}
+
+
+    public function markAllAsRead(Request $request)
+{
+    $userId = $request->user()->id;
+
+    \App\Models\Message::whereNull('seen_at')
+        ->where('sender_id', '!=', $userId)
+        ->whereHas('chat', function ($q) use ($userId) {
+            $q->where('teacher_id', $userId)
+              ->orWhere('student_id', $userId);
+        })
+        ->update([
+            'seen_at' => now(),
+            'is_read' => true
         ]);
-    }
 
-
+    return response()->json(['status' => true]);
+}
 
 
 // markSeen function
@@ -390,7 +407,7 @@ public function edit (Request $request, Message $message)
 
 
 
-//  forward function
+//  forward function 
 
 public function forwardMultiple(Request $request)
 {
@@ -483,5 +500,18 @@ public function toggle(Request $request)
     return Message::with(['reactions.user'])->find($request->message_id);
 }
 
+public function markAsReadMessage(Request $request)
+{
+    Message::where('receiver_id', auth()->id())
+        ->where('is_read', false)
+        ->update([
+            'is_read' => true
+        ]);
+
+    return response()->json([
+        'status' => true
+    ]);
+}
 
 }
+//unreadSendersCount

@@ -61,8 +61,6 @@ public function sendRequest(Request $request)
             'message' => 'You cannot add yourself'
         ], 422);
     }
-
-    // Find any existing request between both users
     $existing = AdminFriendRequest::where(function ($q) use ($user, $adminId) {
         $q->where('user_id', $user->id)
           ->where('admin_id', $adminId);
@@ -70,28 +68,14 @@ public function sendRequest(Request $request)
         $q->where('user_id', $adminId)
           ->where('admin_id', $user->id);
     })->first();
-
-    /**
-     * 🚫 Already pending → block
-     */
     if ($existing && $existing->status === 'pending') {
         return response()->json([
             'message' => 'Request already pending'
         ], 409);
     }
-
-    /**
-     * 🔄 Previously declined
-     */
     if ($existing && $existing->status === 'declined') {
-
-        // ❗ Delete old request completely
         $existing->delete();
     }
-
-    /**
-     * ✅ Create NEW request with CORRECT direction
-     */
     $requestModel = AdminFriendRequest::create([
         'user_id' => $user->id,       // sender
         'admin_id' => $adminId,   // receiver
@@ -99,9 +83,6 @@ public function sendRequest(Request $request)
         'hidden_for_requester' => false,
         'hidden_for_requested' => false,
     ]);
-
-
-    // ✅ SAFE MAIL (NULL CHECK)
     if ($requestModel->admin) {
         Mail::to($requestModel->admin->email)
             ->send(new AdminFriendRequested($requestModel));
@@ -391,12 +372,9 @@ public function showAccepted($id, Request $request)
     ]);
 }
 
-public function showAcceptedIndex(Request $request) 
+public function showAcceptedIndex(Request $request)
 {
     $authId = $request->user()->id;
-
-    // Since this is dashboard-only, user is ALWAYS owner
-    $isOwner = true;
 
     $acceptedRelations = AdminFriendRequest::where('status', 'accepted')
         ->where(function ($q) use ($authId) {
@@ -412,18 +390,16 @@ public function showAcceptedIndex(Request $request)
     $acceptedAdmins = $acceptedRelations
         ->map(function ($relation) use ($authId) {
 
-            // Get the OTHER person in the relationship
-            $admin = $relation->user_id == $authId
+            // Get the OTHER person
+            return $relation->user_id == $authId
                 ? $relation->admin
                 : $relation->user;
 
-            $admin->status = 'accepted';
-
-            return $admin;
         })
+        ->filter() // remove null just in case
         ->values()
         ->map(function ($admin, $index) {
-            $admin->index = $index + 1; // ✅ Dashboard index
+            $admin->index = $index + 1;
             return $admin;
         });
 
@@ -432,6 +408,5 @@ public function showAcceptedIndex(Request $request)
         'isOwner' => true,
     ]);
 }
-
 
 }

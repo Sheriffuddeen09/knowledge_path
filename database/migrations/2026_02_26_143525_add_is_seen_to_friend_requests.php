@@ -10,18 +10,14 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up(): void
-    
     {
-    Schema::table('posts', function (Blueprint $table) {
-        $table->foreignId('original_post_id')
-              ->nullable()
-              ->constrained('posts')
-              ->cascadeOnDelete();
+        Schema::table('admin_friend_requests', function (Blueprint $table) {
+            $table->boolean('is_seen')->default(0);
+        });
 
-        $table->enum('visibility', ['public','friends','private'])
-              ->default('public');
-    });
-
+        Schema::table('student_friend_requests', function (Blueprint $table) {
+            $table->boolean('is_seen')->default(0);
+        });
     }
 
     /**
@@ -29,7 +25,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('posts', function (Blueprint $table) {
+        Schema::table('friend_requests', function (Blueprint $table) {
             //
         });
     }

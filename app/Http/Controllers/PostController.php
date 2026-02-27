@@ -24,20 +24,83 @@ use Carbon\Carbon;
 class PostController extends Controller
 {
     
-public function store(Request $request)
+// public function store(Request $request)
+// {
+
+//         $request->validate([
+//             'content' => 'nullable|string',
+//             'visibility' => 'required|in:public,friends,private',
+//             'images' => 'nullable|array',
+//             'images.*' => 'image|mimes:jpg,jpeg,png,webp|max:5120',
+//             'video' => 'nullable|file|mimes:mp4,mov|max:51200',
+//         ]);
+
+
+
+//     // empty post show
+//     if (
+//         !$request->content &&
+//         !$request->hasFile('images') &&
+//         !$request->hasFile('video')
+//     ) {
+//         return response()->json(['message' => 'Post is empty'], 422);
+//     }
+
+//     // ❌ block image + video together
+//     if ($request->hasFile('images') && $request->hasFile('video')) {
+//         return response()->json([
+//             'message' => 'You can upload images OR a video, not both.'
+//         ], 422);
+//     }
+
+//     $post = Post::create([
+//             'user_id' => auth()->id(),
+//             'content' => $request->content,
+//             'visibility' => $request->visibility, // 👈 IMPORTANT
+//         ]);
+
+
+//     // ✅ save images
+//     if ($request->hasFile('images')) {
+//         foreach ($request->file('images') as $index => $image) {
+//             $path = $image->store('posts/images', 'public');
+
+//             $post->media()->create([
+//                 'type' => 'image',
+//                 'path' => $path,
+//                 'order' => $index,
+//             ]);
+//         }
+//     }
+
+//     // ✅ save ONE video
+//     if ($request->hasFile('video')) {
+//         $path = $request->file('video')->store('posts/videos', 'public');
+
+//         $post->media()->create([
+//             'type' => 'video',
+//             'path' => $path,
+//             'order' => 0,
+//         ]);
+//     }
+
+//     return response()->json([
+//         'post' => $post->load('media')
+//     ], 201);
+// }
+
+
+ public function store(Request $request)
 {
+    $request->validate([
+        'content' => 'nullable|string',
+        'visibility' => 'required|in:public,friends,private',
+        'images' => 'nullable|array',
+        'images.*' => 'image|mimes:jpg,jpeg,png,webp|max:5120',
+        'video' => 'nullable|file|mimes:mp4,mov|max:51200',
+    ]);
 
-        $request->validate([
-            'content' => 'nullable|string',
-            'visibility' => 'required|in:public,friends,private',
-            'images' => 'nullable|array',
-            'images.*' => 'image|mimes:jpg,jpeg,png,webp|max:5120',
-            'video' => 'nullable|file|mimes:mp4,mov|max:51200',
-        ]);
-
-
-
-    // empty post show
+    // ❌ Empty post check
     if (
         !$request->content &&
         !$request->hasFile('images') &&
@@ -46,21 +109,23 @@ public function store(Request $request)
         return response()->json(['message' => 'Post is empty'], 422);
     }
 
-    // ❌ block image + video together
+    // ❌ Block image + video together
     if ($request->hasFile('images') && $request->hasFile('video')) {
         return response()->json([
             'message' => 'You can upload images OR a video, not both.'
         ], 422);
     }
 
+    // ✅ Create post
     $post = Post::create([
-            'user_id' => auth()->id(),
-            'content' => $request->content,
-            'visibility' => $request->visibility, // 👈 IMPORTANT
-        ]);
+    'user_id' => auth()->id(),
+    'content' => $request->content,
+    'visibility' => $request->visibility,
+    'is_new_home' => 1,   // ALL posts increase home
+    'is_new_video' => 0,  // default
+    ]);
 
-
-    // ✅ save images
+    // ✅ Save images
     if ($request->hasFile('images')) {
         foreach ($request->file('images') as $index => $image) {
             $path = $image->store('posts/images', 'public');
@@ -73,7 +138,7 @@ public function store(Request $request)
         }
     }
 
-    // ✅ save ONE video
+    // ✅ Save ONE video
     if ($request->hasFile('video')) {
         $path = $request->file('video')->store('posts/videos', 'public');
 
@@ -84,52 +149,25 @@ public function store(Request $request)
         ]);
     }
 
+
+    $hasVideo = $post->media()->where('type', 'video')->exists();
+    $hasImage = $post->media()->where('type', 'image')->exists();
+    $hasContent = !empty($request->content);
+
+    // ONLY video (no image, no content)
+    $isVideoOnly = $hasVideo && !$hasImage && !$hasContent;
+
+    $post->update([
+        'is_new_home' => 1,
+        'is_new_video' => $isVideoOnly ? 1 : 0,
+    ]);
+
     return response()->json([
         'post' => $post->load('media')
     ], 201);
 }
 
 
-    
-// public function index()
-// {
-//     $posts = Post::whereDoesntHave('hiddenBy', function ($q) {
-//         $q->where('user_id', auth()->id())
-//           ->where('hidden_until', '>', now());
-//     })
-//     ->with([
-//         'user:id,first_name,last_name,image',
-//         'media',
-//     ])
-//     ->withCount(['reactions', 'comments', 'shares'])
-//     ->inRandomOrder()   // ✅ RANDOM
-//     ->get()
-//     ->map(function ($post) {
-//         return [
-//             'id' => $post->id,
-//             'content' => $post->content,
-//             'media' => $post->media->map(fn ($m) => [
-//                 'id' => $m->id,
-//                 'type' => $m->type,
-//                 'url' => asset('storage/' . $m->path),
-//             ]),
-//             'created_at' => $post->created_at->diffForHumans(),
-//             'user' => [
-//                 'id' => $post->user->id,
-//                 'name' => $post->user->first_name.' '.$post->user->last_name,
-//                 'role' => $post->user->role,
-//             ],
-//             'reactions_count' => $post->reactions_count,
-//             'comments_count'  => $post->comments_count,
-//             'shares_count'    => $post->shares_count,
-//         ];
-//     });
-
-//     return response()->json([
-//         'status' => true,
-//         'posts' => $posts
-//     ]);
-// }
 
 public function index()
 {
@@ -220,38 +258,57 @@ public function index()
 }
 
 
-
-public function show(Post $post)
+public function show($id)
 {
-    $post->load([
+    $post = Post::with([
         'user:id,first_name,last_name,image',
         'media',
         'reactions',
         'comments.user',
         'comments.replies.user',
-    ]);
+        'originalPost.user',
+        'originalPost.media'
+    ])
+    ->withCount([
+        'reactions',
+        'comments',
+        'shares',
+        'reposts'
+    ])
+    ->findOrFail($id);
+
+    $isRepost = !is_null($post->original_post_id);
+
+    $basePost = $post->original_post_id
+        ? $post->rootOriginal()
+        : $post;
 
     return response()->json([
+        'status' => true,
         'post' => [
             'id' => $post->id,
-            'content' => $post->content,
+            'is_repost' => $isRepost,
+            'original_post_id' => $post->original_post_id,
             'created_at' => $post->created_at->diffForHumans(),
 
-            'user' => [
-                'id' => $post->user->id,
-                'name' => $post->user->first_name.' '.$post->user->last_name,
-                'role' => $post->user->role,
+            'content' => $basePost->content,
 
-            ],
-
-            'media' => $post->media->map(fn ($m) => [
+            'media' => $basePost->media->map(fn ($m) => [
                 'id' => $m->id,
                 'type' => $m->type,
-                'url' => asset('storage/'.$m->path),
+                'url' => asset('storage/' . $m->path),
             ]),
 
-            'reactions_count' => $post->reactions->count(),
-            'comments_count' => $post->comments->count(),
+            'user' => [
+                'id' => $basePost->user->id,
+                'name' => $basePost->user->first_name.' '.$basePost->user->last_name,
+            ],
+
+            'created_at' => $post->created_at->diffForHumans(),
+            'reactions_count' => $basePost->reactions_count ?? 0,
+            'comments_count'  => $basePost->comments_count ?? 0,
+            'shares_count'    => $basePost->shares_count ?? 0,
+            'reposts_count'   => $basePost->reposts_count ?? 0,
         ]
     ]);
 }
@@ -432,7 +489,7 @@ public function sharePost(Request $request, $chatId)
 
 
 
-// public function view(Post $post)
+// public function view(Post $post) store
 // {
 //     $post->increment('views');
 //     return response()->json(['views' => $post->views]);

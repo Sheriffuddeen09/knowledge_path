@@ -13,7 +13,9 @@ class Post extends Model
         'video',
         'views',
         'visibility',
-        'original_post_id'
+        'original_post_id',
+        'is_new_home',
+        'is_new_video',
     ];
 
     public function user()

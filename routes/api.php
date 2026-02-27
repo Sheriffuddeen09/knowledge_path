@@ -48,6 +48,7 @@ use App\Http\Controllers\PostReportController;
 use App\Http\Controllers\CommentReportController;
 use App\Http\Controllers\PostStreamController;
 
+//markAsRead friendRequestCount
 
 Route::get('/video/stream/{video}', [PostStreamController::class, 'stream']);
 
@@ -113,7 +114,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/posts-single/{post}', [PostController::class, 'update'])->middleware('auth:sanctum');
     Route::delete('/image/media/{id}', [PostController::class, 'destroyImage']);
 
-});
+
+    //  count
+    Route::get('/post-count', [NotificationController::class, 'postCount']);
+    Route::post('/clear-home-posts', [NotificationController::class, 'clearHomePosts']);
+    Route::post('/clear-video-posts', [NotificationController::class, 'clearVideoPosts']);
+    
+    
+    });
     
 
 
@@ -161,7 +169,7 @@ Route::middleware('auth:sanctum')->group(function () {
   
 });
 
-//download
+//download check-phone
 
 Route::middleware('auth:sanctum')->get(
     '/student/badges',
@@ -236,12 +244,14 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
 
-
+///messages/unread-count admin/me
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/notifications/requests', [NotificationController::class, 'requestCount']);
     Route::get('/notifications/messages', [NotificationController::class, 'messageCount']);
-    Route::post('/chats/{chat}/seen', [NotificationController::class, 'markAsRead']);
+    Route::post('/friend-request-clear', [NotificationController::class, 'clearFriendRequests']);
+    Route::post('/messages/mark-as-read', [ChatController::class, 'markAllAsRead']);
+    Route::get('/friend-request-count', [NotificationController::class,'friendRequestCount']);
     Route::delete(
   '/live-class/request/{id}/clear-teacher',
     [LiveClassController::class, 'clearByTeacher']
@@ -296,6 +306,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/chat/is-blocked/{userId}', [ChatController::class, 'isBlocked']);
     Route::delete('/chats/{chat}/clear', [ChatController::class, 'clearChat']);
     Route::get('/messages/unread-count', [ChatController::class, 'unreadSendersCount']);
+    Route::get('/messages/mark-as-read', [ChatController::class, 'markAsReadMessage']);
 
 
 });
@@ -422,10 +433,17 @@ Route::post('/check-email', function (Illuminate\Http\Request $request) {
 
     return response()->json(['exists' => $exists]);
 });
-Route::post('/check-phone', function (Illuminate\Http\Request $request) {
-    $exists = \App\Models\User::where('phone', $request->phone)->exists();
 
-    return response()->json(['exists' => $exists]);
+
+Route::post('/check-phone', function (Illuminate\Http\Request $request) {
+
+    $exists = \App\Models\User::where('phone', $request->phone)
+        ->where('phone_country_code', $request->phone_country_code)
+        ->exists();
+
+    return response()->json([
+        'exists' => $exists
+    ]);
 });
 
 

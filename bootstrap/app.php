@@ -29,7 +29,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // ✅ Global middleware
         $middleware->append(
-            \Illuminate\Http\Middleware\HandleCors::class
+            \Illuminate\Http\Middleware\HandleCors::class,
+            \App\Http\Middleware\CrossOriginIsolation::class,
         );
 
         // ✅ Disable CSRF for API

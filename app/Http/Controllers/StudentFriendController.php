@@ -77,8 +77,6 @@ public function sendRequest(Request $request)
             'message' => 'You cannot add yourself'
         ], 422);
     }
-
-    // Find any existing request between both users
     $existing = StudentFriendRequest::where(function ($q) use ($user, $studentId) {
         $q->where('user_id', $user->id)
           ->where('student_id', $studentId);
@@ -86,28 +84,14 @@ public function sendRequest(Request $request)
         $q->where('user_id', $studentId)
           ->where('student_id', $user->id);
     })->first();
-
-    /**
-     * 🚫 Already pending → block
-     */
     if ($existing && $existing->status === 'pending') {
         return response()->json([
             'message' => 'Request already pending'
         ], 409);
     }
-
-    /**
-     * 🔄 Previously declined
-     */
     if ($existing && $existing->status === 'declined') {
-
-        // ❗ Delete old request completely
         $existing->delete();
     }
-
-    /**
-     * ✅ Create NEW request with CORRECT direction
-     */
     $requestModel = StudentFriendRequest::create([
         'user_id' => $user->id,       // sender
         'student_id' => $studentId,   // receiver
@@ -115,9 +99,6 @@ public function sendRequest(Request $request)
         'hidden_for_requester' => false,
         'hidden_for_requested' => false,
     ]);
-
-
-    // ✅ SAFE MAIL (NULL CHECK)
     if ($requestModel->student) {
         Mail::to($requestModel->student->email)
             ->send(new StudentFriendRequested($requestModel));
