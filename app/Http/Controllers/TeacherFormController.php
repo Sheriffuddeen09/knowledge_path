@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Storage;
 use App\Rules\MaxWords;
  use Illuminate\Validation\Rule;
  use Illuminate\Support\Facades\Auth;
+ use App\Models\Notification;
 
 class TeacherFormController extends Controller
 {
@@ -38,6 +39,7 @@ class TeacherFormController extends Controller
         return response()->json(['errors' => $validator->errors()], 422);
     }
 
+    // 1️⃣ Create teacher profile
     $teacherForm = TeacherForm::create([
         'user_id' => $request->user()->id,
         'coursetitle_id' => $request->coursetitle_id,
@@ -51,20 +53,33 @@ class TeacherFormController extends Controller
         'cv' => $request->file('cv')?->store('teacher_cvs', 'public'),
     ]);
 
-
-
+    // 2️⃣ Update teacher user info
     $user = auth()->user();
-
     $user->teacher_profile_completed = 1;
     $user->teacher_info = json_encode($teacherForm);
     $user->save();
 
-    \Log::info('Teacher profile marked completed', [
-    'user_id' => $user->id,
-    'completed' => $user->teacher_profile_completed
-]);
+    // 3️⃣ Notify all students about new teacher
+    User::where('role', 'student')
+        ->where('id', '!=', $user->id) // avoid notifying self
+        ->get()
+        ->each(function ($student) use ($user) {
+            Notification::create([
+                'user_id' => $student->id,
+                'type' => 'teacher_suggestion',
+                'data' => json_encode([
+                    'teacher_name' => $user->first_name . ' ' . $user->last_name,
+                    'teacher_id' => $user->id,
+                ]),
+                'redirect_url' => '/get-mentor',
+                'read' => false,
+            ]);
+        });
 
-
+    \Log::info('Teacher profile completed', [
+        'user_id' => $user->id,
+        'completed' => $user->teacher_profile_completed
+    ]);
 
     return response()->json([
         'status' => true,

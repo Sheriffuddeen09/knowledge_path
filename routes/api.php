@@ -48,8 +48,12 @@ use App\Http\Controllers\PostReportController;
 use App\Http\Controllers\CommentReportController;
 use App\Http\Controllers\PostStreamController;
 
-//markAsRead friendRequestCount
+//markAsRead block
 
+Route::middleware('auth:sanctum')->get('/page-notifications', [NotificationController::class, 'index']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/notifications/read/{id}', [NotificationController::class, 'markAsReadNotification']);
+});
 Route::get('/video/stream/{video}', [PostStreamController::class, 'stream']);
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -70,7 +74,6 @@ Route::middleware('auth:sanctum')->group(function () {
     // Comment library
     Route::get('/posts/{post}/comments', [PostCommentController::class, 'index']);
     Route::post('/posts/{post}/comments', [PostCommentController::class, 'store']);
-    Route::post('/posts/{comment}/reaction', [PostCommentController::class, 'react']);
     Route::get('/posts/{comment}/reactions', [PostCommentController::class, 'reactions']);
     Route::put('/posts/{comment}/comment', [PostCommentController::class, 'update']);
     Route::delete('/posts/{comment}/comment', [PostCommentController::class, 'destroy']);
@@ -119,7 +122,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/post-count', [NotificationController::class, 'postCount']);
     Route::post('/clear-home-posts', [NotificationController::class, 'clearHomePosts']);
     Route::post('/clear-video-posts', [NotificationController::class, 'clearVideoPosts']);
-    
+
+    Route::post('/messages/clear-unread', [NotificationController::class, 'clearUnreadMessages']);
+    Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/messages/unread-count', [NotificationController::class, 'unreadMessageSendersCount']);
+    });
+
+    Route::post('/unread-notifications-clear', [NotificationController::class, 'markNotificationsAsRead']);
+    Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/unread-notifications-count', [NotificationController::class, 'unreadNotificationsCount']);
+    });
     
     });
     
@@ -250,7 +262,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/notifications/requests', [NotificationController::class, 'requestCount']);
     Route::get('/notifications/messages', [NotificationController::class, 'messageCount']);
     Route::post('/friend-request-clear', [NotificationController::class, 'clearFriendRequests']);
-    Route::post('/messages/mark-as-read', [ChatController::class, 'markAllAsRead']);
+    Route::post('/chats/{chat}/seen', [NotificationController::class, 'markAsRead']);
     Route::get('/friend-request-count', [NotificationController::class,'friendRequestCount']);
     Route::delete(
   '/live-class/request/{id}/clear-teacher',
@@ -305,7 +317,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/unblock', [BlockController::class, 'unblock']);
     Route::get('/chat/is-blocked/{userId}', [ChatController::class, 'isBlocked']);
     Route::delete('/chats/{chat}/clear', [ChatController::class, 'clearChat']);
-    Route::get('/messages/unread-count', [ChatController::class, 'unreadSendersCount']);
     Route::get('/messages/mark-as-read', [ChatController::class, 'markAsReadMessage']);
 
 

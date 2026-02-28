@@ -16,6 +16,7 @@ class Notification extends Model
         'message',
         'data',
         'read_at',
+        'redirect_url',
     ];
 
     protected $casts = [

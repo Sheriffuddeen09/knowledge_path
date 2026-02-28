@@ -91,63 +91,25 @@ public function index()
 
             $chat->other_user = User::find($otherId);
         }
+
+        $block = $chat->blocks()->first();
+
+        if ($block) {
+            $chat->block_info = [
+                'blocked' => true,
+                'blocker_id' => $block->blocker_id,
+                'blocked_id' => $block->blocked_id,
+                'is_blocked_by_me' => $block->blocker_id == $userId,
+                'is_blocked_by_other' => $block->blocker_id != $userId,
+            ];
+        } else {
+            $chat->block_info = null;
+        }
     });
+
 
     return response()->json($chats);
 }
-
-
-// public function index(Request $request)
-// {
-//     $userId = $request->user()->id;
-
-//     $chats = Chat::where(function ($q) use ($userId) {
-//             $q->where('teacher_id', $userId)
-//               ->orWhere('student_id', $userId)
-//               ->orWhere('user_one_id', $userId)
-//               ->orWhere('user_two_id', $userId);
-//         })
-//         ->with([
-//             'teacher',
-//             'student',
-//             'latestMessage.sender',
-//             'messages' => fn ($q) => $q->latest()
-//         ])
-//         ->get()
-//         ->map(function ($chat) use ($userId) {
-
-//             /** ✅ UNREAD COUNT */
-//             $chat->unread_count = $chat->messages
-//                 ->whereNull('seen_at')
-//                 ->where('sender_id', '!=', $userId)
-//                 ->count();
-
-//             /** ✅ BLOCK INFO */
-//             $block = $chat->blocks()->first();
-//             $chat->block_info = $block ? [
-//                 'blocked' => true,
-//                 'blocker_id' => $block->blocker_id,
-//                 'blocked_id' => $block->blocked_id,
-//             ] : null;
-
-//             /** ✅ DETERMINE OTHER USER */
-//             if ($chat->type === 'student_teacher') {
-//                 $chat->other_user = $chat->teacher_id == $userId
-//                     ? $chat->student
-//                     : $chat->teacher;
-//             } else {
-//                 $otherId = $chat->user_one_id == $userId
-//                     ? $chat->user_two_id
-//                     : $chat->user_one_id;
-
-//                 $chat->other_user = User::find($otherId);
-//             }
-
-//             return $chat;
-//         });
-
-//     return response()->json($chats);
-// }
 
 
 
@@ -173,6 +135,7 @@ public function index()
 
     $path = null;
     $fileName = null;
+    $receiverId = null;
 
     if ($request->hasFile('file')) {
         $file = $request->file('file');
@@ -180,10 +143,24 @@ public function index()
         $fileName = $file->getClientOriginalName();
     }
 
+
+    if ($chat->teacher_id && $chat->student_id) {
+        $receiverId = $chat->teacher_id == auth()->id()
+            ? $chat->student_id
+            : $chat->teacher_id;
+    }
+
+    if ($chat->user_one_id && $chat->user_two_id) {
+        $receiverId = $chat->user_one_id == auth()->id()
+            ? $chat->user_two_id
+            : $chat->user_one_id;
+    }
+
     $message = Message::create([
         'chat_id'    => $chat->id,
         'user_id' => auth()->id(),
         'sender_id' => auth()->id(),
+        'receiver_id'=> $receiverId,
         'type'       => $request->type,
         'message'    => $request->message,
         'file'       => $path,
@@ -214,7 +191,7 @@ public function index()
 }
 
 
-// sendvoice note function
+// sendvoice note function block
    public function sendVoice(Request $request)
 {
     $request->validate([
@@ -234,11 +211,22 @@ public function index()
     $file = $request->file('voice');
     $path = $file->store('chat_files', 'public');
 
+    $receiverId = $chat->teacher_id == auth()->id()
+    ? $chat->student_id
+    : $chat->teacher_id;
+
+    if ($chat->user_one_id && $chat->user_two_id) {
+        $receiverId = $chat->user_one_id == auth()->id()
+            ? $chat->user_two_id
+            : $chat->user_one_id;
+    }
+
     $message = Message::create([
         'chat_id'   => $chat->id,
         'user_id' => auth()->id(),
         'sender_id' => auth()->id(),
         'type'      => 'voice',
+        'receiver_id'=> $receiverId,
         'file'      => $path,
         'is_read' => false
     ]);
@@ -251,48 +239,6 @@ public function index()
         'message' => $message,
     ]);
 }
-
-
-// unread Senders Count
-
-
- public function unreadSendersCount()
-{
-    $userId = auth()->id();
-
-    $count = \App\Models\Message::whereNull('seen_at')
-        ->where('sender_id', '!=', $userId)
-        ->whereHas('chat', function ($q) use ($userId) {
-            $q->where('teacher_id', $userId)
-              ->orWhere('student_id', $userId);
-        })
-        ->distinct('sender_id')
-        ->count('sender_id');
-
-    return response()->json([
-        'unread_senders' => $count
-    ]);
-}
-
-
-    public function markAllAsRead(Request $request)
-{
-    $userId = $request->user()->id;
-
-    \App\Models\Message::whereNull('seen_at')
-        ->where('sender_id', '!=', $userId)
-        ->whereHas('chat', function ($q) use ($userId) {
-            $q->where('teacher_id', $userId)
-              ->orWhere('student_id', $userId);
-        })
-        ->update([
-            'seen_at' => now(),
-            'is_read' => true
-        ]);
-
-    return response()->json(['status' => true]);
-}
-
 
 // markSeen function
 
@@ -499,6 +445,7 @@ public function toggle(Request $request)
 
     return Message::with(['reactions.user'])->find($request->message_id);
 }
+
 
 public function markAsReadMessage(Request $request)
 {

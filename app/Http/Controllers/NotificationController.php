@@ -7,10 +7,112 @@ use App\Models\LiveClassRequest;
 use App\Models\AdminFriendRequest;
 use App\Models\StudentFriendRequest;
 use App\Models\Message;
+use App\Models\Notification;
 use App\Models\Post;
 
 class NotificationController extends Controller
 {
+
+    public function index()
+{
+    $user = auth()->user();
+
+    $notifications = Notification::where('user_id', $user->id)
+        ->orderBy('created_at', 'desc')
+        ->get()
+        ->map(function ($n) {
+
+            $data = json_decode($n->data, true) ?? [];
+
+            $message = '';
+
+            switch ($n->type) {
+
+                case 'mention':
+                    $data = json_decode($n->data, true);
+                    $message = $data['mentioned_by'] . " mentioned you in a comment";
+                    $redirect = $data['redirect_url'] ?? '';
+                    break;
+
+                case 'friend_suggestion':
+                    $message = "New friend suggestion: " . ($data['name'] ?? '');
+                    break;
+
+                case 'teacher_suggestion':
+                    $message = "New teacher available: " . ($data['teacher_name'] ?? '');
+                    break;
+
+                case 'post_reaction':
+                    $reactors = collect($data['reactors'] ?? []);
+                    $count = $reactors->count();
+
+                    if ($count === 1) {
+                        $message = $reactors[0] . " reacted to your post";
+                    } elseif ($count === 2) {
+                        $message = $reactors[0] . " and " . $reactors[1] . " reacted to your post";
+                    } elseif ($count > 2) {
+                        $message = $reactors[0] . " and " . ($count - 1) . " others reacted to your post";
+                    }
+                    break;
+
+                case 'post_comment':
+                    $commenters = collect($data['commenters'] ?? []);
+                    $count = $commenters->count();
+
+                    if ($count === 1) {
+                        $message = $commenters[0] . " commented on your post";
+                    } elseif ($count === 2) {
+                        $message = $commenters[0] . " and " . $commenters[1] . " commented on your post";
+                    } elseif ($count > 2) {
+                        $message = $commenters[0] . " and " . ($count - 1) . " others commented on your post";
+                    }
+                    break;
+
+                    case 'chat_blocked':
+                        $message = ($data['full_name'] ?? ($data['first_name'] . ' ' . $data['last_name'])) . " blocked you";
+                        break;
+
+                    case 'chat_unblocked':
+                        $message = ($data['full_name'] ?? ($data['first_name'] . ' ' . $data['last_name'])) . " unblocked you";
+                        break;
+
+                    case 'chat_reported':
+                        $message = $data['reporter_name'] . " reported you in a chat";
+                        break;
+
+                    case 'post_reported':
+                        $message = $data['reporter_name'] . " reported your post";
+                        break;
+
+                    case 'comment_reported':
+                        $message = $data['reporter_name'] . " reported your comment";
+                        break;
+            }
+
+            return [
+                'id' => $n->id,
+                'type' => $n->type,
+                'message' => $message,
+                'redirect_url' => $n->redirect_url, // 👈 IMPORTANT
+                'read' => $n->read,
+                'created_at' => $n->created_at->diffForHumans(),
+            ];
+        });
+
+    return response()->json($notifications);
+}
+
+public function markAsReadNotification($id)
+    {
+        $notification = Notification::where('id', $id)
+            ->where('user_id', auth()->id())
+            ->firstOrFail();
+
+        $notification->update(['read' => true]);
+
+        return response()->json(['status' => true]);
+    }
+
     public function requestCount(Request $request)
     {
         $user = $request->user();
@@ -128,6 +230,69 @@ public function clearVideoPosts()
         ->update(['is_new_video' => 0]);
 
     return response()->json(['success' => true]);
+}
+
+
+public function unreadMessageSendersCount()
+{
+    $userId = auth()->id();
+
+    $count = Message::where('receiver_id', $userId)
+        ->whereNull('seen_at')
+        ->distinct('sender_id')
+        ->count('sender_id');
+
+    return response()->json([
+        'message' => $count
+    ]);
+}
+
+
+public function clearUnreadMessages()
+{
+    $userId = auth()->id();
+
+    Message::where('receiver_id', $userId)
+        ->whereNull('seen_at')
+        ->update([
+            'seen_at' => now()
+        ]);
+
+    return response()->json(['success' => true]);
+}
+
+
+public function unreadNotificationsCount()
+{
+    $userId = auth()->id();
+
+    // Count all unread notifications for the authenticated user
+    $count = Notification::where('user_id', $userId)
+        ->where('read', false)
+        ->count();
+
+    return response()->json([
+        'notification' => $count, // clear key for frontend
+    ]);
+}
+
+public function markNotificationsAsRead($id)
+{
+    $notification = Notification::where('id', $id)
+        ->where('user_id', auth()->id())
+        ->first();
+
+    if (!$notification) {
+        return response()->json(['message' => 'Notification not found'], 404);
+    }
+
+    $notification->update([
+        'read' => true
+    ]);
+
+    return response()->json([
+        'success' => true
+    ]);
 }
 
 }

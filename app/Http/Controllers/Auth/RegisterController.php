@@ -14,7 +14,7 @@ use Carbon\Carbon;
 use App\Mail\OtpMail;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
-
+use App\Models\Notification;
 
 class RegisterController extends Controller
 {
@@ -119,6 +119,7 @@ class RegisterController extends Controller
         return response()->json(['message' => 'Email not verified'], 400);
     }
 
+    // Create User
     $user = User::create([
         'first_name' => $request->first_name,
         'last_name' => $request->last_name,
@@ -136,14 +137,36 @@ class RegisterController extends Controller
     $otpRecord->delete();
 
     // Give starter badges ONLY to students
-        if ($user->role === 'student') {
-            StudentBadge::create([
-                'student_id' => $user->id,
-                'badges' => 30,
-                'source' => 'registration',
-            ]);
+    if ($user->role === 'student') {
+        StudentBadge::create([
+            'student_id' => $user->id,
+            'badges' => 30,
+            'source' => 'registration',
+        ]);
+    }
+
+   
+    $targetRole = $user->role === 'student' ? 'admin' : 'student';
+
+    $receivers = User::where('role', $targetRole)->get();
+
+    foreach ($receivers as $receiver) {
+
+        // Prevent sending notification to self (extra safety)
+        if ($receiver->id == $user->id) {
+            continue;
         }
 
+        Notification::create([
+            'user_id' => $receiver->id,
+            'type' => 'friend_suggestion',
+            'data' => json_encode([
+                'name' => $user->first_name . ' ' . $user->last_name,
+                'user_id' => $user->id,
+            ]),
+            'redirect_url' => '/friend-page', // 👈 Redirect here
+        ]);
+    }
 
     // Automatically log the user in
     Auth::login($user);

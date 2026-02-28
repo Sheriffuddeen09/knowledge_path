@@ -47,6 +47,18 @@ public function store(Request $request)
     Mail::to($report->reporter->email)
         ->send(new PostReporterConfirmationMail($report));
 
+    Notification::create([
+    'user_id' => $request->reported_user_id,
+    'type' => 'post_reported',
+    'data' => json_encode([
+        'post_id' => $request->post_id,
+        'reporter_id' => auth()->id(),
+        'reporter_name' => auth()->user()->first_name . ' ' . auth()->user()->last_name,
+    ]),
+    'redirect_url' => "/post/report/{$request->post_id}",
+    'read' => false
+    ]);
+
     return response()->json([
         'message' => 'Report submitted successfully.'
     ]);

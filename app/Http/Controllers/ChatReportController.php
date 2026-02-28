@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\ChatReport;
+use App\Models\Notification;
 use App\Mail\UserReportedMail;
 use App\Mail\ReporterConfirmationMail;
 use Illuminate\Support\Facades\Mail;
@@ -45,6 +46,18 @@ public function store(Request $request)
 
     Mail::to($report->reporter->email)
         ->send(new ReporterConfirmationMail($report));
+
+    Notification::create([
+        'user_id' => $request->reported_user_id, // person being reported
+        'type' => 'chat_reported',
+        'data' => json_encode([
+            'chat_id' => $request->chat_id,
+            'reporter_id' => auth()->id(),
+            'reporter_name' => auth()->user()->first_name . ' ' . auth()->user()->last_name,
+        ]),
+        'redirect_url' => "/chat/report/{$request->chat_id}",
+        'read' => false
+    ]);
 
     return response()->json([
         'message' => 'Report submitted successfully.'
