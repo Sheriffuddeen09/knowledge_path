@@ -163,11 +163,77 @@ public function store(Request $request, Post $post)
 }
 
 
-public function reactions($commentId)
-{
-    $comment = PostComment::with('reactions.user')->findOrFail($commentId);
+// public function reactions(PostComment $comment)
+// {
+//     $comment = PostComment::with('reactions.user')->findOrFail($commentId);
 
-    // Group reactions by emoji and map user names
+//     // Group reactions by emoji and map user names
+//     $grouped = $comment->reactions
+//         ->groupBy('emoji')
+//         ->map(function ($items) {
+//             return $items->map(fn($r) => [
+//                 'id' => $r->user->id,
+//                 'name' => trim(($r->user->first_name ?? '') . ' ' . ($r->user->last_name ?? '')),
+//             ]);
+//         });
+
+//     // Build human-readable messages per emoji
+//     $messages = $grouped->map(function ($users, $emoji) {
+//         $count = $users->count();
+//         if ($count === 1) {
+//             return "$emoji reacted by " . $users[0]['name'];
+//         } elseif ($count === 2) {
+//             return "$emoji reacted by " . $users[0]['name'] . " and " . $users[1]['name'];
+//         } elseif ($count > 2) {
+//             return "$emoji reacted by " . $users[0]['name'] . " and " . ($count - 1) . " others";
+//         }
+//     });
+
+//     // Get the authenticated user's reaction if any
+//     $myReaction = auth()->check()
+//         ? $comment->reactions()->where('user_id', auth()->id())->value('emoji')
+//         : null;
+
+//     // -----------------------------
+//     // -----------------------------
+// // Create/update notification for comment/reply owner
+// $currentUser = auth()->user();
+// if ($comment->user_id !== $currentUser->id) {
+
+//     $reactors = $comment->reactions->map(function($r) {
+//         $u = $r->user;
+//         return trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+//     })->toArray();
+
+//     Notification::updateOrCreate(
+//         [
+//             'user_id' => $comment->user_id,
+//             'type' => 'comment_reaction',
+//             'data' => json_encode(['comment_id' => $comment->id]),
+//         ],
+//         [
+//             'data' => json_encode([
+//                 'comment_id' => $comment->id,
+//                 'reactors' => $reactors, // full names now
+//                 'count' => count($reactors),
+//             ]),
+//             'redirect_url' => "/post/{$comment->post_id}#comment-{$comment->id}",
+//             'read' => false,
+//         ]
+//     );
+// }
+
+//     return response()->json([
+//         'reactions' => $grouped,
+//         'messages' => $messages,
+//         'my_reaction' => $myReaction,
+//     ]);
+// }
+
+public function reactions(PostComment $comment)
+{
+    $comment->load('reactions.user');
+
     $grouped = $comment->reactions
         ->groupBy('emoji')
         ->map(function ($items) {
@@ -177,60 +243,68 @@ public function reactions($commentId)
             ]);
         });
 
-    // Build human-readable messages per emoji
-    $messages = $grouped->map(function ($users, $emoji) {
-        $count = $users->count();
-        if ($count === 1) {
-            return "$emoji reacted by " . $users[0]['name'];
-        } elseif ($count === 2) {
-            return "$emoji reacted by " . $users[0]['name'] . " and " . $users[1]['name'];
-        } elseif ($count > 2) {
-            return "$emoji reacted by " . $users[0]['name'] . " and " . ($count - 1) . " others";
-        }
-    });
-
-    // Get the authenticated user's reaction if any
     $myReaction = auth()->check()
-        ? $comment->reactions()->where('user_id', auth()->id())->value('emoji')
+        ? $comment->reactions()
+            ->where('user_id', auth()->id())
+            ->value('emoji')
         : null;
-
-    // -----------------------------
-    // -----------------------------
-// Create/update notification for comment/reply owner
-$currentUser = auth()->user();
-if ($comment->user_id !== $currentUser->id) {
-
-    $reactors = $comment->reactions->map(function($r) {
-        $u = $r->user;
-        return trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
-    })->toArray();
-
-    Notification::updateOrCreate(
-        [
-            'user_id' => $comment->user_id,
-            'type' => 'comment_reaction',
-            'data' => json_encode(['comment_id' => $comment->id]),
-        ],
-        [
-            'data' => json_encode([
-                'comment_id' => $comment->id,
-                'reactors' => $reactors, // full names now
-                'count' => count($reactors),
-            ]),
-            'redirect_url' => "/post/{$comment->post_id}#comment-{$comment->id}",
-            'read' => false,
-        ]
-    );
-}
 
     return response()->json([
         'reactions' => $grouped,
-        'messages' => $messages,
         'my_reaction' => $myReaction,
     ]);
 }
 
-    public function update(Request $request, PostComment $comment)
+// public function toggleReaction(Request $request, $commentId)
+// {
+//     $comment = PostComment::findOrFail($commentId);
+    
+//     $userId = auth()->id();
+//     $emoji = $request->emoji;
+
+//     //dd($comment->reactions()->get());
+
+//     $existing = $comment->reactions()
+//         ->where('user_id', $userId)
+//         ->first();
+
+//     if ($existing) {
+//         if ($existing->emoji === $emoji) {
+//             // Remove reaction if same emoji
+//             $existing->delete();
+//         } else {
+//             // Update to new emoji
+//             $existing->update(['emoji' => $emoji]);
+//         }
+//     } else {
+//         // Create new reaction
+//         $comment->reactions()->create([
+//             'user_id' => $userId,
+//             'emoji' => $emoji,
+//         ]);
+//     }
+
+//     return $this->reactions($comment);  // ✅ CORRECT
+// }
+
+
+public function toggleReaction(Request $request, PostComment $comment)
+{
+    $userId = auth()->id();
+    $emoji = $request->emoji;
+
+    $reaction = $comment->reactions()->updateOrCreate(
+        ['user_id' => $userId],
+        ['emoji' => $emoji]
+    );
+
+    return response()->json([
+        'reactions' => $comment->reactions()->with('user')->get(),
+        'my_reaction' => $emoji
+    ]);
+}
+
+public function update(Request $request, PostComment $comment)
     {
 
     $data = $request->validate([

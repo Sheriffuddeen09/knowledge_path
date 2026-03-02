@@ -65,6 +65,41 @@ public function store(Request $request)
 }
 
 
+
+public function getCommentReport($commentId)
+{
+    $userId = auth()->id();
+
+    $report = CommentReport::where('comment_id', $commentId)
+        ->where('reported_user_id', $userId) // show only to reported user
+        ->with([
+            'reporter:id,first_name,last_name,email',
+            'comment:id,post_id,content' // include comment info
+        ])
+        ->first();
+
+    if (!$report) {
+        return response()->json([
+            'message' => 'Report not found or you are not authorized to view it.'
+        ], 404);
+    }
+
+    return response()->json([
+        'report_id' => $report->id,
+        'comment_id' => $report->comment_id,
+        'reporter' => [
+            'id' => $report->reporter->id,
+            'name' => $report->reporter->first_name . ' ' . $report->reporter->last_name,
+            'email' => $report->reporter->email,
+        ],
+        'reason' => $report->reason,
+        'details' => $report->details,
+        'created_at' => $report->created_at->toDateTimeString(),
+        'comment' => $report->comment, // optional comment data
+    ]);
+}
+
+
 public function index()
 {
     return CommentReport::with([

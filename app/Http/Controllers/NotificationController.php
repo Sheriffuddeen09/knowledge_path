@@ -92,8 +92,27 @@ class NotificationController extends Controller
             return [
                 'id' => $n->id,
                 'type' => $n->type,
-                'message' => $message,
-                'redirect_url' => $n->redirect_url, // 👈 IMPORTANT
+                'names' => $data['reactors'] ?? $data['commenters'] ?? [
+                    $data['mentioned_by'] ?? 
+                    $data['name'] ?? 
+                    $data['teacher_name'] ?? 
+                    $data['reporter_name'] ?? 
+                    ($data['full_name'] ?? null)
+                ],
+                'action' => match($n->type) {
+                    'mention' => 'mentioned you in a comment',
+                    'friend_suggestion' => 'sent you a friend suggestion',
+                    'teacher_suggestion' => 'is now available',
+                    'post_reaction' => 'reacted to your post',
+                    'post_comment' => 'commented on your post',
+                    'chat_blocked' => 'blocked you',
+                    'chat_unblocked' => 'unblocked you',
+                    'chat_reported' => 'reported you in a chat',
+                    'post_reported' => 'reported your post',
+                    'comment_reported' => 'reported your comment',
+                    default => ''
+                },
+                'redirect_url' => $n->redirect_url,
                 'read' => $n->read,
                 'created_at' => $n->created_at->diffForHumans(),
             ];
@@ -276,22 +295,22 @@ public function unreadNotificationsCount()
     ]);
 }
 
-public function markNotificationsAsRead($id)
+
+
+public function markNotificationsAsRead()
 {
-    $notification = Notification::where('id', $id)
-        ->where('user_id', auth()->id())
-        ->first();
+    $userId = auth()->id();
 
-    if (!$notification) {
-        return response()->json(['message' => 'Notification not found'], 404);
-    }
-
-    $notification->update([
-        'read' => true
-    ]);
+    // Mark all notifications as read
+    Notification::where('user_id', $userId)
+        ->where('read', false)
+        ->update([
+            'read' => true
+        ]);
 
     return response()->json([
-        'success' => true
+        'success' => true,
+        'unread_count' => 0, // immediately reflect zero in frontend markAsReadNotification
     ]);
 }
 

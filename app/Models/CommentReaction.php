@@ -10,7 +10,7 @@ class CommentReaction extends Model
 
     public function comment()
     {
-        return $this->belongsTo(PostComment::class);
+        return $this->belongsTo(PostComment::class, 'comment_id');
     }
     
     public function user()

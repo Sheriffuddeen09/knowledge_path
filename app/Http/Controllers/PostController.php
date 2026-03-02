@@ -460,7 +460,7 @@ public function myPosts()
             'user:id,first_name,last_name,role,image',
             'media'
         ])
-        ->withCount(['reactions', 'comments', 'shares'])
+        ->withCount(['reactions', 'comments', 'shares', 'reposts'])
         ->latest()
         ->get()
         ->map(function ($post) {
@@ -485,6 +485,7 @@ public function myPosts()
                 'reactions_count' => $post->reactions_count,
                 'comments_count'  => $post->comments_count,
                 'shares_count'    => $post->shares_count,
+                'reposts_count'   => $basePost->reposts_count ?? 0,
             ];
         });
 
@@ -501,7 +502,7 @@ public function userPosts($id)
             'user:id,first_name,last_name,role',
             'media'
         ])
-        ->withCount(['reactions', 'comments', 'shares'])
+        ->withCount(['reactions', 'comments', 'shares', 'reposts'])
         ->latest()
         ->get()
         ->map(function ($post) {
@@ -526,6 +527,7 @@ public function userPosts($id)
                 'reactions_count' => $post->reactions_count,
                 'comments_count'  => $post->comments_count,
                 'shares_count'    => $post->shares_count,
+                'reposts_count'   => $basePost->reposts_count ?? 0,
             ];
         });
 

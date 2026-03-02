@@ -48,7 +48,13 @@ use App\Http\Controllers\PostReportController;
 use App\Http\Controllers\CommentReportController;
 use App\Http\Controllers\PostStreamController;
 
-//markAsRead block
+
+// 
+Route::get('/comment/report/{commentId}', [CommentReportController::class, 'getCommentReport']);
+Route::get('/post/report/{postId}', [PostReportController::class, 'getPostReport']);
+Route::get('/chat/report/{chatId}', [ChatReportController::class, 'getChatReport']);
+
+//markAsRead reactions
 
 Route::middleware('auth:sanctum')->get('/page-notifications', [NotificationController::class, 'index']);
 Route::middleware('auth:sanctum')->group(function () {
@@ -74,7 +80,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Comment library
     Route::get('/posts/{post}/comments', [PostCommentController::class, 'index']);
     Route::post('/posts/{post}/comments', [PostCommentController::class, 'store']);
-    Route::get('/posts/{comment}/reactions', [PostCommentController::class, 'reactions']);
+    Route::get('/comments/{comment}/reactions', [PostCommentController::class, 'reactions']);
+    Route::post('/comments/{comment}/reaction', [PostCommentController::class, 'toggleReaction']);
     Route::put('/posts/{comment}/comment', [PostCommentController::class, 'update']);
     Route::delete('/posts/{comment}/comment', [PostCommentController::class, 'destroy']);
     
@@ -138,7 +145,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
 
-Route::middleware('auth:sanctum')->group(function () {
+    Route::middleware('auth:sanctum')->group(function () {
     Route::get('/student-friend/relation/{profileId}', [StudentFriendController::class, 'relation']);
     Route::get('/student/profile/{id}', [StudentFriendController::class, 'show']);
     Route::get('/student/profile/accepted/{id}', [StudentFriendController::class, 'showAccepted']);
@@ -371,8 +378,8 @@ Route::middleware('auth:sanctum')->delete('/videos/{id}', [VideoController::clas
 
 Route::middleware('auth:sanctum')->group(function () {
 
-    Route::post('/comments/{comment}/reaction', [CommentReactionController::class, 'toggle']);
-});
+//     Route::post('/comments/{comment}/reaction', [CommentReactionController::class, 'toggle']);
+ });
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/videos/{id}/reaction', [VideoReactionController::class, 'store']);
     Route::delete('/videos/{id}/reaction', [VideoReactionController::class, 'destroy']);

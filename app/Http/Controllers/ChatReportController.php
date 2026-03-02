@@ -65,6 +65,38 @@ public function store(Request $request)
 }
 
 
+public function getChatReport($chatId)
+{
+    $userId = auth()->id();
+
+    $report = ChatReport::where('chat_id', $chatId)
+        ->where('reported_user_id', $userId) // show only to reported user
+        ->with(['reporter:id,first_name,last_name,email', 'chat'])
+        ->first();
+
+    if (!$report) {
+        return response()->json([
+            'message' => 'Report not found or you are not authorized to view it.'
+        ], 404);
+    }
+
+    return response()->json([
+        'report_id' => $report->id,
+        'chat_id' => $report->chat_id,
+        'reporter' => [
+            'id' => $report->reporter->id,
+            'name' => $report->reporter->first_name . ' ' . $report->reporter->last_name,
+            'email' => $report->reporter->email,
+        ],
+        'reason' => $report->reason,
+        'details' => $report->details,
+        'created_at' => $report->created_at->toDateTimeString(),
+        'chat' => $report->chat, // optional chat data
+    ]);
+}
+
+
+
 public function index()
 {
     return ChatReport::with([

@@ -65,6 +65,38 @@ public function store(Request $request)
 }
 
 
+public function getPostReport($postId)
+{
+    $userId = auth()->id();
+
+    $report = PostReport::where('post_id', $postId)
+        ->where('reported_user_id', $userId) // show only to reported user
+        ->with(['reporter:id,first_name,last_name,email', 'post:id,title,content'])
+        ->first();
+
+    if (!$report) {
+        return response()->json([
+            'message' => 'Report not found or you are not authorized to view it.'
+        ], 404);
+    }
+
+    return response()->json([
+        'report_id' => $report->id,
+        'post_id' => $report->post_id,
+        'reporter' => [
+            'id' => $report->reporter->id,
+            'name' => $report->reporter->first_name . ' ' . $report->reporter->last_name,
+            'email' => $report->reporter->email,
+        ],
+        'reason' => $report->reason,
+        'details' => $report->details,
+        'created_at' => $report->created_at->toDateTimeString(),
+        'post' => $report->post, // optional post data
+    ]);
+}
+
+
+
 public function index()
 {
     return PostReport::with([

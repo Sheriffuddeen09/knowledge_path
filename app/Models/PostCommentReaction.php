@@ -17,5 +17,7 @@ class PostCommentReaction extends Model
     {
         return $this->belongsTo(PostComment::class, 'comment_id');
     }
+
+    
 }
 
