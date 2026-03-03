@@ -120,13 +120,10 @@ class NotificationController extends Controller
 
     case 'comment_reported':
 
-        $isReply = !empty($n->parent_id);
+            $type = !empty($data['parent_id']) ? 'reply' : 'comment';
+            $message = $data['reporter_name'] . " reported your {$type}";
 
-        if ($isReply) {
-            $message = $data['reporter_name'] . " reported your reply";
-        } else {
-            $message = $data['reporter_name'] . " reported your comment";
-        }
+            break;
 
         break;
 }

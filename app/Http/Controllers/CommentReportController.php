@@ -14,7 +14,7 @@ class CommentReportController extends Controller
 {
   
 
-public function store(Request $request)
+public function store(Request $request) 
 {
     $request->validate([
         'comment_id' => 'required|exists:post_comments,id',
@@ -29,6 +29,9 @@ public function store(Request $request)
         ], 422);
     }
 
+    // ✅ Get the comment first
+    $comment = PostComment::findOrFail($request->comment_id);
+
     $report = CommentReport::updateOrCreate(
         [
             'comment_id' => $request->comment_id,
@@ -41,30 +44,23 @@ public function store(Request $request)
         ]
     );
 
-    // Send emails
-    Mail::to($report->reportedUser->email)
-        ->send(new CommentReportedMail($report));
-
-    Mail::to($report->reporter->email)
-        ->send(new CommentReporterConfirmationMail($report));
-
     Notification::create([
-    'user_id' => $request->reported_user_id,
-    'type' => 'comment_reported',
-    'data' => json_encode([
-        'comment_id' => $request->comment_id,
-        'reporter_id' => auth()->id(),
-        'reporter_name' => auth()->user()->first_name . ' ' . auth()->user()->last_name,
-    ]),
-    'redirect_url' => "/comment/report/{$request->comment_id}",
-    'read' => false
+        'user_id' => $request->reported_user_id,
+        'type' => 'comment_reported',
+        'data' => json_encode([
+            'comment_id' => $request->comment_id,
+            'reporter_id' => auth()->id(),
+            'reporter_name' => auth()->user()->first_name . ' ' . auth()->user()->last_name,
+            'parent_id' => $comment->parent_id, // ✅ now defined
+        ]),
+        'redirect_url' => "/comment/report/{$request->comment_id}",
+        'read' => false
     ]);
 
     return response()->json([
         'message' => 'Report submitted successfully.'
     ]);
 }
-
 
 
 public function getCommentReport($commentId)

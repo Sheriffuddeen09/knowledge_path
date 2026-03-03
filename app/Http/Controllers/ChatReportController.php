@@ -43,11 +43,11 @@ public function store(Request $request)
     );
 
     // Send emails
-    // Mail::to($report->reportedUser->email)
-    //     ->send(new UserReportedMail($report));
+    Mail::to($report->reportedUser->email)
+        ->send(new UserReportedMail($report));
 
-    // Mail::to($report->reporter->email)
-    //     ->send(new ReporterConfirmationMail($report));
+    Mail::to($report->reporter->email)
+        ->send(new ReporterConfirmationMail($report));
 
     Notification::create([
         'user_id' => $request->reported_user_id, // person being reported
