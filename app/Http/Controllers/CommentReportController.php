@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\CommentReport;
+use App\Models\PostComment;
 use App\Mail\CommentReportedMail;
 use App\Mail\CommentReporterConfirmationMail;
 use Illuminate\Support\Facades\Mail;

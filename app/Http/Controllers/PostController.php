@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Post;
+use App\Models\Notification;
 use App\Models\PostView;
 use App\Models\PostReaction;
 use App\Models\PostComment;
@@ -423,13 +424,6 @@ public function sharePost(Request $request, $chatId)
 
 
 
-// public function view(Post $post) store
-// {
-//     $post->increment('views');
-//     return response()->json(['views' => $post->views]);
-// } 
-
-
 public function addView($id)
 {
     $post = Post::findOrFail($id);
@@ -613,51 +607,57 @@ public function destroyImage($id)
     ]);
 }
 
-public function repost(Request $request, $id)
-{
-    $original = Post::findOrFail($id);
 
-    if ($original->user_id === auth()->id()) {
-        return response()->json([
-            'status' => false,
-            'message' => 'You cannot repost your own post'
-        ], 403);
+
+public function repost($postId)
+{
+    $post = Post::findOrFail($postId);
+
+    // Prevent self repost notification
+    if ($post->user_id == auth()->id()) {
+        return response()->json(['message' => 'You cannot repost your own post'], 422);
     }
 
-    $existing = Post::where('user_id', auth()->id())
-        ->where('original_post_id', $original->id)
+    $reposterName = auth()->user()->first_name . ' ' . auth()->user()->last_name;
+
+    // Check existing notification
+    $notification = Notification::where('user_id', $post->user_id)
+        ->where('type', 'post_repost')
+        ->whereJsonContains('data->post_id', $postId)
         ->first();
 
-    if ($existing) {
-        return response()->json([
-            'status' => false,
-            'message' => 'Already reposted'
-        ], 400);
+    if ($notification) {
+
+        $data = json_decode($notification->data, true);
+        $reposters = collect($data['reposters'] ?? []);
+
+        if (!$reposters->contains($reposterName)) {
+            $reposters->push($reposterName);
+        }
+
+        $notification->update([
+            'data' => json_encode([
+                'post_id' => $postId,
+                'reposters' => $reposters->values(),
+            ]),
+            'read' => false,
+        ]);
+
+    } else {
+
+        Notification::create([
+            'user_id' => $post->user_id,
+            'type' => 'post_repost',
+            'data' => json_encode([
+                'post_id' => $postId,
+                'reposters' => [$reposterName],
+            ]),
+            'redirect_url' => "/repost/{$postId}", // ✅ redirect to repost page
+            'read' => false,
+        ]);
     }
 
-    $repost = Post::create([
-        'user_id' => auth()->id(),
-        'original_post_id' => $original->id,
-        'visibility' => $request->visibility ?? 'public',
-    ]);
-
-    return response()->json([
-        'status' => true,
-        'message' => 'Reposted successfully',
-        'repost_id' => $repost->id
-    ]);
-}
-
-
-public function undoRepost(Post $post)
-{
-
-    $post->delete();
-
-    return response()->json([
-        'status' => true,
-        'message' => 'Post deleted'
-    ]);
+    return response()->json(['message' => 'Post reposted successfully']);
 }
 
 

@@ -102,6 +102,75 @@ class NotificationController extends Controller
     }
     break;
 
+    case 'post_repost':
+
+        $reposters = collect($data['reposters'] ?? []);
+        $count = $reposters->count();
+
+        if ($count === 1) {
+            $message = "Reposted by " . $reposters[0];
+        } elseif ($count === 2) {
+            $message = "Reposted by " . $reposters[0] . " and " . $reposters[1];
+        } elseif ($count > 2) {
+            $message = "Reposted by " . $reposters[0] . " and " . ($count - 1) . " others";
+        }
+
+        break;
+
+
+    case 'post_comment':
+
+        $commenters = collect($data['commenters'] ?? []);
+        $count = $commenters->count();
+
+        $isReply = !empty($n->parent_id);
+
+        $actionText = $isReply
+            ? 'replied to your comment'
+            : 'commented on your post';
+
+        if ($count === 1) {
+            $message = $commenters[0] . " " . $actionText;
+        } elseif ($count === 2) {
+            $message = $commenters[0] . " and " . $commenters[1] . " " . $actionText;
+        } elseif ($count > 2) {
+            $message = $commenters[0] . " and " . ($count - 1) . " others " . $actionText;
+        }
+
+        break;
+
+
+    case 'comment_reaction_comment':
+
+        $reactors = collect($data['reactors'] ?? []);
+        $count = $reactors->count();
+
+        if ($count === 1) {
+            $message = $reactors[0] . " reacted to your comment " . ($data['emoji'] ?? '');
+        } elseif ($count === 2) {
+            $message = $reactors[0] . " and " . $reactors[1] . " reacted to your comment " . ($data['emoji'] ?? '');
+        } elseif ($count > 2) {
+            $message = $reactors[0] . " and " . ($count - 1) . " others reacted to your comment " . ($data['emoji'] ?? '');
+        }
+
+        break;
+
+
+    case 'comment_reaction_reply':
+
+        $reactors = collect($data['reactors'] ?? []);
+        $count = $reactors->count();
+
+        if ($count === 1) {
+            $message = $reactors[0] . " reacted to your reply " . ($data['emoji'] ?? '');
+        } elseif ($count === 2) {
+            $message = $reactors[0] . " and " . $reactors[1] . " reacted to your reply " . ($data['emoji'] ?? '');
+        } elseif ($count > 2) {
+            $message = $reactors[0] . " and " . ($count - 1) . " others reacted to your reply " . ($data['emoji'] ?? '');
+        }
+
+        break;
+
     case 'chat_blocked':
         $message = ($data['full_name'] ?? ($data['first_name'] . ' ' . $data['last_name'])) . " blocked you";
         break;
