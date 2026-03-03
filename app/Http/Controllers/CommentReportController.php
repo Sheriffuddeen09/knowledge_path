@@ -30,9 +30,10 @@ public function store(Request $request)
         ], 422);
     }
 
-    // ✅ Get the comment first
-    $comment = PostComment::findOrFail($request->comment_id);
+    // Get the comment
+    $comment = PostComment::with('post')->findOrFail($request->comment_id);
 
+    // Save report
     $report = CommentReport::updateOrCreate(
         [
             'comment_id' => $request->comment_id,
@@ -45,23 +46,35 @@ public function store(Request $request)
         ]
     );
 
-    Notification::create([
-        'user_id' => $request->reported_user_id,
+    // ✅ Get recipient (owner of comment)
+    $recipientId = $comment->user_id;
+
+    // ✅ Get reporter name safely
+    $reporterName = auth()->user()->first_name . ' ' . auth()->user()->last_name;
+
+    // Create notification
+    Notification::updateOrCreate(
+    [
+        'user_id' => $recipientId,
         'type' => 'comment_reported',
+        'parent_id' => $comment->parent_id,
+    ],
+    [
         'data' => json_encode([
             'comment_id' => $request->comment_id,
             'reporter_id' => auth()->id(),
-            'reporter_name' => auth()->user()->first_name . ' ' . auth()->user()->last_name,
-            'parent_id' => $comment->parent_id, // ✅ now defined
+            'parent_id' => $comment->parent_id,
         ]),
-        'redirect_url' => "/comment/report/{$request->comment_id}",
-        'read' => false
-    ]);
+        'redirect_url' => "/post/{$comment->post_id}#comments",
+        'read' => false,
+    ]
+);
 
     return response()->json([
         'message' => 'Report submitted successfully.'
     ]);
 }
+
 
 
 public function getCommentReport($commentId)
