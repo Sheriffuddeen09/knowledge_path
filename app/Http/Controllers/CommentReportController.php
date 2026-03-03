@@ -7,6 +7,7 @@ use App\Models\CommentReport;
 use App\Mail\CommentReportedMail;
 use App\Mail\CommentReporterConfirmationMail;
 use Illuminate\Support\Facades\Mail;
+use App\Models\Notification;
 
 
 class CommentReportController extends Controller
@@ -68,36 +69,40 @@ public function store(Request $request)
 
 public function getCommentReport($commentId)
 {
-    $userId = auth()->id();
-
     $report = CommentReport::where('comment_id', $commentId)
-        ->where('reported_user_id', $userId) // show only to reported user
         ->with([
-            'reporter:id,first_name,last_name,email',
-            'comment:id,post_id,content' // include comment info
-        ])
+                    'reporter:id,first_name,last_name,email',
+                    'comment:id,post_id,body,image,parent_id'
+                ])
         ->first();
 
     if (!$report) {
         return response()->json([
-            'message' => 'Report not found or you are not authorized to view it.'
+            'message' => 'Report not found.'
         ], 404);
     }
 
     return response()->json([
-        'report_id' => $report->id,
-        'comment_id' => $report->comment_id,
-        'reporter' => [
-            'id' => $report->reporter->id,
-            'name' => $report->reporter->first_name . ' ' . $report->reporter->last_name,
-            'email' => $report->reporter->email,
-        ],
-        'reason' => $report->reason,
-        'details' => $report->details,
-        'created_at' => $report->created_at->toDateTimeString(),
-        'comment' => $report->comment, // optional comment data
-    ]);
+    'report_id' => $report->id,
+    'comment_id' => $report->comment_id,
+    'reporter' => [
+        'id' => $report->reporter->id,
+        'name' => $report->reporter->first_name . ' ' . $report->reporter->last_name,
+        'email' => $report->reporter->email,
+    ],
+    'reason' => $report->reason,
+    'details' => $report->details,
+    'created_at' => $report->created_at->toDateTimeString(),
+    'comment' => [
+        'id' => $report->comment->id,
+        'post_id' => $report->comment->post_id,
+        'parent_id' => $report->comment->parent_id,
+        'body' => $report->comment->body,   // ✅ FIXED
+        'image' => $report->comment->image, // ✅ FIXED
+    ]
+]);
 }
+
 
 
 public function index()

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\PostReport;
+use App\Models\Notification;
 use App\Mail\PostReportedMail;
 use App\Mail\PostReporterConfirmationMail;
 use Illuminate\Support\Facades\Mail;
@@ -40,7 +41,7 @@ public function store(Request $request)
         ]
     );
 
-    // Send emails
+    //Send emails
     Mail::to($report->reportedUser->email)
         ->send(new PostReportedMail($report));
 
@@ -67,16 +68,16 @@ public function store(Request $request)
 
 public function getPostReport($postId)
 {
-    $userId = auth()->id();
-
     $report = PostReport::where('post_id', $postId)
-        ->where('reported_user_id', $userId) // show only to reported user
-        ->with(['reporter:id,first_name,last_name,email', 'post:id,title,content'])
-        ->first();
-
+    ->with([
+        'reporter:id,first_name,last_name,email',
+        'post:id,content',
+        'post.postMedia'
+    ])
+    ->first();
     if (!$report) {
         return response()->json([
-            'message' => 'Report not found or you are not authorized to view it.'
+            'message' => 'Report not found.'
         ], 404);
     }
 
@@ -91,10 +92,13 @@ public function getPostReport($postId)
         'reason' => $report->reason,
         'details' => $report->details,
         'created_at' => $report->created_at->toDateTimeString(),
-        'post' => $report->post, // optional post data
+        'post' => [
+                        'id' => $report->post->id,
+                        'content' => $report->post->content,
+                        'media' => $report->post->postMedia, // if relationship
+                    ],
     ]);
 }
-
 
 
 public function index()

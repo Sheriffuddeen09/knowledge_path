@@ -33,7 +33,7 @@ class PostCommentController extends Controller
 }
 
 
-public function store(Request $request, Post $post) 
+public function store(Request $request, Post $post)
 {
     $request->validate([
         'body' => 'nullable|string',
@@ -53,10 +53,10 @@ public function store(Request $request, Post $post)
     // -------------------------
     // 1️⃣ Create comment/reply
     $comment = PostComment::create([
-        'post_id' => $post->id,
-        'user_id' => auth()->id(),
+        'post_id'   => $post->id,
+        'user_id'   => auth()->id(),
         'parent_id' => $request->parent_id,
-        'body' => $body,
+        'body'      => $body,
     ]);
 
     if ($request->hasFile('image')) {
@@ -65,68 +65,13 @@ public function store(Request $request, Post $post)
     }
 
     // -------------------------
-    // 2️⃣ Notify post/comment owner
-    $recipientId = null;
-    $notificationType = 'post_comment';
-    $reactorsOrCommenters = [];
-
-    if ($comment->parent_id) {
-    // Reply to a comment -> notify parent comment owner
-    $parentComment = PostComment::find($comment->parent_id);
-    if ($parentComment && $parentComment->user_id !== auth()->id()) {
-        $recipientId = $parentComment->user_id;
-        $commenters = PostComment::where('parent_id', $parentComment->id)
-            ->with('user')
-            ->get();
-
-        // 👈 Map full names
-        $reactorsOrCommenters = $commenters->map(function ($c) {
-            $u = $c->user;
-            return trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
-        })->toArray();
-    }
-} else {
-    // Top-level comment -> notify post owner
-    if ($post->user_id !== auth()->id()) {
-        $recipientId = $post->user_id;
-        $commenters = PostComment::where('post_id', $post->id)
-            ->whereNull('parent_id')
-            ->with('user')
-            ->get();
-
-        // 👈 Map full names
-        $reactorsOrCommenters = $commenters->map(function ($c) {
-            $u = $c->user;
-            return trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
-        })->toArray();
-    }
-}
-    if ($recipientId) {
-        Notification::updateOrCreate(
-            [
-                'user_id' => $recipientId,
-                'type' => $notificationType,
-                'data' => json_encode(['comment_id' => $comment->id]),
-            ],
-            [
-                'data' => json_encode([
-                    'post_id' => $post->id,
-                    'commenters' => $reactorsOrCommenters,
-                    'count' => count($reactorsOrCommenters),
-                ]),
-                'redirect_url' => "/post/{$post->id}#comments",
-                'read' => false,
-            ]
-        );
-    }
-
-    // -------------------------
-    // 3️⃣ Handle mentions in body
+    // 2️⃣ Detect mentions FIRST
     $mentionedUserIds = [];
     preg_match_all('/@([\w]+)/', $body, $matches);
 
     if (!empty($matches[1])) {
         foreach ($matches[1] as $mentionedName) {
+
             $mentionedUser = User::where('first_name', $mentionedName)
                 ->orWhere('last_name', $mentionedName)
                 ->first();
@@ -136,11 +81,11 @@ public function store(Request $request, Post $post)
 
                 Notification::create([
                     'user_id' => $mentionedUser->id,
-                    'type' => 'mention',
-                    'data' => json_encode([
-                        'comment_id' => $comment->id,
-                        'post_id' => $post->id,
-                        'mentioned_by' => auth()->user()->first_name.' '.auth()->user()->last_name,
+                    'type'    => 'mention',
+                    'data'    => json_encode([
+                        'comment_id'   => $comment->id,
+                        'post_id'      => $post->id,
+                        'mentioned_by' => auth()->user()->first_name . ' ' . auth()->user()->last_name,
                     ]),
                     'redirect_url' => "/post/{$post->id}#comment-{$comment->id}",
                     'read' => false,
@@ -149,8 +94,78 @@ public function store(Request $request, Post $post)
         }
     }
 
+    // Remove duplicates
+    $mentionedUserIds = array_unique($mentionedUserIds);
+
     // -------------------------
-    // 4️⃣ Load relations for frontend
+    // 3️⃣ Determine recipient for comment/reply notification
+    $recipientId = null;
+    $commenters  = collect();
+
+    if ($comment->parent_id) {
+
+        // 🔥 REPLY
+        $parentComment = PostComment::find($comment->parent_id);
+
+        if ($parentComment &&
+            $parentComment->user_id !== auth()->id() &&
+            !in_array($parentComment->user_id, $mentionedUserIds)) {
+
+            $recipientId = $parentComment->user_id;
+
+            $commenters = PostComment::where('parent_id', $parentComment->id)
+                ->with('user')
+                ->get()
+                ->unique('user_id');
+        }
+
+    } else {
+
+        // 🔥 TOP LEVEL COMMENT
+        if ($post->user_id !== auth()->id() &&
+            !in_array($post->user_id, $mentionedUserIds)) {
+
+            $recipientId = $post->user_id;
+
+            $commenters = PostComment::where('post_id', $post->id)
+                ->whereNull('parent_id')
+                ->with('user')
+                ->get()
+                ->unique('user_id');
+        }
+    }
+
+    // -------------------------
+    // 4️⃣ Create grouped comment/reply notification
+    if ($recipientId) {
+
+        $commenterNames = $commenters->map(function ($c) {
+            $u = $c->user;
+            return trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+        })->values()->toArray();
+
+        Notification::updateOrCreate(
+            [
+                'user_id'  => $recipientId,
+                'type'     => 'post_comment',
+                'post_id'  => $post->id,
+                'parent_id'=> $comment->parent_id,
+            ],
+            [
+                'data' => json_encode([
+                    'post_id'    => $post->id,
+                    'commenters' => $commenterNames,
+                    'count'      => count($commenterNames),
+                    'parent_id'  => $comment->parent_id,
+                ]),
+                'redirect_url' => "/post/{$post->id}#comments",
+                'read' => false,
+            ]
+        );
+    }
+
+    // -------------------------
+    // 5️⃣ Load relations for frontend
     $comment->load([
         'user',
         'replies.user',
@@ -162,73 +177,6 @@ public function store(Request $request, Post $post)
     ]);
 }
 
-
-// public function reactions(PostComment $comment)
-// {
-//     $comment = PostComment::with('reactions.user')->findOrFail($commentId);
-
-//     // Group reactions by emoji and map user names
-//     $grouped = $comment->reactions
-//         ->groupBy('emoji')
-//         ->map(function ($items) {
-//             return $items->map(fn($r) => [
-//                 'id' => $r->user->id,
-//                 'name' => trim(($r->user->first_name ?? '') . ' ' . ($r->user->last_name ?? '')),
-//             ]);
-//         });
-
-//     // Build human-readable messages per emoji
-//     $messages = $grouped->map(function ($users, $emoji) {
-//         $count = $users->count();
-//         if ($count === 1) {
-//             return "$emoji reacted by " . $users[0]['name'];
-//         } elseif ($count === 2) {
-//             return "$emoji reacted by " . $users[0]['name'] . " and " . $users[1]['name'];
-//         } elseif ($count > 2) {
-//             return "$emoji reacted by " . $users[0]['name'] . " and " . ($count - 1) . " others";
-//         }
-//     });
-
-//     // Get the authenticated user's reaction if any
-//     $myReaction = auth()->check()
-//         ? $comment->reactions()->where('user_id', auth()->id())->value('emoji')
-//         : null;
-
-//     // -----------------------------
-//     // -----------------------------
-// // Create/update notification for comment/reply owner
-// $currentUser = auth()->user();
-// if ($comment->user_id !== $currentUser->id) {
-
-//     $reactors = $comment->reactions->map(function($r) {
-//         $u = $r->user;
-//         return trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
-//     })->toArray();
-
-//     Notification::updateOrCreate(
-//         [
-//             'user_id' => $comment->user_id,
-//             'type' => 'comment_reaction',
-//             'data' => json_encode(['comment_id' => $comment->id]),
-//         ],
-//         [
-//             'data' => json_encode([
-//                 'comment_id' => $comment->id,
-//                 'reactors' => $reactors, // full names now
-//                 'count' => count($reactors),
-//             ]),
-//             'redirect_url' => "/post/{$comment->post_id}#comment-{$comment->id}",
-//             'read' => false,
-//         ]
-//     );
-// }
-
-//     return response()->json([
-//         'reactions' => $grouped,
-//         'messages' => $messages,
-//         'my_reaction' => $myReaction,
-//     ]);
-// }
 
 public function reactions(PostComment $comment)
 {
@@ -255,54 +203,60 @@ public function reactions(PostComment $comment)
     ]);
 }
 
-// public function toggleReaction(Request $request, $commentId)
-// {
-//     $comment = PostComment::findOrFail($commentId);
-    
-//     $userId = auth()->id();
-//     $emoji = $request->emoji;
-
-//     //dd($comment->reactions()->get());
-
-//     $existing = $comment->reactions()
-//         ->where('user_id', $userId)
-//         ->first();
-
-//     if ($existing) {
-//         if ($existing->emoji === $emoji) {
-//             // Remove reaction if same emoji
-//             $existing->delete();
-//         } else {
-//             // Update to new emoji
-//             $existing->update(['emoji' => $emoji]);
-//         }
-//     } else {
-//         // Create new reaction
-//         $comment->reactions()->create([
-//             'user_id' => $userId,
-//             'emoji' => $emoji,
-//         ]);
-//     }
-
-//     return $this->reactions($comment);  // ✅ CORRECT
-// }
-
 
 public function toggleReaction(Request $request, PostComment $comment)
 {
     $userId = auth()->id();
     $emoji = $request->emoji;
 
-    $reaction = $comment->reactions()->updateOrCreate(
+    // 1️⃣ Save or update the reaction
+    $comment->reactions()->updateOrCreate(
         ['user_id' => $userId],
         ['emoji' => $emoji]
     );
 
+    // Determine type FIRST
+    $type = !empty($comment->parent_id)
+        ? 'comment_reaction_reply'
+        : 'comment_reaction_comment';
+
+    // 2️⃣ Notify owner (skip self-reaction)
+    if ($comment->user_id !== $userId) {
+
+        $reactors = $comment->reactions()
+            ->with('user')
+            ->get()
+            ->map(function ($r) {
+                $u = $r->user;
+                return trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+            })
+            ->toArray();
+
+        Notification::updateOrCreate(
+            [
+                'user_id'   => $comment->user_id,
+                'type'      => $type,               // ✅ use dynamic type
+                'comment_id'=> $comment->id,        // ✅ real column
+            ],
+            [
+                'data' => json_encode([
+                    'comment_id' => $comment->id,
+                    'reactors'   => $reactors,
+                    'count'      => count($reactors),
+                    'emoji'      => $emoji
+                ]),
+                'redirect_url' => "/post/{$comment->post_id}#comment-{$comment->id}",
+                'read' => false,
+            ]
+        );
+    }
+
     return response()->json([
-        'reactions' => $comment->reactions()->with('user')->get(),
+        'reactions'   => $comment->reactions()->with('user')->get(),
         'my_reaction' => $emoji
     ]);
 }
+
 
 public function update(Request $request, PostComment $comment)
     {

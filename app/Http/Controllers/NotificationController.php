@@ -26,69 +26,110 @@ class NotificationController extends Controller
 
             $message = '';
 
-            switch ($n->type) {
+           switch ($n->type) {
 
-                case 'mention':
-                    $data = json_decode($n->data, true);
-                    $message = $data['mentioned_by'] . " mentioned you in a comment";
-                    $redirect = $data['redirect_url'] ?? '';
-                    break;
+    case 'mention':
+        $data = json_decode($n->data, true);
+        $message = $data['mentioned_by'] . " mentioned you in a comment";
+        $redirect = $data['redirect_url'] ?? '';
+        break;
 
-                case 'friend_suggestion':
-                    $message = "New friend suggestion: " . ($data['name'] ?? '');
-                    break;
+    case 'friend_suggestion':
+        $message = "New friend suggestion: " . ($data['name'] ?? '');
+        break;
 
-                case 'teacher_suggestion':
-                    $message = "New teacher available: " . ($data['teacher_name'] ?? '');
-                    break;
+    case 'teacher_suggestion':
+        $message = "New teacher available: " . ($data['teacher_name'] ?? '');
+        break;
 
-                case 'post_reaction':
-                    $reactors = collect($data['reactors'] ?? []);
-                    $count = $reactors->count();
+    case 'post_reaction':
+        $reactors = collect($data['reactors'] ?? []);
+        $count = $reactors->count();
 
-                    if ($count === 1) {
-                        $message = $reactors[0] . " reacted to your post";
-                    } elseif ($count === 2) {
-                        $message = $reactors[0] . " and " . $reactors[1] . " reacted to your post";
-                    } elseif ($count > 2) {
-                        $message = $reactors[0] . " and " . ($count - 1) . " others reacted to your post";
-                    }
-                    break;
+        if ($count === 1) {
+            $message = $reactors[0] . " reacted to your post";
+        } elseif ($count === 2) {
+            $message = $reactors[0] . " and " . $reactors[1] . " reacted to your post";
+        } elseif ($count > 2) {
+            $message = $reactors[0] . " and " . ($count - 1) . " others reacted to your post";
+        }
+        break;
 
-                case 'post_comment':
-                    $commenters = collect($data['commenters'] ?? []);
-                    $count = $commenters->count();
+   case 'post_comment':
 
-                    if ($count === 1) {
-                        $message = $commenters[0] . " commented on your post";
-                    } elseif ($count === 2) {
-                        $message = $commenters[0] . " and " . $commenters[1] . " commented on your post";
-                    } elseif ($count > 2) {
-                        $message = $commenters[0] . " and " . ($count - 1) . " others commented on your post";
-                    }
-                    break;
+    $commenters = collect($data['commenters'] ?? []);
+    $count = $commenters->count();
 
-                    case 'chat_blocked':
-                        $message = ($data['full_name'] ?? ($data['first_name'] . ' ' . $data['last_name'])) . " blocked you";
-                        break;
+    $isReply = !empty($n->parent_id);
 
-                    case 'chat_unblocked':
-                        $message = ($data['full_name'] ?? ($data['first_name'] . ' ' . $data['last_name'])) . " unblocked you";
-                        break;
+    $actionText = $isReply
+    ? 'replied to your comment'
+    : 'commented on your post';
 
-                    case 'chat_reported':
-                        $message = $data['reporter_name'] . " reported you in a chat";
-                        break;
+    if ($count === 1) {
+        $message = $commenters[0] . " " . $actionText;
+    } elseif ($count === 2) {
+        $message = $commenters[0] . " and " . $commenters[1] . " " . $actionText;
+    } elseif ($count > 2) {
+        $message = $commenters[0] . " and " . ($count - 1) . " others " . $actionText;
+    }
 
-                    case 'post_reported':
-                        $message = $data['reporter_name'] . " reported your post";
-                        break;
+    break;
+    
+    case 'comment_reaction_comment':
+    $reactors = collect($data['reactors'] ?? []);
+    $count = $reactors->count();
 
-                    case 'comment_reported':
-                        $message = $data['reporter_name'] . " reported your comment";
-                        break;
-            }
+    if ($count === 1) {
+        $message = $reactors[0] . " reacted to your comment " . ($data['emoji'] ?? '');
+    } elseif ($count === 2) {
+        $message = $reactors[0] . " and " . $reactors[1] . " reacted to your comment " . ($data['emoji'] ?? '');
+    } elseif ($count > 2) {
+        $message = $reactors[0] . " and " . ($count - 1) . " others reacted to your comment " . ($data['emoji'] ?? '');
+    }
+    break;
 
+    case 'comment_reaction_reply':
+    $reactors = collect($data['reactors'] ?? []);
+    $count = $reactors->count();
+
+    if ($count === 1) {
+        $message = $reactors[0] . " reacted to your reply " . ($data['emoji'] ?? '');
+    } elseif ($count === 2) {
+        $message = $reactors[0] . " and " . $reactors[1] . " reacted to your reply " . ($data['emoji'] ?? '');
+    } elseif ($count > 2) {
+        $message = $reactors[0] . " and " . ($count - 1) . " others reacted to your reply " . ($data['emoji'] ?? '');
+    }
+    break;
+
+    case 'chat_blocked':
+        $message = ($data['full_name'] ?? ($data['first_name'] . ' ' . $data['last_name'])) . " blocked you";
+        break;
+
+    case 'chat_unblocked':
+        $message = ($data['full_name'] ?? ($data['first_name'] . ' ' . $data['last_name'])) . " unblocked you";
+        break;
+
+    case 'chat_reported':
+        $message = $data['reporter_name'] . " reported you in a chat";
+        break;
+
+    case 'post_reported':
+        $message = $data['reporter_name'] . " reported your post";
+        break;
+
+    case 'comment_reported':
+
+        $isReply = !empty($n->parent_id);
+
+        if ($isReply) {
+            $message = $data['reporter_name'] . " reported your reply";
+        } else {
+            $message = $data['reporter_name'] . " reported your comment";
+        }
+
+        break;
+}
             return [
                 'id' => $n->id,
                 'type' => $n->type,
@@ -99,19 +140,7 @@ class NotificationController extends Controller
                     $data['reporter_name'] ?? 
                     ($data['full_name'] ?? null)
                 ],
-                'action' => match($n->type) {
-                    'mention' => 'mentioned you in a comment',
-                    'friend_suggestion' => 'sent you a friend suggestion',
-                    'teacher_suggestion' => 'is now available',
-                    'post_reaction' => 'reacted to your post',
-                    'post_comment' => 'commented on your post',
-                    'chat_blocked' => 'blocked you',
-                    'chat_unblocked' => 'unblocked you',
-                    'chat_reported' => 'reported you in a chat',
-                    'post_reported' => 'reported your post',
-                    'comment_reported' => 'reported your comment',
-                    default => ''
-                },
+                'action' => $message, // ✅ USE THE BUILT MESSAGE
                 'redirect_url' => $n->redirect_url,
                 'read' => $n->read,
                 'created_at' => $n->created_at->diffForHumans(),

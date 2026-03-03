@@ -377,10 +377,6 @@ Route::middleware('auth:sanctum')->get('/me', function (Request $request) {
 Route::middleware('auth:sanctum')->delete('/videos/{id}', [VideoController::class, 'destroy']);
 
 Route::middleware('auth:sanctum')->group(function () {
-
-//     Route::post('/comments/{comment}/reaction', [CommentReactionController::class, 'toggle']);
- });
-Route::middleware('auth:sanctum')->group(function () {
     Route::post('/videos/{id}/reaction', [VideoReactionController::class, 'store']);
     Route::delete('/videos/{id}/reaction', [VideoReactionController::class, 'destroy']);
 });

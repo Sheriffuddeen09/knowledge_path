@@ -16,6 +16,7 @@ class Post extends Model
         'original_post_id',
         'is_new_home',
         'is_new_video',
+        'post_media',
     ];
 
     public function user()
@@ -45,6 +46,11 @@ class Post extends Model
     }
 
     public function media()
+    {
+        return $this->hasMany(PostMedia::class);
+    }
+
+    public function postMedia()
     {
         return $this->hasMany(PostMedia::class);
     }
