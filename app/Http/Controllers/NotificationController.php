@@ -38,13 +38,13 @@ class NotificationController extends Controller
                 case 'friend_suggestion':
                     $names = collect([$data['name'] ?? null])->filter()->values();
                     $message = $names->first() ? "New friend suggestion: {$names->first()}" : "New friend suggestion available";
-                    $action = "is your new friend suggestion";
+                    $action = "Your new friend suggestion";
                     break;
 
                 case 'teacher_suggestion':
                     $names = collect([$data['teacher_name'] ?? null])->filter()->values();
                     $message = $names->first() ? "New teacher available: {$names->first()}" : "New teacher available";
-                    $action = "is your new teacher suggestion";
+                    $action = "New teacher suggestion";
                     break;
 
                 case 'post_reaction':
