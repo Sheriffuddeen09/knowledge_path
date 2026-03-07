@@ -11,14 +11,10 @@ class CategorySeeder extends Seeder
     public function run()
     {
         $categories = [
-            "Hadith",
-            "Qur'an",
-            "Islamic Reminder",
-            "Marriage",
-            "Fiqh",
-            "Dua & Dhikr",
-            "Poem",
-            "Other"
+            "Books",
+            "Shoes",
+            "Clothes",
+            "Watch"   
         ];
 
         foreach ($categories as $name) {

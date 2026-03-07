@@ -47,21 +47,37 @@ use App\Http\Controllers\PostCommentController;
 use App\Http\Controllers\PostReportController;
 use App\Http\Controllers\CommentReportController;
 use App\Http\Controllers\PostStreamController;
+use App\Http\Controllers\ProductController;
 
 
-// 
+
+// Product
+Route::middleware('auth:sanctum')->group(function () {
+Route::get('/products',[ProductController::class,'index']);
+Route::get('/products/{id}',[ProductController::class,'show']);
+Route::post('/products',[ProductController::class,'store']);
+
+});
+
+
+
+// Reports
 Route::get('/comment/report/{commentId}', [CommentReportController::class, 'getCommentReport']);
 Route::get('/post/report/{postId}', [PostReportController::class, 'getPostReport']);
 Route::get('/chat/report/{chatId}', [ChatReportController::class, 'getChatReport']);
 
-//markAsRead reactions
 
+//Notification
 Route::middleware('auth:sanctum')->get('/page-notifications', [NotificationController::class, 'index']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/notifications/read/{id}', [NotificationController::class, 'markAsReadNotification']);
 });
+
+// Video Stream
 Route::get('/video/stream/{video}', [PostStreamController::class, 'stream']);
 
+
+// Post
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/posts', [PostController::class, 'store']);
     Route::get('/posts-get', [PostController::class, 'index']);
