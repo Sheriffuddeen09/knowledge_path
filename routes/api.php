@@ -48,15 +48,28 @@ use App\Http\Controllers\PostReportController;
 use App\Http\Controllers\CommentReportController;
 use App\Http\Controllers\PostStreamController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\CartController;
 
 
+
+Route::middleware('auth:sanctum')->group(function () {
 
 // Product
-Route::middleware('auth:sanctum')->group(function () {
-Route::get('/products',[ProductController::class,'index']);
-Route::get('/products/{id}',[ProductController::class,'show']);
-Route::post('/products',[ProductController::class,'store']);
+    Route::get('/products',[ProductController::class,'index']);
+    Route::get('/products/{id}',[ProductController::class,'show']);
+    Route::post('/products',[ProductController::class,'store']);
+    Route::post('/products/by-ids',[ProductController::class,'productsByIds']);
 
+    Route::get('/my-products', [ProductController::class, 'myProducts']);
+    Route::put('/my-product/{id}', [ProductController::class, 'update']);
+    Route::delete('/my-product/{id}', [ProductController::class, 'destroy']);
+
+});
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/cart', [CartController::class, 'addToCart']);
+    Route::put('/cart/{id}', [CartController::class, 'updateCart']);    // update quantity
+    Route::delete('/cart/{id}', [CartController::class, 'deleteCart']); // delete item
 });
 
 
@@ -400,8 +413,28 @@ Route::get('/videos/{id}/reactions', [VideoReactionController::class, 'index']);
 
 Route::get('/admin', [AdminController::class, 'show']);
 
+
 Route::get('/categories', function () {
-    return Category::all();
+    // Fetch all parent categories (parent_id = null) with their children
+    $categories = Category::with('children')->whereNull('parent_id')->get();
+
+    // Ensure children is always an array
+    $categories = $categories->map(function ($cat) {
+        return [
+            'id' => $cat->id,
+            'name' => $cat->name,
+            'slug' => $cat->slug,
+            'children' => $cat->children->map(function ($child) {
+                return [
+                    'id' => $child->id,
+                    'name' => $child->name,
+                    'slug' => $child->slug,
+                ];
+            })->toArray(), // Always an array
+        ];
+    });
+
+    return response()->json($categories);
 });
 
 Route::get('/coursetitles', function () {

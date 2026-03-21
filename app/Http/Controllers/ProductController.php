@@ -5,17 +5,25 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Product;
 use App\Models\ProductImage;
+use App\Models\Category;
+use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
- public function store(Request $request)
-{
+
+
+            // Create Product
+        
+            public function store(Request $request)
+            {
 
             $request->validate([
                 'title' => 'required|string',
                 'price' => 'required|numeric',
+                'delivery_price' => 'nullable|numeric',
                 'brand_name' => 'nullable|string',
-                'company_name' => 'nullable|string',
+                'company_type' => 'nullable|string',
+                'sale_type' => 'nullable|string|in:online,physical',
                 'title' => 'required|string',
                 'price' => 'required|numeric',
                 'currency' => 'required|string',
@@ -32,6 +40,8 @@ class ProductController extends Controller
 
                 'discount' => 'nullable|numeric',
                 'charges' => 'nullable|numeric',
+                'key_features' => 'nullable|array',
+                'specifications' => 'nullable|array',
 
                 ]);
             $front = null;
@@ -66,44 +76,55 @@ class ProductController extends Controller
                 $totalPrice = $totalPrice + $request->charges;
             }
 
-           $product = Product::create([
+            if ($request->new_subcategory) {
 
-                'title'=>$request->title,
-                'author'=>$request->author,
-                'description'=>$request->description,
-
-                'price'=>$request->price,
-                'discount'=>$request->discount,
-                'charges'=>$request->charges,
-
-                'currency'=>$request->currency,
-
-                'stock'=>$request->stock,
-
-                'color'=>$request->color,
-                'size'=>$request->size,
-                'weight'=>$request->weight,
-
-                'brand_name'=>$request->brand_name,
-                'company_name'=>$request->company_name,
-                'sale_type'=>$request->sale_type,
-                'company_available'=>$request->company_available,
-
-                'location'=>$request->location,
-                'delivery_method'=>$request->delivery_method,
-                'delivery_time_ratio'=>$request->delivery_time_ratio,
-
-                'category_id' =>$request->category_id,
-
-                'front_image'=>$front,
-                'back_image'=>$back,
-                'side_image'=>$side,
-                'pdf_file'=>$pdf,
-
-                'is_digital'=>$request->is_digital
-
+                $newCategory = Category::create([
+                    'name' => $request->new_subcategory,
+                    'slug' => Str::slug($request->new_subcategory),
+                    'parent_id' => $request->parent_id
                 ]);
 
+                $categoryId = $newCategory->id;
+
+            } else {
+                $categoryId = $request->category_id;
+            }
+
+
+            $saleType = $request->sale_type ?? 'physical';
+
+
+            $product = Product::create([
+            'title' => $request->title,
+            'author' => $request->author,
+            'description' => $request->description,
+            'price' => $request->price,
+            'discount' => $request->discount ?? 0,
+            'charges' => $request->charges ?? 0,
+            'currency' => $request->currency,
+            'stock' => $request->stock ?? 0,
+            'color' => $request->color,
+            'size' => $request->size,
+            'weight' => $request->weight,
+            'brand_name' => $request->brand_name,
+            'company_type' => $request->company_type,
+            'company_available' => $request->company_available,
+            'location' => $request->location,
+            'delivery_method' => $request->delivery_method,
+            'delivery_time' => $request->delivery_time,
+            'delivery_price' => $request->delivery_price,
+            'category_id' => $categoryId,
+            'front_image' => $front,
+            'back_image' => $back,
+            'side_image' => $side,
+            'pdf_file' => $pdf,
+            'is_digital' => $request->is_digital ?? false,
+            'sale_type' => $saleType,
+            'downloadable' => $request->downloadable ?? 'no',
+            'key_features' => $request->key_features ?? [],
+            'specifications' => $request->specifications ?? [],
+            'total_price' => $totalPrice,
+        ]);
             if($request->hasFile('images')){
 
             foreach($request->file('images') as $index => $img){
@@ -127,8 +148,8 @@ class ProductController extends Controller
 
             }
 
-
-
+            
+            // Product Index
 
             public function index()
             {
@@ -142,6 +163,8 @@ class ProductController extends Controller
             }
 
 
+
+            // Product Id
             public function show($id)
             {
 
@@ -151,6 +174,65 @@ class ProductController extends Controller
 
             }
 
+
+
+            // User Product
+            public function myProducts()
+                {
+                    return Product::where('user_id', auth()->id())
+                        ->latest()
+                        ->get();
+                }
+
+
+
+
+            // User Product Update
+            public function update(Request $request, $id)
+            {
+                $product = Product::where('id', $id)
+                    ->where('user_id', auth()->id())
+                    ->firstOrFail();
+
+                $product->update([
+                    'title' => $request->title,
+                    'price' => $request->price,
+                    'stock' => $request->stock,
+                    'sale_type' => $request->sale_type ?? 'physical',
+                ]);
+
+                return response()->json([
+                    'message' => 'Product updated',
+                    'product' => $product
+                ]);
+            }
+        
+
+
+            // User Product Delete
+            public function destroy($id)
+                {
+                    $product = Product::where('id', $id)
+                        ->where('user_id', auth()->id())
+                        ->firstOrFail();
+
+                    $product->delete();
+
+                    return response()->json([
+                        'message' => 'Product deleted'
+                    ]);
+                }
+
+
+
+            public function productsByIds(Request $request)
+                {
+                    return Product::with('images')
+                        ->whereIn('id',$request->ids)
+                        ->get();
+                }
+
+                
             public function download($id)
             {
 

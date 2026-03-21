@@ -11,20 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-    if (!Schema::hasTable('assignment_submissions')) {
-        Schema::table('assignment_submissions', function (Blueprint $table) {
-            $table->unsignedTinyInteger('reschedule_count')->default(0);
-            $table->boolean('locked')->default(false);
+        Schema::table('categories', function (Blueprint $table) {
+            $table->foreignId('parent_id')
+                ->nullable()
+                ->constrained('categories')
+                ->cascadeOnDelete();
         });
+    }
 
-    }
-    }
     /**
      * Reverse the migrations.
      */
     public function down(): void
     {
-        Schema::table('assignment_submissions', function (Blueprint $table) {
+        Schema::table('categories', function (Blueprint $table) {
             //
         });
     }

@@ -11,6 +11,7 @@ return new class extends Migration
      */
     public function up(): void
 {
+    if (!Schema::hasTable('message_reactions')) {
     Schema::create('message_reactions', function (Blueprint $table) {
         $table->id();
         $table->unsignedBigInteger('message_id');
@@ -28,6 +29,7 @@ return new class extends Migration
             ->on('users')
             ->cascadeOnDelete();
     });
+}
 }
 
 public function down(): void

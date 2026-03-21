@@ -7,28 +7,31 @@ use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
-    public function up(): void
-    {
-        // SQLite doesn't support modifying CHECK constraints directly
-        // So you may need to recreate the table or remove the constraint if possible
+    public function up()
+{
+    Schema::rename('messages', 'messages_old');
 
-        DB::statement("ALTER TABLE messages RENAME TO messages_old");
+    Schema::create('messages', function (Blueprint $table) {
+        $table->id();
+        $table->foreignId('chat_id')->constrained()->cascadeOnDelete();
+        $table->foreignId('sender_id');
+        $table->string('type')->default('text');
+        $table->string('file')->nullable();
+        $table->timestamps();
+    });
 
-        Schema::create('messages', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('chat_id')->constrained()->onDelete('cascade');
-            $table->foreignId('sender_id')->constrained('users')->onDelete('cascade');
-            $table->string('type'); // allowed: text, image, file, audio
-            $table->string('file')->nullable();
-            $table->timestamps();
-        });
+    // Disable FK for SQLite
+    DB::statement('PRAGMA foreign_keys=OFF;');
 
-        // copy old data
-        DB::statement("INSERT INTO messages (id, chat_id, sender_id, type, file, created_at, updated_at)
-                       SELECT id, chat_id, sender_id, type, file, created_at, updated_at FROM messages_old");
+    DB::statement("
+        INSERT INTO messages (id, chat_id, sender_id, type, file, created_at, updated_at)
+        SELECT id, chat_id, sender_id, type, file, created_at, updated_at FROM messages_old
+    ");
 
-        DB::statement("DROP TABLE messages_old");
-    }
+    DB::statement('PRAGMA foreign_keys=ON;');
+
+    Schema::dropIfExists('messages_old');
+}
 
     public function down(): void
     {

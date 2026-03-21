@@ -8,6 +8,7 @@ return new class extends Migration
 {
     public function up(): void
 {
+    if (!Schema::hasTable('posts')) {
     Schema::table('posts', function (Blueprint $table) {
 
         $table->foreignId('original_post_id')
@@ -20,6 +21,7 @@ return new class extends Migration
               ->default('public')
               ->after('original_post_id');
     });
+}
 }
 
 public function down(): void

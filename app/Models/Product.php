@@ -8,24 +8,43 @@ class Product extends Model
 {
 
      protected $fillable = [
-        'title',
-        'author',
-        'description',
-        'price',
-        'category_id',
-        'stock',
-        'color',
-        'size',
-        'weight',
-        'front_image',
-        'back_image',
-        'side_image',
-        'pdf_file',
-        'is_digital',
-        'discount',
-        'charge'
+    'title',
+    'author',
+    'description',
+    'price',
+    'discount',
+    'charges',
+    'currency',
+    'stock',
+    'color',
+    'size',
+    'weight',
+    'brand_name',
+    'company_type',
+    'company_type',
+    'company_available',
+    'sale_type',
+    'location',
+    'delivery_method',
+    'delivery_time',
+    'delivery_price',
+    'category_id',
+    'front_image',
+    'back_image',
+    'side_image',
+    'pdf_file',
+    'is_digital',
+    'key_features',
+    'specifications',
+    'downloadable',
+    'sale_type',
     ];
 
+
+    protected $casts = [
+    'key_features' => 'array',
+    'specifications' => 'array',
+    ];
 
     public function category()
     {

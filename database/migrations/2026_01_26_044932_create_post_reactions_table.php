@@ -11,6 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
+    if (!Schema::hasTable('post_reactions')) {
+
         Schema::create('post_reactions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('post_id')->constrained()->cascadeOnDelete();
@@ -18,6 +20,7 @@ return new class extends Migration
             $table->string('type'); // like, love, laugh
             $table->timestamps();
         });
+    }
     }
 
     /**
