@@ -49,6 +49,7 @@ use App\Http\Controllers\CommentReportController;
 use App\Http\Controllers\PostStreamController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\CartController;
+use App\Http\Controllers\ReviewController;
 
 
 
@@ -63,6 +64,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/my-products', [ProductController::class, 'myProducts']);
     Route::put('/my-product/{id}', [ProductController::class, 'update']);
     Route::delete('/my-product/{id}', [ProductController::class, 'destroy']);
+
+
+    Route::get('/products/{id}/reviews', [ReviewController::class, 'index']);
+    Route::post('/products/{id}/reviews', [ReviewController::class, 'store']);
 
 });
 
