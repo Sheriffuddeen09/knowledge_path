@@ -8,36 +8,12 @@ class Product extends Model
 {
 
      protected $fillable = [
-    'title',
-    'author',
-    'description',
-    'price',
-    'discount',
-    'charges',
-    'currency',
-    'stock',
-    'color',
-    'size',
-    'weight',
-    'brand_name',
-    'company_type',
-    'company_type',
-    'company_available',
-    'sale_type',
-    'location',
-    'delivery_method',
-    'delivery_time',
-    'delivery_price',
-    'category_id',
-    'front_image',
-    'back_image',
-    'side_image',
-    'pdf_file',
-    'is_digital',
-    'key_features',
-    'specifications',
-    'downloadable',
-    'sale_type',
+        'user_id', 'title', 'author', 'description', 'price', 'discount',
+        'charges', 'currency', 'stock', 'brand_name', 'company_type',
+        'company_available', 'location', 'delivery_method', 'delivery_time',
+        'delivery_price', 'category_id', 'front_image', 'back_image', 'side_image',
+        'pdf_file', 'is_digital', 'sale_type', 'downloadable', 'key_features',
+        'specifications', 'total_price', 'parent_id', 'new_subcategory'
     ];
 
 
@@ -86,5 +62,6 @@ class Product extends Model
         return $this->hasOne(ProductSpecification::class);
     }
 
+    
 
 }

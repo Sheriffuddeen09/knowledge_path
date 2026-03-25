@@ -15,8 +15,7 @@ class CategorySeeder extends Seeder
             "Clothes" => ["T-shirt", "Trouser"],
             "Accessory" => ["Shoes", "Watch"],
             "Electronic" => ["TV", "Laptop"],
-            "House Accessory" => ["Furniture", "Kitchen Items"],
-            "Others" => []
+            "House Accessory" => ["Furniture", "Kitchen Items"]
         ];
 
         foreach ($categories as $parent => $children) {

@@ -16,34 +16,32 @@ class ProductController extends Controller
         
             public function store(Request $request)
             {
-
+//
             $request->validate([
                 'title' => 'required|string',
                 'price' => 'required|numeric',
+                'currency' => 'required|string',
+                'category_id' => 'nullable|exists:categories,id',
+                'new_parent' => 'nullable|string',
+                'new_subcategory' => 'nullable|string',
+                'parent_id' => 'nullable|exists:categories,id',
+                'front_image' => 'nullable|image|max:2048',
+                'back_image' => 'nullable|image|max:2048',
+                'side_image' => 'nullable|image|max:2048',
+                'images.*' => 'nullable|image|max:2048',
                 'delivery_price' => 'nullable|numeric',
                 'brand_name' => 'nullable|string',
                 'company_type' => 'nullable|string',
                 'sale_type' => 'nullable|string|in:online,physical',
-                'title' => 'required|string',
-                'price' => 'required|numeric',
-                'currency' => 'required|string',
-
-                'front_image' => 'nullable|image|max:2048',
-                'back_image' => 'nullable|image|max:2048',
-                'side_image' => 'nullable|image|max:2048',
-
-                'images.*' => 'nullable|image|max:2048',
-
                 'location' => 'nullable|string',
                 'delivery_method' => 'nullable|string',
                 'delivery_time_ratio' => 'nullable|string',
-
                 'discount' => 'nullable|numeric',
                 'charges' => 'nullable|numeric',
                 'key_features' => 'nullable|array',
                 'specifications' => 'nullable|array',
+            ]);
 
-                ]);
             $front = null;
             $back = null;
             $side = null;
@@ -76,25 +74,55 @@ class ProductController extends Controller
                 $totalPrice = $totalPrice + $request->charges;
             }
 
-            if ($request->new_subcategory) {
+    $user = auth()->user();
+    \Log::info('Authenticated user:', ['user' => $user]);
 
-                $newCategory = Category::create([
-                    'name' => $request->new_subcategory,
-                    'slug' => Str::slug($request->new_subcategory),
-                    'parent_id' => $request->parent_id
-                ]);
+    if (!$user) {
+        return response()->json([
+            'message' => 'User not authenticated'
+        ], 401);
+    }
 
-                $categoryId = $newCategory->id;
+    $categoryId = null;
 
-            } else {
-                $categoryId = $request->category_id;
-            }
+    // handle new parent/subcategory safely...
+    if ($request->new_parent) {
+        $parent = Category::firstOrCreate(
+            ['slug' => Str::slug($request->new_parent)],
+            ['name' => $request->new_parent]
+        );
+        $parentId = $parent->id;
+    } else {
+        $parentId = $request->parent_id ?? null;
+    }
+
+    if ($request->new_subcategory) {
+        if (!$parentId) {
+            return response()->json([
+                'message' => 'You must select or create a parent category for the new subcategory'
+            ], 422);
+        }
+
+        $subcategory = Category::firstOrCreate(
+            ['slug' => Str::slug($request->new_subcategory)],
+            ['name' => $request->new_subcategory, 'parent_id' => $parentId]
+        );
+
+        $categoryId = $subcategory->id;
+    } elseif ($request->category_id) {
+        $categoryId = $request->category_id;
+    } else {
+        return response()->json([
+            'message' => 'You must select a category or create a new subcategory'
+        ], 422);
+    }
 
 
             $saleType = $request->sale_type ?? 'physical';
 
 
             $product = Product::create([
+            'user_id' => $user->id,
             'title' => $request->title,
             'author' => $request->author,
             'description' => $request->description,
@@ -103,9 +131,6 @@ class ProductController extends Controller
             'charges' => $request->charges ?? 0,
             'currency' => $request->currency,
             'stock' => $request->stock ?? 0,
-            'color' => $request->color,
-            'size' => $request->size,
-            'weight' => $request->weight,
             'brand_name' => $request->brand_name,
             'company_type' => $request->company_type,
             'company_available' => $request->company_available,
@@ -124,6 +149,8 @@ class ProductController extends Controller
             'key_features' => $request->key_features ?? [],
             'specifications' => $request->specifications ?? [],
             'total_price' => $totalPrice,
+            'parent_id' => $parentId,
+            'new_subcategory' => $request->new_subcategory,
         ]);
             if($request->hasFile('images')){
 
@@ -177,37 +204,80 @@ class ProductController extends Controller
 
 
             // User Product
-            public function myProducts()
-                {
-                    return Product::where('user_id', auth()->id())
-                        ->latest()
-                        ->get();
-                }
+           public function myProducts()
+{
+    return Product::with('images') // <-- eager load images
+        ->where('user_id', auth()->id())
+        ->latest()
+        ->get();
+}
 
 
 
 
             // User Product Update
-            public function update(Request $request, $id)
+          public function update(Request $request, $id)
             {
                 $product = Product::where('id', $id)
                     ->where('user_id', auth()->id())
                     ->firstOrFail();
 
-                $product->update([
-                    'title' => $request->title,
-                    'price' => $request->price,
-                    'stock' => $request->stock,
-                    'sale_type' => $request->sale_type ?? 'physical',
+                $data = $request->only([
+                    'title','author','description','price','stock','discount',
+                    'currency','location','delivery_time','delivery_method',
+                    'delivery_price','downloadable','sale_type',
+                    'company_type','company_available','brand_name',
                 ]);
+
+                $data = array_filter($data, fn($v) => !is_null($v));
+
+                // JSON
+                if ($request->has('key_features')) {
+                    $data['key_features'] = json_decode($request->key_features, true);
+                }
+
+                if ($request->has('specifications')) {
+                    $data['specifications'] = json_decode($request->specifications, true);
+                }
+
+                // Single files
+                foreach (['front_image','back_image','side_image','pdf_file'] as $fileField) {
+                    if ($request->hasFile($fileField)) {
+                        $data[$fileField] = $request->file($fileField)->store('products','public');
+                    }
+                }
+
+                $product->update($data);
+
+                // ✅ DEBUG (VERY IMPORTANT)
+                \Log::info('FILES RECEIVED:', $request->allFiles());
+
+                // ✅ REPLACE IMAGES
+                if ($request->hasFile('images')) {
+
+                    // delete old
+                    foreach ($product->images as $old) {
+                        \Storage::disk('public')->delete($old->image_path);
+                    }
+
+                    $product->images()->delete();
+
+                    // save new
+                    foreach ($request->file('images') as $img) {
+                        $path = $img->store('product_gallery', 'public');
+
+                        $product->images()->create([
+                            'image_path' => $path,
+                            'position' => 'gallery'
+                        ]);
+                    }
+                }
 
                 return response()->json([
-                    'message' => 'Product updated',
-                    'product' => $product
+                    'message' => 'Updated successfully',
+                    'product' => $product->load('images'),
                 ]);
             }
-        
-
 
             // User Product Delete
             public function destroy($id)
