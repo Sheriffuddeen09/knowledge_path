@@ -50,7 +50,7 @@ use App\Http\Controllers\PostStreamController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\ReviewController;
-
+use App\Http\Controllers\WishlistController;
 
 
 Route::middleware('auth:sanctum')->group(function () {

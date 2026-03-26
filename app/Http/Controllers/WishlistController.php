@@ -10,13 +10,20 @@ use Illuminate\Support\Facades\Auth;
 class WishlistController extends Controller
 {
     // Fetch Wishlist
+    
     public function index()
     {
-        $wishlist = Wishlist::with('product')->where('user_id', Auth::id())->get();
-        return response()->json(['wishlist' => $wishlist]);
+        $wishlist = Wishlist::with('product.images')
+        ->where('user_id', Auth::id())
+        ->get();
+
+        return response()->json([
+            'wishlist' => $wishlist
+        ]);
     }
 
     // Add to Wishlist
+   
     public function store(Request $request)
     {
         $request->validate([
@@ -24,14 +31,29 @@ class WishlistController extends Controller
             'quantity' => 'required|integer|min:1',
         ]);
 
-        $wishlist = Wishlist::updateOrCreate(
-            ['user_id' => Auth::id(), 'product_id' => $request->product_id],
-            ['quantity' => $request->quantity]
-        );
+        $user = Auth::user();
 
-        return response()->json(['wishlist' => Wishlist::with('product')->where('user_id', Auth::id())->get()]);
+        // Check if product already exists in wishlist
+        $wishlist = Wishlist::where('user_id', $user->id)
+                        ->where('product_id', $request->product_id)
+                        ->first();
+
+        if ($wishlist) {
+            $wishlist->quantity += $request->quantity;
+            $wishlist->save();
+        } else {
+            $wishlist = Wishlist::create([
+                'user_id' => $user->id,
+                'product_id' => $request->product_id,
+                'quantity' => $request->quantity,
+            ]);
+        }
+
+        // Return the updated cart
+        $wishlist = Wishlist::with('product')->where('user_id', $user->id)->get();
+
+        return response()->json(['wishlist' => $wishlist]);
     }
-
     // Update quantity
     public function update(Request $request, $id)
     {

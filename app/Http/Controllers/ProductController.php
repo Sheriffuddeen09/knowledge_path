@@ -182,6 +182,7 @@ class ProductController extends Controller
             {
 
             $products = Product::with('images')
+            ->withCount('reviews')
             ->latest()
             ->paginate(20);
 
@@ -194,11 +195,11 @@ class ProductController extends Controller
             // Product Id
             public function show($id)
             {
+                $product = Product::with(['images', 'reviews.user'])
+                    ->withCount('reviews') // ✅ COUNT
+                    ->findOrFail($id);
 
-            $product = Product::with('images')->findOrFail($id);
-
-            return response()->json($product);
-
+                return response()->json($product);
             }
 
 
