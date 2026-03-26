@@ -302,6 +302,44 @@ class ProductController extends Controller
                         ->get();
                 }
 
+
+    public function searchProduct(Request $request)
+    {
+    $q = $request->query('q');
+
+    $products = Product::where('title', 'like', "%{$q}%")
+        ->take(10)
+        ->get()
+        ->map(function ($product) {
+
+            return [
+                'id' => $product->id,
+                'title' => $product->title,
+
+                // ✅ FIXED IMAGE
+                'image' => $product->front_image
+                    ? asset('storage/' . $product->front_image)
+                    : asset('placeholder.png'),
+            ];
+        });
+
+    $categories = Category::where('name', 'like', "%{$q}%")
+        ->take(10)
+        ->get(['id', 'name', 'parent_id'])
+        ->map(function ($cat) {
+            return [
+                'id' => $cat->id,
+                'name' => $cat->name,
+                'type' => $cat->parent_id ? 'child' : 'parent',
+            ];
+        });
+
+    return response()->json([
+        'products' => $products,
+        'categories' => $categories,
+    ]);
+}
+
                 
             public function download($id)
             {

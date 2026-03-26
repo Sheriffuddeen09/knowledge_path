@@ -69,13 +69,25 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/products/{id}/reviews', [ReviewController::class, 'index']);
     Route::post('/products/{id}/reviews', [ReviewController::class, 'store']);
 
+    // routes/api.php
+    Route::get('/product-search', [ProductController::class, 'searchProduct']);
 });
 
-Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/cart', [CartController::class, 'addToCart']);
-    Route::put('/cart/{id}', [CartController::class, 'updateCart']);    // update quantity
-    Route::delete('/cart/{id}', [CartController::class, 'deleteCart']); // delete item
-});
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/cart', [CartController::class, 'getCart']);
+        Route::post('/cart', [CartController::class, 'addToCart']);
+        Route::put('/cart/{id}', [CartController::class, 'updateCart']);
+        Route::delete('/cart/{id}', [CartController::class, 'deleteCart']);
+    });
+
+    // Wishlist Routes
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/wishlist', [WishlistController::class, 'index']); // Fetch wishlist
+        Route::post('/wishlist', [WishlistController::class, 'store']); // Add to wishlist
+        Route::put('/wishlist/{id}', [WishlistController::class, 'update']); // Update quantity
+        Route::delete('/wishlist/{id}', [WishlistController::class, 'destroy']); // Remove item
+        Route::post('/wishlist/move-to-cart/{id}', [WishlistController::class, 'moveToCart']); // Move to cart
+    });
 
 
 

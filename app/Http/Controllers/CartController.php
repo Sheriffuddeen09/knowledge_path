@@ -8,6 +8,20 @@ use Illuminate\Support\Facades\Auth;
 
 class CartController extends Controller
 {
+
+    public function getCart()
+    {
+        $user = Auth::user();
+
+        $cart = Cart::with('product.images') // include images
+            ->where('user_id', $user->id)
+            ->get();
+
+        return response()->json([
+            'cart' => $cart
+        ]);
+    }
+
     public function addToCart(Request $request)
     {
         $request->validate([
