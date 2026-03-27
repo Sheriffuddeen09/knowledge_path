@@ -33,10 +33,6 @@ return new class extends Migration
             $table->integer('stock')->default(0);
             $table->integer('quantity')->default(1);
 
-            // Product attributes
-            $table->string('color')->nullable();
-            $table->string('size')->nullable();
-            $table->decimal('weight', 8, 2)->nullable();
 
             // Brand / Company
             $table->string('brand_name')->nullable();

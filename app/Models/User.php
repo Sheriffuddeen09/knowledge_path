@@ -134,6 +134,10 @@ class User extends Authenticatable
         'teacher_profile_completed',
         'teacher_info',
         'last_seen_at',
+        'address',
+        'city',
+        'state',
+        'zip'
     ];
 
     // Hidden attributes

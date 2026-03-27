@@ -79,6 +79,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/cart/{id}', [CartController::class, 'updateCart']);
         Route::delete('/cart/{id}', [CartController::class, 'deleteCart']);
     });
+    
 
     // Wishlist Routes
     Route::middleware('auth:sanctum')->group(function () {
@@ -89,7 +90,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/wishlist/move-to-cart/{id}', [WishlistController::class, 'moveToCart']); // Move to cart
     });
 
-
+    Route::middleware('auth:sanctum')->post('/checkout', [CheckoutController::class, 'store']);
+    Route::middleware('auth:sanctum')->get('/user', fn() => auth()->user());
 
 // Reports
 Route::get('/comment/report/{commentId}', [CommentReportController::class, 'getCommentReport']);
