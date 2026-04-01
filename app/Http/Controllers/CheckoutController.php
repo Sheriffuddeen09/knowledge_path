@@ -42,6 +42,7 @@ public function store(Request $request)
         $total = $subtotal + $delivery - $discount;
 
         // ✅ CREATE ORDER
+
         $order = Order::create([
             'user_id' => $user->id,
             'first_name' => $request->first_name,
@@ -61,9 +62,11 @@ public function store(Request $request)
         ]);
 
         // ✅ CREATE ITEMS
+          $sellerId = $item['product']['user_id'];
         foreach ($request->cart as $item) {
             OrderItem::create([
                 'order_id' => $order->id,
+                'seller_id' => $sellerId,
                 'product_id' => $item['product']['id'],
                 'title' => $item['product']['title'],
                 'image' => $item['product']['images'][0]['image_path'] ?? null,

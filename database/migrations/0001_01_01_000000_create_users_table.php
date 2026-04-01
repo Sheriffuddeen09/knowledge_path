@@ -18,7 +18,6 @@ return new class extends Migration
             $table->string('phone')->unique();
             $table->string('phone_country_code');
             $table->string('location');
-            $table->string('location_country_code');
             $table->string('email')->unique();
             $table->string('gender');   // male, female, other
             $table->timestamp('last_seen_at')->nullable();

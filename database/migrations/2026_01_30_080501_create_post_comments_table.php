@@ -6,39 +6,25 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('post_comments', function (Blueprint $table) {
-    $table->id();
+            $table->id();
 
-    $table->foreignId('post_id')
-          ->constrained()
-          ->cascadeOnDelete();
+            // SAFE: no constrained() (prevents SQLite crash)
+            $table->unsignedBigInteger('post_id');
+            $table->unsignedBigInteger('user_id');
 
-    $table->foreignId('user_id')
-          ->constrained()
-          ->cascadeOnDelete();
+            // self-reply support
+            $table->unsignedBigInteger('parent_id')->nullable();
 
-    // For replies & replies to replies
-    $table->foreignId('parent_id')
-          ->nullable()
-          ->constrained('post_comments')
-          ->cascadeOnDelete();
+            $table->text('body')->nullable();
+            $table->string('image')->nullable();
 
-    $table->text('body')->nullable();
-    $table->string('image')->nullable();
-
-    $table->timestamps();
-});
-
+            $table->timestamps();
+        });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('post_comments');

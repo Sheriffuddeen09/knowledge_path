@@ -3,7 +3,3 @@ php artisan config:clear
 php artisan cache:clear
 php artisan route:list
 
-
-php artisan make:mail StudentRequestedLiveClass
-php artisan make:mail LiveClassAccepted
-php artisan make:mail LiveClassDeclined

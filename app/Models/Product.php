@@ -62,6 +62,9 @@ class Product extends Model
         return $this->hasOne(ProductSpecification::class);
     }
 
-    
+    public function seller()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 
 }

@@ -51,6 +51,8 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\WishlistController;
+use App\Http\Controllers\OrderController;
+use App\Http\Controllers\PaymentController;
 
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -90,23 +92,64 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/wishlist/move-to-cart/{id}', [WishlistController::class, 'moveToCart']); // Move to cart
     });
 
-    Route::middleware('auth:sanctum')->post('/checkout', [CheckoutController::class, 'store']);
     Route::middleware('auth:sanctum')->get('/user', fn() => auth()->user());
 
-// Reports
-Route::get('/comment/report/{commentId}', [CommentReportController::class, 'getCommentReport']);
-Route::get('/post/report/{postId}', [PostReportController::class, 'getPostReport']);
-Route::get('/chat/report/{chatId}', [ChatReportController::class, 'getChatReport']);
+
+    Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/order/create', [OrderController::class, 'create']);
+    Route::post('/chat/create', [OrderController::class, 'createChat']);
+    Route::get('/orders', [OrderController::class, 'orders']);
+    Route::get('/chat/{chatId}', [OrderController::class, 'orders']);
+    
+
+    // Route::post('/stripe/create-intent', [PaymentController::class, 'createPaymentIntent']);
+    // Route::post('/stripe/webhook', [PaymentController::class, 'stripeWebhook']);
+    // Route::post('/payment/update-ref', [PaymentController::class, 'updateRef']);
+    // 
+
+    // Route::post('/paypal/verify', [PaymentController::class, 'verifyPaypal']);
+
+    // Route::post('/paystack/webhook', [PaymentController::class, 'paystackWebhook']);
+    });
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/product/save-draft', [OrderController::class, 'saveDraft']);
+        Route::get('/product/drafts/{userId}', [OrderController::class, 'getDrafts']);
+        Route::delete('/product/draft/{id}', [OrderController::class, 'deleteDraft']);
+        Route::get('/saved-products/count/{userId}', function ($userId) {
+            $count = DB::table('saved_products')
+                ->where('user_id', $userId)
+                ->where('status', 'draft')
+                ->count();
+
+            return response()->json(['count' => $count]);
+        });
+
+        Route::post('/saved-products/clear/{userId}', function ($userId) {
+            DB::table('saved_products')
+                ->where('user_id', $userId)
+                ->where('status', 'draft')
+                ->update(['status' => 'viewed']); // or 'saved'
+
+            return response()->json(['message' => 'cleared']);
+        });
+    });
 
 
-//Notification
-Route::middleware('auth:sanctum')->get('/page-notifications', [NotificationController::class, 'index']);
-Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/notifications/read/{id}', [NotificationController::class, 'markAsReadNotification']);
-});
 
-// Video Stream
-Route::get('/video/stream/{video}', [PostStreamController::class, 'stream']);
+    // Reports
+    Route::get('/comment/report/{commentId}', [CommentReportController::class, 'getCommentReport']);
+    Route::get('/post/report/{postId}', [PostReportController::class, 'getPostReport']);
+    Route::get('/chat/report/{chatId}', [ChatReportController::class, 'getChatReport']);
+
+    //Notification
+    Route::middleware('auth:sanctum')->get('/page-notifications', [NotificationController::class, 'index']);
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/notifications/read/{id}', [NotificationController::class, 'markAsReadNotification']);
+    });
+
+    // Video Stream
+    Route::get('/video/stream/{video}', [PostStreamController::class, 'stream']);
 
 
 // Post
