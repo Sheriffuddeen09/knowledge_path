@@ -23,7 +23,7 @@ return new class extends Migration
     $table->string('phone');
 
     // ADDRESS
-    $table->string('address');
+    $table->string('address')->nullable();
     $table->string('city')->nullable();
     $table->string('state')->nullable();
     $table->string('zip')->nullable();
@@ -38,10 +38,14 @@ return new class extends Migration
     $table->decimal('total_price', 10, 2);
 
     // STATUS
-    $table->enum('status', ['pending', 'paid', 'shipped', 'delivered'])
-          ->default('pending');
+    $table->enum('status', ['pending', 'active', 'cancelled'])->default();
 
     $table->timestamps();
+
+    $table->string('order_token')->nullable();
+    $table->string('order_hash')->nullable();
+    $table->unique('order_token');
+    $table->unique('order_hash');
 });
     }
 

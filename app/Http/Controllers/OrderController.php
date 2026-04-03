@@ -14,12 +14,13 @@ use App\Models\Message;
 use App\Models\Chat;
 use Illuminate\Support\Facades\DB;
 use App\Models\SavedProduct;
+use App\Models\User;
 
 
 
 class OrderController extends Controller
 {
-    // ✅ CREATE ORDER
+    // ✅ CREATE ORDER 
 
     public function create(Request $request)
 {
@@ -94,7 +95,7 @@ class OrderController extends Controller
             'state' => $request->state,
             'zip' => $request->zip,
             'payment_method' => $request->payment_method,
-
+        
             'subtotal' => $subtotal,
             'delivery_price' => $delivery,
             'discount' => $discount,
@@ -118,10 +119,13 @@ class OrderController extends Controller
             OrderItem::create([
                 'order_id' => $order->id,
                 'product_id' => $product->id,
-                'name' => $item['name'],
+                'title' => $item['title'] ?? $item['name'],
                 'price' => $item['price'],
                 'quantity' => $item['quantity'],
-                'seller_id' => $sellerId,
+                'seller_id' => $product->user_id,
+                'description' => $item['description'] ?? '',
+                'total_price' => $item['price'] * $item['quantity'],
+                
             ]);
 
             // =========================
@@ -133,6 +137,8 @@ class OrderController extends Controller
             $chat = Chat::firstOrCreate([
                 'user_one_id' => $userOne,
                 'user_two_id' => $userTwo,
+
+                 'type' => 'private',
             ]);
 
             // =========================
@@ -148,7 +154,7 @@ class OrderController extends Controller
                     'sender_id' => $buyerId,
                     'receiver_id' => $sellerId,
                     'type' => 'text',
-                    'message' => "🛒 New Order (#{$order->id}) placed for {$product->name}.",
+                    'message' => "🛒 New Order (#{$order->id}) placed.",
                 ]);
             }
 
@@ -191,6 +197,52 @@ class OrderController extends Controller
     }
 }
 
+public function destroy($id, Request $request)
+{
+    $userId = $request->user_id;
+
+    DB::beginTransaction();
+
+    try {
+        $order = Order::with('items')->find($id);
+
+        if (!$order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order not found'
+            ]);
+        }
+
+        // ✅ BUYER DELETE
+        if ($order->user_id == $userId) {
+            $order->buyer_deleted = true;
+        }
+
+        // ✅ SELLER DELETE (check items)
+        foreach ($order->items as $item) {
+            if ($item->seller_id == $userId) {
+                $order->seller_deleted = true;
+            }
+        }
+
+        $order->save();
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Removed successfully'
+        ]);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Delete failed'
+        ]);
+    }
+}
 
 public function acceptChat($chatId)
 {
@@ -203,38 +255,140 @@ public function acceptChat($chatId)
 
     return response()->json(['success' => true]);
 }
-    // ✅ ORDER HISTORY
-    public function orders(Request $request)
-    {
-        $orders = Order::with(['items.product'])
-        ->where('user_id', auth()->id())
-        ->get()
-        ->map(function ($order) {
+
+
+    
+public function cancel($id, Request $request)
+{
+    DB::beginTransaction();
+
+    try {
+
+        $order = Order::find($id);
+
+        if (!$order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order not found'
+            ]);
+        }
+
+        // 🔥 SET STATUS (THIS IS WHAT YOU WERE MISSING)
+        $order->status = 'cancelled';
+        $order->save();
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order cancelled'
+        ]);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ]);
+    }
+}
+
+
+public function index(Request $request)
+{
+    $userId = auth()->id();
+
+$orders = Order::with(['items.product.images'])
+    ->where(function ($q) use ($userId) {
+
+        // =========================
+        // BUYER ORDERS
+        // =========================
+        $q->where('user_id', $userId)
+          ->where(function ($q2) {
+              $q2->where('buyer_deleted', false)
+                 ->orWhereNull('buyer_deleted');
+          });
+    })
+
+    ->orWhere(function ($q) use ($userId) {
+
+        // =========================
+        // SELLER ORDERS
+        // =========================
+        $q->whereHas('items', function ($q2) use ($userId) {
+            $q2->where('seller_id', $userId);
+        })
+        ->where(function ($q3) {
+            $q3->where('seller_deleted', false)
+               ->orWhereNull('seller_deleted');
+        });
+    })
+
+    ->orderBy('id', 'asc')
+    ->get();
+
+    // ========================= destroy
+    // 🔥 CLEAN ITEMS + CHAT
+    // =========================
+    $orders->transform(function ($order) use ($userId) {
+
+        $isBuyer = $order->user_id == $userId;
+
+        // ✅ FILTER ITEMS HERE (NOT IN QUERY)
+        $order->items = $order->items
+            ->filter(function ($item) use ($isBuyer, $userId) {
+                return $isBuyer || $item->seller_id == $userId;
+            })
+            ->unique('product_id')
+            ->values()
+            ->map(function ($item) {
+
+                if ($item->product) {
+                    $mainImage = $item->product->images
+                        ->where('position', 'main')
+                        ->first()
+                        ?? $item->product->images->first();
+
+                    $item->product->image = $mainImage
+                        ? $mainImage->image_path
+                        : null;
+                }
+
+                return $item;
+            });
+
+        // =========================
+        // ✅ CHAT STATUS
+        // =========================
+        $order->chat_created = false;
 
         foreach ($order->items as $item) {
 
-            $item->unread_count = Message::where('order_id', $order->id)
-                ->where('receiver_id', auth()->id())
-                ->where('seller_id', $item->seller_id)
-                ->where('is_read', false)
-                ->count();
+            $sellerId = $item->seller_id;
+
+            $userOne = min($order->user_id, $sellerId);
+            $userTwo = max($order->user_id, $sellerId);
+
+            $chatExists = Chat::where('user_one_id', $userOne)
+                ->where('user_two_id', $userTwo)
+                ->exists();
+
+            if ($chatExists) {
+                $order->chat_created = true;
+                break;
+            }
         }
 
         return $order;
     });
-    }
 
-
-    
-    public function deleteOrder($id)
-        {
-            $order = Order::findOrFail($id);
-
-            $order->delete();
-
-            return response()->json(['success' => true]);
-        }
-
+    return response()->json([
+        'success' => true,
+        'orders' => $orders
+    ]);
+}
 
 public function saveDraft(Request $request)
 {

@@ -98,8 +98,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
     Route::post('/order/create', [OrderController::class, 'create']);
     Route::post('/chat/create', [OrderController::class, 'createChat']);
-    Route::get('/orders', [OrderController::class, 'orders']);
+    Route::get('/orders', [OrderController::class, 'index']);
     Route::get('/chat/{chatId}', [OrderController::class, 'orders']);
+    Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
+    Route::post('/order/cancel/{id}', [OrderController::class, 'cancel']);
     
 
     // Route::post('/stripe/create-intent', [PaymentController::class, 'createPaymentIntent']);

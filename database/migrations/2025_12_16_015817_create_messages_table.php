@@ -18,6 +18,7 @@ return new class extends Migration
                 $table->foreignId('receiver_id')->constrained('users')->cascadeOnDelete();
 
                 $table->enum('type', ['text', 'image', 'voice']);
+                
                 $table->text('message')->nullable();
                 $table->string('file')->nullable();
                 $table->timestamp('seen_at')->nullable();

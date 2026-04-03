@@ -20,7 +20,7 @@ return new class extends Migration
 
     // SNAPSHOT (VERY IMPORTANT)
     $table->string('title');
-    $table->string('description');
+    $table->string('description')->nullable();
     $table->string('image')->nullable();
 
     $table->integer('quantity');

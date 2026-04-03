@@ -9,21 +9,23 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up()
-    {
-        Schema::table('orders', function (Blueprint $table) {
-            $table->unique('order_token');
-            $table->unique('order_hash');
-        });
-    }
+    public function up(): void
+{
+    Schema::table('messages', function (Blueprint $table) {
+
+        // ❌ DROP OLD COLUMN
+        if (Schema::hasColumn('messages', 'user_id')) {
+            $table->dropColumn('user_id');
+        }
+
+    });
+}
 
     /**
      * Reverse the migrations.
      */
     public function down(): void
     {
-        Schema::table('orders', function (Blueprint $table) {
-            //
-        });
+        //
     }
 };

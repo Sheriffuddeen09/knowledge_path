@@ -22,7 +22,8 @@ return new class extends Migration
     $table->foreignId('user_one_id')->nullable()->constrained('users')->nullOnDelete();
     $table->foreignId('user_two_id')->nullable()->constrained('users')->nullOnDelete();
 
-    $table->string('type'); // student_teacher | student_student
+    $table->enum('type', ['private', 'group', 'marketplace']);
+    
     $table->timestamps();
 
     // prevent duplicates
