@@ -102,12 +102,15 @@ class OrderController extends Controller
             'total_price' => $total,
 
             'status' => 'pending',
+
+            'seen' => false,
         ]);
 
         $sellerMap = [];
 
         
-
+        $product = Product::find($item['product_id']);
+        
         foreach ($uniqueItems as $item) {
 
             $product = Product::find($item['product_id']);
@@ -300,32 +303,33 @@ public function index(Request $request)
     $userId = auth()->id();
 
 $orders = Order::with(['items.product.images'])
-    ->where(function ($q) use ($userId) {
+    ->where(function ($query) use ($userId) {
 
         // =========================
         // BUYER ORDERS
         // =========================
-        $q->where('user_id', $userId)
-          ->where(function ($q2) {
-              $q2->where('buyer_deleted', false)
-                 ->orWhereNull('buyer_deleted');
-          });
-    })
-
-    ->orWhere(function ($q) use ($userId) {
+        $query->where(function ($q) use ($userId) {
+            $q->where('user_id', $userId)
+              ->where(function ($q2) {
+                  $q2->where('buyer_deleted', false)
+                     ->orWhereNull('buyer_deleted');
+              });
+        })
 
         // =========================
         // SELLER ORDERS
         // =========================
-        $q->whereHas('items', function ($q2) use ($userId) {
-            $q2->where('seller_id', $userId);
-        })
-        ->where(function ($q3) {
-            $q3->where('seller_deleted', false)
-               ->orWhereNull('seller_deleted');
+        ->orWhere(function ($q) use ($userId) {
+            $q->whereHas('items', function ($q2) use ($userId) {
+                $q2->where('seller_id', $userId);
+            })
+            ->where(function ($q3) {
+                $q3->where('seller_deleted', false)
+                   ->orWhereNull('seller_deleted');
+            });
         });
-    })
 
+    })
     ->orderBy('id', 'asc')
     ->get();
 
@@ -385,8 +389,53 @@ $orders = Order::with(['items.product.images'])
     });
 
     return response()->json([
+    'success' => true,
+    'orders' => $orders,
+    'count' => $orders->where('seen', false)->count()
+]);
+}
+
+public function count(Request $request)
+{
+    $userId = $request->user_id;
+
+    $count = Order::where(function ($q) use ($userId) {
+
+    $q->where('user_id', $userId)
+      ->orWhereIn('id', function ($sub) use ($userId) {
+          $sub->select('order_id')
+              ->from('order_items')
+              ->where('seller_id', $userId);
+      });
+
+    })
+    ->where('seen', 0)
+    ->count();
+
+    return response()->json([
         'success' => true,
-        'orders' => $orders
+        'count' => $count
+    ]);
+}
+
+
+public function markAsSeen(Request $request)
+{
+    $userId = $request->user_id;
+
+    Order::where(function ($q) use ($userId) {
+
+        $q->where('user_id', $userId)
+          ->orWhereHas('items', function ($q2) use ($userId) {
+              $q2->where('seller_id', $userId);
+          });
+
+    })
+    ->update(['seen' => true]);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Orders marked as seen'
     ]);
 }
 

@@ -16,37 +16,118 @@ use App\Events\MessageSent;
 
    class ChatController extends Controller
 {
+
+
+
+// public function messages(Chat $chat)
+// {
+//     $userId = auth()->id();
+
+//     if ($chat->isBlockedFor($userId)) {
+//         return response()->json(['message' => 'This chat is blocked'], 403);
+//     }
+
+//     $chat->messages()
+//         ->whereNull('delivered_at')
+//         ->where('sender_id', '!=', $userId)
+//         ->update(['delivered_at' => now()]);
+
+//     $chat->messages()
+//         ->where('is_read', false)
+//         ->where('sender_id', '!=', $userId)
+//         ->update(['is_read' => true]);
+
+//     // ✅ THIS is where you add disappearing filter
+//         return $chat->messages()
+//     ->where(function ($q) {
+//         $q->whereNull('expires_at')
+//           ->orWhere('expires_at', '>', now());
+//     })
+//     ->with([
+//         'sender:id,first_name,last_name,role',
+//         'reactions.user:id,first_name,last_name',
+//         'repliedMessage.sender:id,first_name,last_name,role',
+//     ])
+//     ->orderBy('created_at')
+//     ->get()
+//     ->map(function ($msg) {
+//         return [
+//             ...$msg->toArray(),
+//             'created_at' => $msg->created_at?->toISOString() ?? null,
+//         ];
+//     });
+// }
+
+
 public function messages(Chat $chat)
 {
     $userId = auth()->id();
 
-    // 🔒 BLOCK CHECK
     if ($chat->isBlockedFor($userId)) {
-        return response()->json([
-            'message' => 'This chat is blocked'
-        ], 403);
+        return response()->json(['message' => 'This chat is blocked'], 403);
     }
 
-    // ✅ Mark messages as DELIVERED (receiver opened chat)
     $chat->messages()
         ->whereNull('delivered_at')
         ->where('sender_id', '!=', $userId)
         ->update(['delivered_at' => now()]);
 
-    // ✅ Mark messages as READ (receiver viewed them)
     $chat->messages()
-        ->where('is_read', false)
+        ->whereNull('read_at')
         ->where('sender_id', '!=', $userId)
-        ->update(['is_read' => true]);
-        
+        ->update(['read_at' => now()]);
 
     return $chat->messages()
+        ->where(function ($q) {
+            $q->whereNull('expires_at')
+              ->orWhere('expires_at', '>', now());
+        })
         ->with([
             'sender:id,first_name,last_name,role',
-            'reactions.user:id,first_name,last_name'
+            'reactions.user:id,first_name,last_name',
+            'repliedMessage.sender:id,first_name,last_name,role',
         ])
         ->orderBy('created_at')
+        ->get()
+        ->map(function ($msg) {
+                return [
+                    ...$msg->toArray(),
+                    'created_at' => $msg->created_at?->toISOString() ?? null,
+
+                    // 🔥 FIX: derive status from DB fields
+                    'status' => match (true) {
+                        $msg->is_read => 'read',
+                        !is_null($msg->delivered_at) => 'delivered',
+                        default => 'sent',
+                    },
+                ];
+            });
+}
+
+public function oldMessage(Request $request)
+{
+    $chatId = $request->query('chat_id');
+    $before = $request->query('before'); // last message id for pagination
+
+    if (!$chatId) {
+        return response()->json(['message' => 'chat_id is required'], 422);
+    }
+
+    $query = Message::where('chat_id', $chatId);
+
+    // pagination (load older messages)
+    if ($before) {
+        $query->where('id', '<', $before);
+    }
+
+    $messages = $query
+        ->orderBy('id', 'desc')
+        ->limit(20)
         ->get();
+
+    return response()->json([
+        'data' => $messages
+    ]);
 }
 
 
@@ -156,9 +237,15 @@ public function index()
             : $chat->user_one_id;
     }
 
+    $expiresAt = null;
+
+    if ($chat->disappearing_mode && $chat->disappearing_time > 0) {
+            $expiresAt = now()->addSeconds($chat->disappearing_time);
+        }
+ 
+
     $message = Message::create([
         'chat_id'    => $chat->id,
-        'user_id' => auth()->id(),
         'sender_id' => auth()->id(),
         'receiver_id'=> $receiverId,
         'type'       => $request->type,
@@ -166,7 +253,9 @@ public function index()
         'file'       => $path,
         'file_name'  => $fileName,
         'replied_to' => $request->replied_to,
-        'is_read' => false
+        'is_read' => false,
+        'expires_at' => $expiresAt,
+
     ]);
 
     // Attach message to both participants
@@ -196,7 +285,9 @@ public function index()
 {
     $request->validate([
         'chat_id' => 'required|exists:chats,id',
-        'voice'   => 'required|file|mimes:webm,mpeg,wav,ogg',
+        'voice' => 'required|file|mimes:webm,mp3,wav,ogg',
+        'replied_to' => 'nullable|exists:messages,id',
+
     ]);
 
     $chat = Chat::findOrFail($request->chat_id);
@@ -209,7 +300,8 @@ public function index()
     }
 
     $file = $request->file('voice');
-    $path = $file->store('chat_files', 'public');
+    // $path = $file->store('chat_files', 'public');
+    $path = $request->file('voice')->store('voices', 'public');
 
     $receiverId = $chat->teacher_id == auth()->id()
     ? $chat->student_id
@@ -220,15 +312,24 @@ public function index()
             ? $chat->user_two_id
             : $chat->user_one_id;
     }
+    
+    
+    $expiresAt = null;
+
+    if ($chat->disappearing_mode && $chat->disappearing_time > 0) {
+            $expiresAt = now()->addSeconds($chat->disappearing_time);
+        }
 
     $message = Message::create([
         'chat_id'   => $chat->id,
-        'user_id' => auth()->id(),
         'sender_id' => auth()->id(),
         'type'      => 'voice',
         'receiver_id'=> $receiverId,
         'file'      => $path,
-        'is_read' => false
+        'replied_to' => $request->replied_to,
+        'expires_at' => $expiresAt,
+        'is_read' => false,
+
     ]);
 
     $message->load('sender');
@@ -240,10 +341,28 @@ public function index()
     ]);
 }
 
+
+public function setDisappearing(Request $request, $chatId)
+{
+    $chat = Chat::findOrFail($chatId);
+
+    $chat->disappearing_enabled = $request->enabled;
+    $chat->disappearing_seconds = $request->time;
+
+    $chat->save();
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Disappearing settings updated'
+    ]);
+    
+}
+
+
 // markSeen function
 
 
-public function markChatSeen($chatId)
+public function markSeen($chatId)
 {
     Message::where('chat_id', $chatId)
         ->where('receiver_id', auth()->id())

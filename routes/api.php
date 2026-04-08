@@ -57,7 +57,9 @@ use App\Http\Controllers\PaymentController;
 
 Route::middleware('auth:sanctum')->group(function () {
 
-// Product
+    Route::post('/chat/{chatId}/disappearing', [ChatController::class, 'setDisappearing']);
+
+// Product /api/messages/mark-seen
     Route::get('/products',[ProductController::class,'index']);
     Route::get('/products/{id}',[ProductController::class,'show']);
     Route::middleware('auth:sanctum')->post('/products', [ProductController::class, 'store']);
@@ -102,6 +104,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/chat/{chatId}', [OrderController::class, 'orders']);
     Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
     Route::post('/order/cancel/{id}', [OrderController::class, 'cancel']);
+
+    Route::get('/orders/count', [OrderController::class, 'count']);
+    Route::post('/orders/seen', [OrderController::class, 'markAsSeen']);
     
 
     // Route::post('/stripe/create-intent', [PaymentController::class, 'createPaymentIntent']);
@@ -398,6 +403,7 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/chats', [ChatController::class,'index']);
     Route::get('/chats/{chat}/messages', [ChatController::class,'messages']);
+    Route::get('/messages', [ChatController::class, 'oldMessage']);
     Route::post('/messages', [ChatController::class,'send']);
     Route::put('/messages/{message}', [ChatController::class,'edit']);
     Route::delete('/messages/{message}', [ChatController::class,'delete']);

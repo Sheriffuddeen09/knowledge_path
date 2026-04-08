@@ -21,7 +21,12 @@ class Order extends Model
         'delivery_price',
         'discount',
         'total_price',
-        'status'
+        'status',
+        
+    ];
+
+    protected $casts = [
+    'seen' => 'boolean'
     ];
 
     // 🔗 RELATION
