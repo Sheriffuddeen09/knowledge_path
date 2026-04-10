@@ -401,6 +401,26 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // request
 Route::middleware('auth:sanctum')->group(function () {
+
+
+Route::get('/download-file', function (Request $request) {
+
+    $file = $request->query('file');
+
+    if (!$file) {
+        return response()->json(['message' => 'file is required'], 400);
+    }
+
+    $file = basename($file); // security
+
+    $path = storage_path('app/public/chat_files/' . $file);
+
+    if (!file_exists($path)) {
+        return response()->json(['message' => 'File not found'], 404);
+    }
+
+    return response()->download($path);
+});
     Route::get('/chats', [ChatController::class,'index']);
     Route::get('/chats/{chat}/messages', [ChatController::class,'messages']);
     Route::get('/messages', [ChatController::class, 'oldMessage']);
