@@ -421,6 +421,11 @@ Route::get('/download-file', function (Request $request) {
 
     return response()->download($path);
 });
+
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/messages/download/{type}/{messageId}', [ChatController::class, 'download']);
+    });
     Route::get('/chats', [ChatController::class,'index']);
     Route::get('/chats/{chat}/messages', [ChatController::class,'messages']);
     Route::get('/messages', [ChatController::class, 'oldMessage']);

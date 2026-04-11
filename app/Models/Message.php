@@ -20,9 +20,15 @@ class Message extends Model
     ];
 
     protected $casts = [
+        'files' => 'array',
         'delivered_at' => 'datetime',
         'edited' => 'boolean'
     ];
+    
+    public function downloads()
+        {
+            return $this->hasMany(MessageDownload::class);
+        }
 
     public function sender()
     {

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Chat;
 use App\Models\Message;
+use App\Models\MessageDownload;
 use App\Events\NewMessage;
 use Illuminate\Support\Facades\Storage;
 use App\Events\TypingEvent;
@@ -21,52 +22,6 @@ use FFMpeg\Coordinate\TimeCode;
 class ChatController extends Controller
 {
 
-
-// public function messages(Chat $chat)
-// {
-//     $userId = auth()->id();
-
-//     if ($chat->isBlockedFor($userId)) {
-//         return response()->json(['message' => 'This chat is blocked'], 403);
-//     }
-
-//     $chat->messages()
-//         ->whereNull('delivered_at')
-//         ->where('sender_id', '!=', $userId)
-//         ->update(['delivered_at' => now()]);
-
-//     $chat->messages()
-//         ->whereNull('is_read')
-//         ->where('sender_id', '!=', $userId)
-//         ->update(['is_read' => now()]);
-
-//     return $chat->messages()
-//         ->where(function ($q) {
-//             $q->whereNull('expires_at')
-//               ->orWhere('expires_at', '>', now());
-//         })
-//         ->with([
-//             'sender:id,first_name,last_name,role',
-//             'reactions.user:id,first_name,last_name',
-//             'repliedMessage.sender:id,first_name,last_name,role',
-//         ])
-//         ->orderBy('created_at')
-//         ->get()
-//         ->map(function ($msg) {
-//                 return [
-//                     ...$msg->toArray(),
-//                     'created_at' => $msg->created_at?->toISOString() ?? null,
-
-//                     // 🔥 FIX: derive status from DB fields
-//                     'status' => match (true) {
-//                         $msg->is_read => 'read',
-//                         !is_null($msg->delivered_at) => 'delivered',
-//                         default => 'sent',
-//                     },
-//                 ];
-//             });
-// }
-
 public function messages(Chat $chat)
 {
     $userId = auth()->id();
@@ -75,23 +30,19 @@ public function messages(Chat $chat)
         return response()->json(['message' => 'This chat is blocked'], 403);
     }
 
-    // mark delivered
+    // ✅ mark delivered
     $chat->messages()
         ->whereNull('delivered_at')
         ->where('sender_id', '!=', $userId)
         ->update(['delivered_at' => now()]);
 
-    // mark read
+    // ✅ mark read
     $chat->messages()
         ->whereNull('is_read')
         ->where('sender_id', '!=', $userId)
         ->update(['is_read' => now()]);
 
     return $chat->messages()
-        ->where(function ($q) {
-            $q->whereNull('expires_at')
-              ->orWhere('expires_at', '>', now());
-        })
         ->with([
             'sender:id,first_name,last_name,role',
             'reactions.user:id,first_name,last_name',
@@ -100,65 +51,20 @@ public function messages(Chat $chat)
         ->orderBy('created_at')
         ->get()
         ->map(function ($msg) {
-
-            // ✅ FIX: FORCE FILES ALWAYS ARRAY
-            $files = [];
-
-            if (!empty($msg->files) && is_array($msg->files)) {
-                $files = $msg->files;
-            }
-
-            // fallback for OLD messages (single file system)
-            elseif (!empty($msg->file) || !empty($msg->file_url)) {
-                $files = [[
-                    'file' => $msg->file,
-                    'file_url' => $msg->file_url,
-                    'type' => $msg->type ?? 'image',
-                ]];
-            }
-
             return [
                 ...$msg->toArray(),
 
-                'files' => $files, // 🔥 THIS IS THE FIX
-
                 'created_at' => $msg->created_at?->toISOString(),
 
+                // ✅ CLEAN STATUS LOGIC
                 'status' => match (true) {
-                    $msg->is_read => 'read',
+                    !is_null($msg->is_read) => 'read',
                     !is_null($msg->delivered_at) => 'delivered',
                     default => 'sent',
                 },
             ];
         });
 }
-
-// public function oldMessage(Request $request)
-// {
-//     $chatId = $request->query('chat_id');
-//     $before = $request->query('before'); // last message id for pagination
-
-//     if (!$chatId) {
-//         return response()->json(['message' => 'chat_id is required'], 422);
-//     }
-
-//     $query = Message::where('chat_id', $chatId);
-
-//     // pagination (load older messages)
-//     if ($before) {
-//         $query->where('id', '<', $before);
-//     }
-
-//     $messages = $query
-//         ->orderBy('id', 'desc')
-//         ->limit(20)
-//         ->get();
-
-//     return response()->json([
-//         'data' => $messages
-//     ]);
-// }
-
 
 public function oldMessage(Request $request)
 {
@@ -169,38 +75,25 @@ public function oldMessage(Request $request)
         return response()->json(['message' => 'chat_id is required'], 422);
     }
 
-    $messages = Message::where('chat_id', $chatId)
-        ->when($before, function ($q) use ($before) {
-            $q->where('id', '<', $before);
-        })
-        ->with([
-            'sender:id,first_name,last_name,role',
-            'reactions.user:id,first_name,last_name',
-            'repliedMessage.sender:id,first_name,last_name,role',
-        ])
+    $query = Message::where('chat_id', $chatId);
+
+    if ($before) {
+        $query->where('id', '<', $before);
+    }
+
+    $messages = $query
         ->orderBy('id', 'desc')
         ->limit(20)
         ->get()
         ->map(function ($msg) {
-
-            // ✅ SAME FIX HERE (CRITICAL)
-            $files = [];
-
-            if (!empty($msg->files) && is_array($msg->files)) {
-                $files = $msg->files;
-            }
-
-            elseif (!empty($msg->file) || !empty($msg->file_url)) {
-                $files = [[
-                    'file' => $msg->file,
-                    'file_url' => $msg->file_url,
-                    'type' => $msg->type ?? 'image',
-                ]];
-            }
-
             return [
                 ...$msg->toArray(),
-                'files' => $files,
+                'created_at' => $msg->created_at?->toISOString(),
+                'status' => match (true) {
+                    !is_null($msg->is_read) => 'read',
+                    !is_null($msg->delivered_at) => 'delivered',
+                    default => 'sent',
+                },
             ];
         });
 
@@ -1120,6 +1013,69 @@ public function markAsReadMessage(Request $request)
         'status' => true
     ]);
 }
+
+
+public function download(Request $request, $type, $messageId)
+{
+    $user = $request->user();
+
+    $allowed = ['video', 'image', 'audio', 'document'];
+
+    if (!in_array($type, $allowed)) {
+        return response()->json(['error' => 'Invalid type'], 400);
+    }
+
+    // 🔥 GET MESSAGE (NOT POST)
+    $message = Message::findOrFail($messageId);
+
+    // 🔥 Ensure message contains media
+    if ($message->type !== $type) {
+        return response()->json(['error' => 'Type mismatch'], 400);
+    }
+
+    // 🔥 file path
+    $path = storage_path('app/public/' . $message->file);
+
+    if (!file_exists($path)) {
+        return response()->json(['error' => 'File not found'], 404);
+    }
+
+    // ✅ track download (MESSAGE VERSION)
+    if ($user) {
+        MessageDownload::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'message_id' => $message->id,
+            ],
+            [
+                'downloaded_at' => now()
+            ]
+        );
+    }
+
+    // 🎯 file name
+    $fileName = match ($type) {
+        'video' => 'IPK-video.mp4',
+        'image' => 'IPK-image.jpg',
+        'audio' => 'IPK-audio.mp3',
+        'document' => 'IPK-document.pdf',
+        default => 'download'
+    };
+
+    // 🎯 mime type
+    $mime = match ($type) {
+        'video' => 'video/mp4',
+        'image' => 'image/jpeg',
+        'audio' => 'audio/mpeg',
+        'document' => 'application/pdf',
+        default => 'application/octet-stream'
+    };
+
+    return response()->download($path, $fileName, [
+        'Content-Type' => $mime
+    ]);
+}
+
 
 }
 //unreadSendersCount
