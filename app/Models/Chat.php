@@ -11,9 +11,15 @@ class Chat extends Model
         'user_one_id',
         'user_two_id',
         'type',
-        'status'
+        'status',
+        'read_by',
     ];
 
+    public function readBy()
+        {
+            return $this->belongsTo(User::class, 'read_by');
+        }
+        
     public function teacher()
     {
         return $this->belongsTo(User::class, 'teacher_id');

@@ -17,6 +17,8 @@ class Message extends Model
         'replied_to',
         'user_id',
         'file_name',
+        'read_by',
+        'is_pinned'
     ];
 
     protected $casts = [
@@ -25,6 +27,16 @@ class Message extends Model
         'edited' => 'boolean'
     ];
     
+    public function reader()
+        {
+            return $this->belongsTo(User::class, 'read_by');
+        }
+
+    public function readBy()
+        {
+            return $this->belongsTo(User::class, 'read_by');
+        }
+
     public function downloads()
         {
             return $this->hasMany(MessageDownload::class);
@@ -65,6 +77,14 @@ public function scopeVisibleFor($query, $userId)
     });
 }
 
+protected $appends = ['file_url'];
+
+public function getFileUrlAttribute()
+{
+    return $this->file
+        ? asset('storage/' . $this->file)
+        : null;
+}
 
 }
 

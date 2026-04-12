@@ -16,7 +16,7 @@ use App\Models\MessageReaction;
 use App\Events\MessageSent;
 use ProtoneMedia\LaravelFFMpeg\Support\FFMpeg;
 use FFMpeg\Coordinate\TimeCode;
-
+use FFMpeg\Format\Video\X264;
    
 
 class ChatController extends Controller
@@ -31,40 +31,42 @@ public function messages(Chat $chat)
     }
 
     // ✅ mark delivered
-    $chat->messages()
+    Message::where('chat_id', $chat->id)
         ->whereNull('delivered_at')
         ->where('sender_id', '!=', $userId)
-        ->update(['delivered_at' => now()]);
+        ->update([
+            'delivered_at' => now()
+        ]);
 
     // ✅ mark read
-    $chat->messages()
-        ->whereNull('is_read')
+    Message::where('chat_id', $chat->id)
+        ->whereNull('read_at')
         ->where('sender_id', '!=', $userId)
-        ->update(['is_read' => now()]);
+        ->update([
+            'read_at' => now(),
+            'read_by' => $userId
+        ]);
 
     return $chat->messages()
-        ->with([
-            'sender:id,first_name,last_name,role',
-            'reactions.user:id,first_name,last_name',
-            'repliedMessage.sender:id,first_name,last_name,role',
-        ])
+        ->with(['sender:id,first_name,last_name,role', 'readBy:id,first_name,last_name'])
         ->orderBy('created_at')
         ->get()
         ->map(function ($msg) {
+
             return [
                 ...$msg->toArray(),
-
                 'created_at' => $msg->created_at?->toISOString(),
+                'read_by_name' => $msg->readBy?->first_name,
 
-                // ✅ CLEAN STATUS LOGIC
                 'status' => match (true) {
-                    !is_null($msg->is_read) => 'read',
+                    !is_null($msg->read_at) => 'read',
                     !is_null($msg->delivered_at) => 'delivered',
                     default => 'sent',
                 },
             ];
         });
 }
+
 
 public function oldMessage(Request $request)
 {
@@ -89,8 +91,9 @@ public function oldMessage(Request $request)
             return [
                 ...$msg->toArray(),
                 'created_at' => $msg->created_at?->toISOString(),
+
                 'status' => match (true) {
-                    !is_null($msg->is_read) => 'read',
+                    !is_null($msg->read_at) => 'read',
                     !is_null($msg->delivered_at) => 'delivered',
                     default => 'sent',
                 },
@@ -101,6 +104,7 @@ public function oldMessage(Request $request)
         'data' => $messages
     ]);
 }
+
 
 public function index()
 {
@@ -115,23 +119,33 @@ public function index()
         ->with([
             'teacher',
             'student',
-            'messages' => fn ($q) => $q->latest()->limit(1),
+
+            'messages' => function ($q) {
+                $q->latest()
+                  ->limit(1)
+                  ->with([
+                      'sender:id,first_name,last_name',
+                      'reader:id,first_name,last_name' // 👈 IMPORTANT
+                  ]);
+            },
         ])
         ->get();
 
     $chats->each(function ($chat) use ($userId) {
 
-        // unread count
-        $chat->unread_count = $chat->messages
-            ->whereNull('seen_at')
+       
+        $chat->unread_count = $chat->messages()
+            ->whereNull('read_at')
             ->where('sender_id', '!=', $userId)
             ->count();
 
-        // latest message
-        $chat->latest_message = $chat->messages->first();
+        
+        $latest = $chat->messages->first();
+        $chat->latest_message = $latest;
+
         unset($chat->messages);
 
-        // 👇 DETERMINE OTHER USER (CRITICAL FIX)
+       
         if ($chat->type === 'student_teacher') {
             $chat->other_user = $chat->teacher_id == $userId
                 ? $chat->student
@@ -144,358 +158,37 @@ public function index()
             $chat->other_user = User::find($otherId);
         }
 
+       
         $block = $chat->blocks()->first();
 
-        if ($block) {
-            $chat->block_info = [
-                'blocked' => true,
-                'blocker_id' => $block->blocker_id,
-                'blocked_id' => $block->blocked_id,
-                'is_blocked_by_me' => $block->blocker_id == $userId,
-                'is_blocked_by_other' => $block->blocker_id != $userId,
-            ];
-        } else {
-            $chat->block_info = null;
-        }
-    });
+        $chat->block_info = $block ? [
+            'blocked' => true,
+            'blocker_id' => $block->blocker_id,
+            'blocked_id' => $block->blocked_id,
+            'is_blocked_by_me' => $block->blocker_id == $userId,
+            'is_blocked_by_other' => $block->blocker_id != $userId,
+        ] : null;
 
+       
+        $chat->latest_message_status = $latest
+            ? (
+                $latest->read_at
+                    ? 'read'
+                    : ($latest->delivered_at ? 'delivered' : 'sent')
+            )
+            : null;
+
+        
+        $chat->latest_message_read_by_name =
+            $latest?->reader?->first_name ?? null;
+    });
 
     return response()->json($chats);
 }
 
 
 
-    
 public function send(Request $request)
-{
-    $request->validate([
-        'chat_id'    => 'required|exists:chats,id',
-        'type'       => 'nullable|in:text,image,voice,video,file,audio',
-        'types'      => 'nullable|array',
-        'types.*'    => 'in:image,video,voice,file,audio',
-        'message'    => 'nullable|string',
-        'file'       => 'nullable|file|max:20480',
-        'files'      => 'nullable|array',
-        'files.*'    => 'file|max:20480',
-        'trim_start' => 'nullable|array',
-        'trim_end'   => 'nullable|array',
-        'replied_to' => 'nullable|exists:messages,id',
-    ]);
-
-    $chat = Chat::findOrFail($request->chat_id);
-
-    // 🔒 BLOCK CHECK
-    if ($chat->isBlockedFor(auth()->id())) {
-        return response()->json([
-            'message' => 'You are blocked in this chat'
-        ], 403);
-    }
-
-    // 🎯 DETERMINE RECEIVER
-    $receiverId = null;
-
-    if ($chat->teacher_id && $chat->student_id) {
-        $receiverId = $chat->teacher_id == auth()->id()
-            ? $chat->student_id
-            : $chat->teacher_id;
-    }
-
-    if ($chat->user_one_id && $chat->user_two_id) {
-        $receiverId = $chat->user_one_id == auth()->id()
-            ? $chat->user_two_id
-            : $chat->user_one_id;
-    }
-
-    // ⏳ DISAPPEARING
-    $expiresAt = null;
-    if ($chat->disappearing_mode && $chat->disappearing_time > 0) {
-        $expiresAt = now()->addSeconds($chat->disappearing_time);
-    }
-
-    $messages = [];
-
-    // 📦 MULTIPLE FILES
-    if ($request->hasFile('files')) {
-
-        $files = $request->file('files');
-        $types = $request->types ?? [];
-        $trimStarts = $request->trim_start ?? [];
-        $trimEnds   = $request->trim_end ?? [];
-
-        foreach ($files as $index => $file) {
-
-            $type = $types[$index] ?? 'file';
-            $fileName = $file->getClientOriginalName();
-
-            // 📁 SAVE ORIGINAL FIRST
-            $originalPath = $file->store('chat_files', 'public');
-            $finalPath = $originalPath;
-
-            // 🎬 VIDEO TRIMMING
-            if ($type === 'video' && isset($trimStarts[$index]) && isset($trimEnds[$index])) {
-
-                $start = floatval($trimStarts[$index]);
-                $end   = floatval($trimEnds[$index]);
-
-                // ✅ Only trim if user actually trimmed
-                if ($start > 0 || $end > $start) {
-
-                    try {
-                        $trimmedName = 'trim_' . time() . '_' . $fileName;
-
-                        FFMpeg::fromDisk('public')
-                            ->open($originalPath)
-                            ->export()
-                            ->addFilter(function ($filters) use ($start, $end) {
-                                $filters->clip(
-                                    TimeCode::fromSeconds($start),
-                                    TimeCode::fromSeconds($end - $start)
-                                );
-                            })
-                            ->toDisk('public')
-                            ->save('chat_files/' . $trimmedName);
-
-                        // 🔁 Replace original with trimmed
-                        $finalPath = 'chat_files/' . $trimmedName;
-
-                    } catch (\Exception $e) {
-                        // ❌ fallback to original
-                        $finalPath = $originalPath;
-                    }
-                }
-            }
-
-            // 🎧 AUDIO DURATION
-            $duration = null;
-            if (in_array($type, ['voice', 'audio'])) {
-                try {
-                    $media = FFMpeg::fromDisk('public')->open($originalPath);
-                    $duration = $media->getDurationInSeconds();
-                } catch (\Exception $e) {
-                    $duration = null;
-                }
-            }
-
-            $messages[] = Message::create([
-                'chat_id'    => $chat->id,
-                'sender_id'  => auth()->id(),
-                'receiver_id'=> $receiverId,
-                'type'       => $type,
-                'message'    => $request->message,
-                'file'       => $finalPath,
-                'file_name'  => $fileName,
-                'duration'   => $duration,
-                'replied_to' => $request->replied_to,
-                'is_read'    => false,
-                'expires_at' => $expiresAt,
-            ]);
-        }
-    }
-
-    // 📄 SINGLE FILE
-    elseif ($request->hasFile('file')) {
-
-        $file = $request->file('file');
-        $path = $file->store('chat_files', 'public');
-
-        $messages[] = Message::create([
-            'chat_id'    => $chat->id,
-            'sender_id'  => auth()->id(),
-            'receiver_id'=> $receiverId,
-            'type'       => $request->type,
-            'message'    => $request->message,
-            'file'       => $path,
-            'file_name'  => $file->getClientOriginalName(),
-            'replied_to' => $request->replied_to,
-            'is_read'    => false,
-            'expires_at' => $expiresAt,
-        ]);
-    }
-
-    // 💬 TEXT
-    else {
-        $messages[] = Message::create([
-            'chat_id'    => $chat->id,
-            'sender_id'  => auth()->id(),
-            'receiver_id'=> $receiverId,
-            'type'       => 'text',
-            'message'    => $request->message,
-            'replied_to' => $request->replied_to,
-            'is_read'    => false,
-            'expires_at' => $expiresAt,
-        ]);
-    }
-
-    // 📡 ATTACH USERS + BROADCAST
-    foreach ($messages as $message) {
-
-        $userIds = collect([
-            $chat->teacher_id,
-            $chat->student_id,
-            $chat->user_one_id,
-            $chat->user_two_id
-        ])->filter()->unique();
-
-        foreach ($userIds as $userId) {
-            $message->users()->attach($userId, ['deleted' => false]);
-        }
-
-        $message->load(['sender', 'repliedMessage.sender']);
-
-        broadcast(new \App\Events\NewMessage($message))->toOthers();
-    }
-
-    return response()->json([
-        'messages' => $messages
-    ]);
-}
-
-
-// public function send(Request $request)
-// {
-//     $request->validate([
-//         'chat_id'    => 'required|exists:chats,id',
-//         'type'       => 'nullable|in:text,image,voice,video,file,audio',
-//         'types'      => 'nullable|array',
-//         'types.*'    => 'in:image,video,voice,file,audio',
-//         'message'    => 'nullable|string',
-//         'file'       => 'nullable|file|max:20480',
-//         'files'      => 'nullable|array',
-//         'files.*'    => 'file|max:20480',
-//         'replied_to' => 'nullable|exists:messages,id',
-//     ]);
-
-//     $chat = Chat::findOrFail($request->chat_id);
-
-//     if ($chat->isBlockedFor(auth()->id())) {
-//         return response()->json(['message' => 'You are blocked in this chat'], 403);
-//     }
-
-//     $receiverId = null;
-
-//     if ($chat->teacher_id && $chat->student_id) {
-//         $receiverId = $chat->teacher_id == auth()->id()
-//             ? $chat->student_id
-//             : $chat->teacher_id;
-//     }
-
-//     if ($chat->user_one_id && $chat->user_two_id) {
-//         $receiverId = $chat->user_one_id == auth()->id()
-//             ? $chat->user_two_id
-//             : $chat->user_one_id;
-//     }
-
-//     $expiresAt = null;
-//     if ($chat->disappearing_mode && $chat->disappearing_time > 0) {
-//         $expiresAt = now()->addSeconds($chat->disappearing_time);
-//     }
-
-//     $messages = [];
-
-//     /**
-//      * Helper: clean filename (WhatsApp-style safe)
-//      */
-//     $generateFileName = function ($file) {
-//         $original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-//         $extension = $file->getClientOriginalExtension();
-
-//         // clean spaces + special chars
-//         $clean = preg_replace('/[^A-Za-z0-9_\-]/', '_', $original);
-
-//         return $clean . '_' . time() . '.' . $extension;
-//     };
-
-//     // 📦 MULTIPLE FILES
-//     if ($request->hasFile('files')) {
-
-//         $files = $request->file('files');
-//         $types = $request->types ?? [];
-
-//         foreach ($files as $index => $file) {
-
-//             $storedName = $generateFileName($file);
-
-//             $path = $file->storeAs('chat_files', $storedName, 'public');
-
-//             $messages[] = Message::create([
-//                 'chat_id'    => $chat->id,
-//                 'sender_id'  => auth()->id(),
-//                 'receiver_id'=> $receiverId,
-//                 'type'       => $types[$index] ?? 'file',
-//                 'message'    => $request->message,
-//                 'file'       => $path,
-//                 'file_name'  => $file->getClientOriginalName(), // 👈 ORIGINAL NAME (DISPLAY)
-//                 'replied_to' => $request->replied_to,
-//                 'is_read'    => false,
-//                 'expires_at' => $expiresAt,
-//             ]);
-//         }
-//     }
-
-//     // 📄 SINGLE FILE
-//     elseif ($request->hasFile('file')) {
-
-//         $file = $request->file('file');
-
-//         $path = $file->store('chat_files', 'public');
-
-//         $fileName = $file->getClientOriginalName();
-
-//         $message = Message::create([
-//             'chat_id'    => $chat->id,
-//             'sender_id'  => auth()->id(),
-//             'receiver_id'=> $receiverId,
-//             'type'       => $request->type,
-//             'message'    => $request->message,
-//             'file'       => $path,
-//             'file_name'  => $fileName, // 👈 THIS WILL NOW WORK
-//             'replied_to' => $request->replied_to,
-//             'is_read'    => false,
-//             'expires_at' => $expiresAt,
-//         ]);
-//     }
-
-//     // 💬 TEXT MESSAGE
-//     else {
-
-//         $messages[] = Message::create([
-//             'chat_id'    => $chat->id,
-//             'sender_id'  => auth()->id(),
-//             'receiver_id'=> $receiverId,
-//             'type'       => 'text',
-//             'message'    => $request->message,
-//             'replied_to' => $request->replied_to,
-//             'is_read'    => false,
-//             'expires_at' => $expiresAt,
-//         ]);
-//     }
-
-//     // 📡 ATTACH + BROADCAST
-//     foreach ($messages as $message) {
-
-//         $userIds = collect([
-//             $chat->teacher_id,
-//             $chat->student_id,
-//             $chat->user_one_id,
-//             $chat->user_two_id
-//         ])->filter()->unique();
-
-//         foreach ($userIds as $userId) {
-//             $message->users()->attach($userId, ['deleted' => false]);
-//         }
-
-//         $message->load(['sender', 'repliedMessage.sender']);
-
-//         broadcast(new NewMessage($message))->toOthers();
-//     }
-
-//     return response()->json([
-//         'messages' => $messages
-//     ]);
-// }
-
-
-public function sendR(Request $request)
 {
     $request->validate([
         'chat_id'    => 'required|exists:chats,id',
@@ -710,8 +403,17 @@ public function sendR(Request $request)
     }
 
     return response()->json([
-        'messages' => $messages
-    ]);
+    'messages' => collect($messages)->map(function ($msg) {
+        return [
+            ...$msg->toArray(),
+
+            // ✅ IMPORTANT
+            'file_url' => $msg->file
+                ? asset('storage/' . $msg->file)
+                : null,
+        ];
+    })
+]);
 }
 
 
@@ -1076,6 +778,47 @@ public function download(Request $request, $type, $messageId)
     ]);
 }
 
+public function markAsRead($id)
+{
+    $userId = auth()->id();
+
+    $message = Message::where('id', $id)
+        ->where('sender_id', '!=', $userId)
+        ->firstOrFail();
+
+    if (!$message->read_at) {
+        $message->update([
+            'read_at' => now()
+        ]);
+    }
+
+    return response()->json(['success' => true]);
+}
+
+public function pin(Request $request)
+{
+    $message = Message::findOrFail($request->message_id);
+
+    $message->is_pinned = true;
+    $message->save();
+
+    return response()->json([
+        'message' => 'Message pinned successfully',
+        'data' => $message
+    ]);
+}
+
+public function unpin(Request $request)
+{
+    $message = Message::findOrFail($request->message_id);
+
+    $message->is_pinned = false;
+    $message->save();
+
+    return response()->json([
+        'message' => 'Message unpinned successfully',
+        'data' => $message
+    ]);
+}
 
 }
-//unreadSendersCount
