@@ -422,8 +422,8 @@ Route::get('/download-file', function (Request $request) {
     return response()->download($path);
 });
 
-    Route::put('/messages/pin', [MessageController::class, 'pin']);
-    Route::delete('/messages/pin', [MessageController::class, 'unpin']);
+    Route::put('/messages/pin', [ChatController::class, 'pin']);
+    Route::delete('/messages/pin', [ChatController::class, 'unpin']);
 
     Route::post('/messages/{id}/read', [ChatController::class, 'markAsRead']);
 

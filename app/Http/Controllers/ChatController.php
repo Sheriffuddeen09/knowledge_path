@@ -22,6 +22,51 @@ use FFMpeg\Format\Video\X264;
 class ChatController extends Controller
 {
 
+// public function messages(Chat $chat)
+// {
+//     $userId = auth()->id();
+
+//     if ($chat->isBlockedFor($userId)) {
+//         return response()->json(['message' => 'This chat is blocked'], 403);
+//     }
+
+//     // ✅ mark delivered
+//     Message::where('chat_id', $chat->id)
+//         ->whereNull('delivered_at')
+//         ->where('sender_id', '!=', $userId)
+//         ->update([
+//             'delivered_at' => now()
+//         ]);
+
+//     // ✅ mark read
+//     Message::where('chat_id', $chat->id)
+//         ->whereNull('read_at')
+//         ->where('sender_id', '!=', $userId)
+//         ->update([
+//             'read_at' => now(),
+//             'read_by' => $userId
+//         ]);
+
+//     return $chat->messages()
+//         ->with(['sender:id,first_name,last_name,role', 'readBy:id,first_name,last_name'])
+//         ->orderBy('created_at')
+//         ->get()
+//         ->map(function ($msg) {
+
+//             return [
+//                 ...$msg->toArray(),
+//                 'created_at' => $msg->created_at?->toISOString(),
+//                 'read_by_name' => $msg->readBy?->first_name,
+
+//                 'status' => match (true) {
+//                     !is_null($msg->read_at) => 'read',
+//                     !is_null($msg->delivered_at) => 'delivered',
+//                     default => 'sent',
+//                 },
+//             ];
+//         });
+// }
+
 public function messages(Chat $chat)
 {
     $userId = auth()->id();
@@ -48,13 +93,20 @@ public function messages(Chat $chat)
         ]);
 
     return $chat->messages()
-        ->with(['sender:id,first_name,last_name,role', 'readBy:id,first_name,last_name'])
+        ->with([
+            'sender:id,first_name,last_name,role',
+            'readBy:id,first_name,last_name'
+        ])
         ->orderBy('created_at')
         ->get()
         ->map(function ($msg) {
 
             return [
                 ...$msg->toArray(),
+
+                // ✅ ADD THIS
+                'is_pinned' => (bool) $msg->is_pinned,
+
                 'created_at' => $msg->created_at?->toISOString(),
                 'read_by_name' => $msg->readBy?->first_name,
 
@@ -66,7 +118,6 @@ public function messages(Chat $chat)
             ];
         });
 }
-
 
 public function oldMessage(Request $request)
 {
