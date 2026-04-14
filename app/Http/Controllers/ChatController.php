@@ -22,6 +22,7 @@ use FFMpeg\Format\Video\X264;
 class ChatController extends Controller
 {
 
+
 // public function messages(Chat $chat)
 // {
 //     $userId = auth()->id();
@@ -48,13 +49,20 @@ class ChatController extends Controller
 //         ]);
 
 //     return $chat->messages()
-//         ->with(['sender:id,first_name,last_name,role', 'readBy:id,first_name,last_name'])
+//         ->with([
+//             'sender:id,first_name,last_name,role',
+//             'readBy:id,first_name,last_name'
+//         ])
 //         ->orderBy('created_at')
 //         ->get()
 //         ->map(function ($msg) {
 
 //             return [
 //                 ...$msg->toArray(),
+
+//                 // ✅ ADD THIS
+//                 'is_pinned' => (bool) $msg->is_pinned,
+
 //                 'created_at' => $msg->created_at?->toISOString(),
 //                 'read_by_name' => $msg->readBy?->first_name,
 
@@ -75,49 +83,67 @@ public function messages(Chat $chat)
         return response()->json(['message' => 'This chat is blocked'], 403);
     }
 
-    // ✅ mark delivered
-    Message::where('chat_id', $chat->id)
-        ->whereNull('delivered_at')
-        ->where('sender_id', '!=', $userId)
-        ->update([
-            'delivered_at' => now()
-        ]);
-
-    // ✅ mark read
-    Message::where('chat_id', $chat->id)
-        ->whereNull('read_at')
-        ->where('sender_id', '!=', $userId)
-        ->update([
-            'read_at' => now(),
-            'read_by' => $userId
-        ]);
-
-    return $chat->messages()
+    $messages = $chat->messages()
         ->with([
             'sender:id,first_name,last_name,role',
             'readBy:id,first_name,last_name'
         ])
         ->orderBy('created_at')
-        ->get()
-        ->map(function ($msg) {
+        ->get();
 
-            return [
-                ...$msg->toArray(),
+    $result = [];
+    $map = [];
 
-                // ✅ ADD THIS
-                'is_pinned' => (bool) $msg->is_pinned,
+    foreach ($messages as $msg) {
 
-                'created_at' => $msg->created_at?->toISOString(),
-                'read_by_name' => $msg->readBy?->first_name,
+        $base = [
+            'id' => $msg->id,
+            'chat_id' => $msg->chat_id,
+            'sender_id' => $msg->sender_id,
+            'type' => $msg->type,
+            'message' => $msg->message,
+            'group_id' => $msg->group_id,
+            'sender' => $msg->sender,
+            'created_at' => $msg->created_at?->toISOString(),
+            'status' => 'sent',
+        ];
 
-                'status' => match (true) {
-                    !is_null($msg->read_at) => 'read',
-                    !is_null($msg->delivered_at) => 'delivered',
-                    default => 'sent',
-                },
+        // ✅ GROUPED MESSAGE
+        if ($msg->group_id) {
+
+            if (!isset($map[$msg->group_id])) {
+                $map[$msg->group_id] = [
+                    ...$base,
+                    'files' => [],
+                ];
+
+                $result[] = &$map[$msg->group_id];
+            }
+
+            $map[$msg->group_id]['files'][] = [
+                'file_url' => asset('storage/' . $msg->file),
+                'file_name' => $msg->file_name,
+                'type' => $msg->type,
             ];
-        });
+
+        } else {
+
+            // ✅ SINGLE MESSAGE
+            $base['files'] = [[
+                'file_url' => asset('storage/' . $msg->file),
+                'file_name' => $msg->file_name,
+                'type' => $msg->type,
+            ]];
+
+            $result[] = $base;
+        }
+    }
+
+    return response()->json([
+        'messages' => $result
+    ]);
 }
+
 
 public function oldMessage(Request $request)
 {
@@ -238,7 +264,6 @@ public function index()
 }
 
 
-
 public function send(Request $request)
 {
     $request->validate([
@@ -253,8 +278,10 @@ public function send(Request $request)
         'trim_start' => 'nullable|array',
         'trim_end'   => 'nullable|array',
         'replied_to' => 'nullable|exists:messages,id',
+        'group_id' => 'nullable|string',
     ]);
 
+    
     $chat = Chat::findOrFail($request->chat_id);
 
     if ($chat->isBlockedFor(auth()->id())) {
@@ -306,6 +333,19 @@ public function send(Request $request)
 
         $files = $request->file('files');
 
+        // ✅ FIRST: get from frontend
+        $groupId = $request->input('group_id');
+
+        // ✅ ONLY generate if frontend didn't send
+
+        if (!$groupId) {
+            $onlyMedia = collect($types)->every(fn($t) => in_array($t, ['image', 'video']));
+
+            if ($onlyMedia && count($files) > 1) {
+                $groupId = uniqid('grp_');
+            }
+        }
+        // 🔽 KEEP YOUR LOOP
         foreach ($files as $index => $file) {
 
             $storedName = $generateFileName($file);
@@ -357,13 +397,11 @@ public function send(Request $request)
                 'replied_to'  => $request->replied_to,
                 'is_read'     => false,
                 'expires_at'  => $expiresAt,
+                'group_id' => $groupId,
             ]);
         }
     }
 
-    // =====================================================
-    // 📄 SINGLE FILE
-    // =====================================================
     elseif ($request->hasFile('file')) {
 
         $file = $request->file('file');
@@ -453,17 +491,34 @@ public function send(Request $request)
         broadcast(new NewMessage($message))->toOthers();
     }
 
-    return response()->json([
-    'messages' => collect($messages)->map(function ($msg) {
-        return [
-            ...$msg->toArray(),
+    \Log::info('DEBUG SEND', [
+    'group_id' => $request->group_id,
+    'types' => $request->types,
+    'has_files' => $request->hasFile('files'),
+    ]);
 
-            // ✅ IMPORTANT
-            'file_url' => $msg->file
-                ? asset('storage/' . $msg->file)
-                : null,
+    $grouped = collect($messages)
+    ->groupBy('group_id')
+    ->map(function ($group) {
+
+        $first = $group->first();
+
+        return [
+            ...$first->toArray(),
+            'group_id' => $first->group_id,
+
+            // ✅ THIS is what frontend needs
+            'files' => $group->map(fn($msg) => [
+                'file_url' => asset('storage/' . $msg->file),
+                'file_name' => $msg->file_name,
+                'type' => $msg->type,
+            ])->values(),
         ];
     })
+    ->values();
+
+return response()->json([
+    'messages' => $grouped
 ]);
 }
 

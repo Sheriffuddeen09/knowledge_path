@@ -18,7 +18,8 @@ class Message extends Model
         'user_id',
         'file_name',
         'read_by',
-        'is_pinned'
+        'is_pinned',
+        'group_id'
     ];
 
     protected $casts = [
