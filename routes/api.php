@@ -399,7 +399,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 
-// request
+// request react
 Route::middleware('auth:sanctum')->group(function () {
 
 
@@ -439,7 +439,6 @@ Route::get('/download-file', function (Request $request) {
     Route::post('/messages/voice', [ChatController::class, 'sendVoice']);
     Route::post('/messages/{message}/seen', [ChatController::class, 'markSeen']);
     Route::post('/messages/typing', [ChatController::class, 'typing']);
-    Route::post('/messages/react', [ChatController::class, 'react']);
     Route::post('/chat/report', [ChatReportController::class, 'store']);
     Route::get('/chat/reports', [ChatReportController::class, 'index']);
     Route::delete('/messages/{message}', [ChatController::class, 'destroy']);

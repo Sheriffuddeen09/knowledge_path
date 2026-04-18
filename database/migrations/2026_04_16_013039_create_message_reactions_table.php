@@ -14,27 +14,29 @@ return new class extends Migration
     if (!Schema::hasTable('message_reactions')) {
     Schema::create('message_reactions', function (Blueprint $table) {
         $table->id();
-        $table->unsignedBigInteger('message_id');
-        $table->unsignedBigInteger('user_id');
-        $table->string('emoji');
+
+        $table->foreignId('message_id')
+            ->constrained('messages')
+            ->cascadeOnDelete();
+
+        $table->foreignId('user_id')
+            ->constrained('users')
+            ->cascadeOnDelete();
+
+        $table->string('emoji', 10);
+
         $table->timestamps();
 
-        $table->foreign('message_id')
-            ->references('id')
-            ->on('messages')
-            ->cascadeOnDelete();
-
-        $table->foreign('user_id')
-            ->references('id')
-            ->on('users')
-            ->cascadeOnDelete();
+        $table->unique(['message_id', 'user_id', 'emoji']);
     });
 }
 }
 
-public function down(): void
-{
-    Schema::dropIfExists('message_reactions');
-}
-
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('message_reactions');
+    }
 };

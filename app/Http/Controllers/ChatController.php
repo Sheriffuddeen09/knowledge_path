@@ -235,8 +235,6 @@ public function send(Request $request)
     if ($chat->isBlockedFor(auth()->id())) {
         return response()->json(['message' => 'You are blocked in this chat'], 403);
     }
-
-    // 🔥 DETERMINE RECEIVER
     $receiverId = null;
 
     if ($chat->teacher_id && $chat->student_id) {
@@ -269,22 +267,16 @@ public function send(Request $request)
         return $clean . '_' . time() . '.' . $extension;
     };
 
-    // 🔥 TRIM DATA
     $starts = $request->trim_start ?? [];
     $ends   = $request->trim_end ?? [];
     $types  = $request->types ?? [];
 
-    // =====================================================
-    // 📦 MULTIPLE FILES
-    // =====================================================
     if ($request->hasFile('files')) {
 
         $files = $request->file('files');
 
         // ✅ FIRST: get from frontend
         $groupId = $request->input('group_id');
-
-        // ✅ ONLY generate if frontend didn't send
 
         if (!$groupId) {
             $onlyMedia = collect($types)->every(fn($t) => in_array($t, ['image', 'video']));
@@ -293,7 +285,6 @@ public function send(Request $request)
                 $groupId = uniqid('grp_');
             }
         }
-        // 🔽 KEEP YOUR LOOP
         foreach ($files as $index => $file) {
 
             $storedName = $generateFileName($file);
@@ -304,36 +295,31 @@ public function send(Request $request)
 
             $path = null;
 
-            // 🎬 VIDEO TRIM
             if ($type === 'video' && $end > $start) {
-
                 $tempPath = $file->getRealPath();
-
                 $outputName = 'trimmed_' . $storedName;
                 $outputFullPath = storage_path('app/public/chat_files/' . $outputName);
 
-                // 🔥 CREATE DIRECTORY IF NOT EXISTS
                 if (!file_exists(dirname($outputFullPath))) {
                     mkdir(dirname($outputFullPath), 0777, true);
                 }
-
-                // 🔥 FFMPEG COMMAND
                 $command = "ffmpeg -ss $start -i \"$tempPath\" -to $end -c:v libx264 -c:a aac \"$outputFullPath\" 2>&1";
-
                 exec($command, $output, $returnCode);
-
                 if ($returnCode !== 0) {
                     // ❌ fallback if ffmpeg fails
                     $path = $file->storeAs('chat_files', $storedName, 'public');
                 } else {
                     $path = 'chat_files/' . $outputName;
                 }
-
             } else {
                 // 📁 NORMAL FILE / IMAGE
                 $path = $file->storeAs('chat_files', $storedName, 'public');
             }
 
+            $originalName = $file->getClientOriginalName();
+            $cleanName = preg_replace('/[^A-Za-z0-9_\-\.]/', '_', $originalName);
+
+            
             $messages[] = Message::create([
                 'chat_id'     => $chat->id,
                 'sender_id'   => auth()->id(),
@@ -341,7 +327,7 @@ public function send(Request $request)
                 'type'        => $type,
                 'message'     => $request->message,
                 'file'        => $path,
-                'file_name'   => $file->getClientOriginalName(),
+                'file_name' => $cleanName,
                 'replied_to'  => $request->replied_to,
                 'is_read'     => false,
                 'expires_at'  => $expiresAt,
@@ -349,34 +335,25 @@ public function send(Request $request)
             ]);
         }
     }
-
     elseif ($request->hasFile('file')) {
-
         $file = $request->file('file');
-
         $storedName = $generateFileName($file);
         $type = $request->type ?? 'file';
-
         $start = $request->trim_start[0] ?? 0;
         $end   = $request->trim_end[0] ?? 0;
 
         $path = null;
 
         if ($type === 'video' && $end > $start) {
-
             $tempPath = $file->getRealPath();
-
             $outputName = 'trimmed_' . $storedName;
             $outputFullPath = storage_path('app/public/chat_files/' . $outputName);
 
             if (!file_exists(dirname($outputFullPath))) {
                 mkdir(dirname($outputFullPath), 0777, true);
             }
-
             $command = "ffmpeg -ss $start -i \"$tempPath\" -to $end -c:v libx264 -c:a aac \"$outputFullPath\" 2>&1";
-
             exec($command, $output, $returnCode);
-
             if ($returnCode !== 0) {
                 $path = $file->storeAs('chat_files', $storedName, 'public');
             } else {
@@ -386,7 +363,6 @@ public function send(Request $request)
         } else {
             $path = $file->storeAs('chat_files', $storedName, 'public');
         }
-
         $messages[] = Message::create([
             'chat_id'     => $chat->id,
             'sender_id'   => auth()->id(),
@@ -400,12 +376,7 @@ public function send(Request $request)
             'expires_at'  => $expiresAt,
         ]);
     }
-
-    // =====================================================
-    // 💬 TEXT MESSAGE
-    // =====================================================
     else {
-
         $messages[] = Message::create([
             'chat_id'     => $chat->id,
             'sender_id'   => auth()->id(),
@@ -417,10 +388,6 @@ public function send(Request $request)
             'expires_at'  => $expiresAt,
         ]);
     }
-
-    // =====================================================
-    // 📡 BROADCAST
-    // =====================================================
     foreach ($messages as $message) {
 
         $userIds = collect([
@@ -433,29 +400,16 @@ public function send(Request $request)
         foreach ($userIds as $userId) {
             $message->users()->attach($userId, ['deleted' => false]);
         }
-
         $message->load(['sender', 'repliedMessage.sender']);
-
         broadcast(new NewMessage($message))->toOthers();
     }
-
-    \Log::info('DEBUG SEND', [
-    'group_id' => $request->group_id,
-    'types' => $request->types,
-    'has_files' => $request->hasFile('files'),
-    ]);
-
     $grouped = collect($messages)
     ->groupBy('group_id')
     ->map(function ($group) {
-
         $first = $group->first();
-
         return [
             ...$first->toArray(),
             'group_id' => $first->group_id,
-
-            // ✅ THIS is what frontend needs
             'files' => $group->map(fn($msg) => [
                 'file_url' => asset('storage/' . $msg->file),
                 'file_name' => $msg->file_name,
@@ -464,7 +418,6 @@ public function send(Request $request)
         ];
     })
     ->values();
-
 return response()->json([
     'messages' => $grouped
 ]);
@@ -728,7 +681,7 @@ public function forwardMultiple(Request $request)
 
 
 
-// React Function
+// React Function react
 
 public function toggle(Request $request)
 {
@@ -756,6 +709,7 @@ public function toggle(Request $request)
     return Message::with(['reactions.user'])->find($request->message_id);
 }
 
+// react
 
 public function markAsReadMessage(Request $request)
 {
