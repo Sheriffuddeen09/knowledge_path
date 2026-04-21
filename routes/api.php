@@ -422,6 +422,21 @@ Route::get('/download-file', function (Request $request) {
     return response()->download($path);
 });
 
+    Route::get('/video/stream/{file}', function ($file) {
+
+    $path = storage_path("app/public/chat_files/$file");
+
+    if (!file_exists($path)) {
+        abort(404);
+    }
+
+    return response()->file($path, [
+        'Content-Type' => 'video/mp4',
+        'Accept-Ranges' => 'bytes',
+    ]);
+});
+    Route::post('/chats/{chat}/read', [ChatController::class, 'markAsReadChat']);
+
     Route::put('/messages/pin', [ChatController::class, 'pin']);
     Route::delete('/messages/pin', [ChatController::class, 'unpin']);
 

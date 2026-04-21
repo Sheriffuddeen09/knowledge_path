@@ -17,7 +17,7 @@ use App\Events\MessageSent;
 use ProtoneMedia\LaravelFFMpeg\Support\FFMpeg;
 use FFMpeg\Coordinate\TimeCode;
 use FFMpeg\Format\Video\X264;
-   
+use App\Helpers\VideoHelper;
 
 class ChatController extends Controller
 {
@@ -56,7 +56,7 @@ public function messages(Chat $chat)
             'status' => 'sent',
         ];
 
-        // ✅ GROUPED MESSAGE
+        // ✅ GROUPED MESSAGE hasFile
         if ($msg->group_id) {
 
             if (!isset($map[$msg->group_id])) {
@@ -618,6 +618,68 @@ public function edit (Request $request, Message $message)
 
 //  forward function 
 
+// public function forwardMultiple(Request $request)
+// {
+//     $request->validate([
+//         'receiver_ids' => 'required|array|min:1',
+//         'message_ids' => 'required|array|min:1',
+//     ]);
+
+//     $sender = auth()->user();
+
+//     $forwardedChats = [];
+
+//     foreach ($request->receiver_ids as $receiverId) {
+
+//     $receiver = User::findOrFail($receiverId);
+
+//     // ❌ prevent self chat
+//     if ($receiver->id === $sender->id) {
+//         continue;
+//     }
+
+//     $chat = Chat::where(function ($q) use ($sender, $receiver) {
+//         $q->where('teacher_id', $sender->id)
+//           ->where('student_id', $receiver->id);
+//     })->orWhere(function ($q) use ($sender, $receiver) {
+//         $q->where('teacher_id', $receiver->id)
+//           ->where('student_id', $sender->id);
+//     })->first();
+
+//     if (!$chat) {
+//         $chat = Chat::create([
+//             'teacher_id' => $sender->id,
+//             'student_id' => $receiver->id,
+//             'type' => 'private',
+//         ]);
+//     }
+
+//     foreach ($request->message_ids as $id) {
+//         $msg = Message::findOrFail($id);
+
+//         Message::create([
+//             'chat_id' => $chat->id,
+//             'sender_id' => $sender->id,
+//             'type' => $msg->type,
+//             'message' => $msg->message,
+//             'file' => $msg->file,
+//             'files' => $msg->files,
+//             'forwarded_from' => $msg->sender_id,
+//         ]);
+//     }
+
+//         $forwardedChats[] = Chat::with(['teacher','student','messages' => function ($q) {
+//             $q->latest()->limit(50);
+//         }])->find($chat->id);
+//     }
+
+//     return response()->json([
+//         'success' => true,
+//         'chats' => $forwardedChats,
+//     ]);
+// }
+
+
 public function forwardMultiple(Request $request)
 {
     $request->validate([
@@ -626,60 +688,54 @@ public function forwardMultiple(Request $request)
     ]);
 
     $sender = auth()->user();
-    $messageIds = $request->message_ids;
-    $receiverIds = $request->receiver_ids;
-
     $forwardedChats = [];
 
-    foreach ($receiverIds as $receiverId) {
+    foreach ($request->receiver_ids as $receiverId) {
+
+        if ($receiverId == $sender->id) continue; // ❌ prevent self chat bug
+
         $receiver = User::findOrFail($receiverId);
 
-        // Find or create chat
+        // ✅ ALWAYS normalize chat pair (prevents duplicate chat)
         $chat = Chat::where(function ($q) use ($sender, $receiver) {
-            $q->where('teacher_id', $sender->id)->where('student_id', $receiver->id);
+            $q->where('teacher_id', $sender->id)
+              ->where('student_id', $receiver->id);
         })->orWhere(function ($q) use ($sender, $receiver) {
-            $q->where('teacher_id', $receiver->id)->where('student_id', $sender->id);
+            $q->where('teacher_id', $receiver->id)
+              ->where('student_id', $sender->id);
         })->first();
 
         if (!$chat) {
             $chat = Chat::create([
-                'teacher_id' => $sender->role === 'teacher' ? $sender->id : $receiver->id,
-                'student_id' => $sender->role === 'student' ? $sender->id : $receiver->id,
-                'type' => 'private', 
+                'teacher_id' => $sender->id,
+                'student_id' => $receiver->id,
+                'type' => 'private',
             ]);
         }
 
+        foreach ($request->message_ids as $id) {
 
-        // Forward messages
-        foreach ($messageIds as $id) {
-            $originalMessage = Message::findOrFail($id);
+            $msg = Message::find($id);
+            if (!$msg) continue;
 
-            Message::create([
-                'chat_id' => $chat->id,
+            $chat->messages()->create([
                 'sender_id' => $sender->id,
-                'user_id' => auth()->id(),
-                'type' => $originalMessage->type,
-                'message' => $originalMessage->message,
-                'file' => $originalMessage->file,
-                'forwarded_from' => $originalMessage->sender_id,
+                'type' => $msg->type,
+                'message' => $msg->message,
+                'files' => $msg->files, // MUST be JSON column
+                'forwarded_from' => $msg->sender_id,
             ]);
         }
 
-        // Load chat with participants and latest messages
-        $chat = Chat::with(['teacher', 'student', 'messages' => function ($q) {
-            $q->latest()->limit(50);
-        }])->find($chat->id);
-
-        $forwardedChats[] = $chat;
+        $forwardedChats[] = Chat::with(['teacher','student','messages'])
+            ->find($chat->id);
     }
 
     return response()->json([
         'success' => true,
-        'chats' => $forwardedChats, // return full chat objects
+        'chats' => $forwardedChats,
     ]);
 }
-
-
 
 // React Function react
 
@@ -827,6 +883,20 @@ public function unpin(Request $request)
         'message' => 'Message unpinned successfully',
         'data' => $message
     ]);
+}
+
+public function markAsReadChat($chatId)
+{
+    $userId = auth()->id();
+
+    Message::where('chat_id', $chatId)
+        ->whereNull('read_at')
+        ->where('sender_id', '!=', $userId)
+        ->update([
+            'read_at' => now()
+        ]);
+
+    return response()->json(['success' => true]);
 }
 
 }
