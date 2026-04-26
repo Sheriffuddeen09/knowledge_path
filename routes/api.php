@@ -411,7 +411,7 @@ Route::get('/download-file', function (Request $request) {
         return response()->json(['message' => 'file is required'], 400);
     }
 
-    $file = basename($file); // security
+    $file = basename($file); // security chat/create
 
     $path = storage_path('app/public/chat_files/' . $file);
 
@@ -434,7 +434,7 @@ Route::get('/download-file', function (Request $request) {
         'Content-Type' => 'video/mp4',
         'Accept-Ranges' => 'bytes',
     ]);
-});
+    });
     Route::post('/chats/{chat}/read', [ChatController::class, 'markAsReadChat']);
 
     Route::put('/messages/pin', [ChatController::class, 'pin']);

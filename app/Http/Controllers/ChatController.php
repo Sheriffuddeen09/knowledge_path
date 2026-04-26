@@ -22,28 +22,34 @@ use App\Helpers\VideoHelper;
 class ChatController extends Controller
 {
 
-
 public function messages(Chat $chat)
 {
     $userId = auth()->id();
 
     if ($chat->isBlockedFor($userId)) {
-        return response()->json(['message' => 'This chat is blocked'], 403);
+        return response()->json([
+            'message' => 'This chat is blocked'
+        ], 403);
     }
 
     $messages = $chat->messages()
         ->with([
             'sender:id,first_name,last_name,role',
-            'readBy:id,first_name,last_name'
+            'readBy:id,first_name,last_name',
+
+            // ✅ reply message + sender
+            'replyTo:id,chat_id,message,type,file,file_name,sender_id',
+            'replyTo.sender:id,first_name,last_name'
         ])
         ->orderBy('created_at')
         ->get();
 
     $result = [];
-    $map = [];
+    $groupMap = [];
 
     foreach ($messages as $msg) {
 
+        // ✅ BASE MESSAGE
         $base = [
             'id' => $msg->id,
             'chat_id' => $msg->chat_id,
@@ -54,31 +60,58 @@ public function messages(Chat $chat)
             'sender' => $msg->sender,
             'created_at' => $msg->created_at?->toISOString(),
             'status' => 'sent',
+
+            // ✅ REPLY DATA
+            'replied_to' => $msg->replyTo ? [
+                'id' => $msg->replyTo->id,
+                'type' => $msg->replyTo->type,
+                'message' => $msg->replyTo->message,
+
+                // ✅ file support
+                'file_url' => $msg->replyTo->file
+                    ? asset('storage/' . $msg->replyTo->file)
+                    : null,
+                'file_name' => $msg->replyTo->file_name,
+
+                // ✅ IMPORTANT: USER INFO
+                'sender' => $msg->replyTo->sender ? [
+                    'id' => $msg->replyTo->sender->id,
+                    'first_name' => $msg->replyTo->sender->first_name,
+                    'last_name' => $msg->replyTo->sender->last_name,
+                ] : null,
+
+            ] : null,
         ];
 
-        // ✅ GROUPED MESSAGE hasFile
+        // ================= GROUPED FILES =================
         if ($msg->group_id) {
 
-            if (!isset($map[$msg->group_id])) {
-                $map[$msg->group_id] = [
-                    ...$base,
-                    'files' => [],
-                ];
+            if (!isset($groupMap[$msg->group_id])) {
 
-                $result[] = &$map[$msg->group_id];
+                $groupMap[$msg->group_id] = count($result);
+
+                $base['files'] = [];
+
+                $result[] = $base;
             }
 
-            $map[$msg->group_id]['files'][] = [
-                'file_url' => asset('storage/' . $msg->file),
+            $index = $groupMap[$msg->group_id];
+
+            $result[$index]['files'][] = [
+                'file_url' => $msg->file
+                    ? asset('storage/' . $msg->file)
+                    : null,
                 'file_name' => $msg->file_name,
                 'type' => $msg->type,
             ];
 
         } else {
 
-            // ✅ SINGLE MESSAGE
+            // ================= SINGLE FILE =================
             $base['files'] = [[
-                'file_url' => asset('storage/' . $msg->file),
+                'file_url' => $msg->file
+                    ? asset('storage/' . $msg->file)
+                    : null,
                 'file_name' => $msg->file_name,
                 'type' => $msg->type,
             ]];
@@ -616,125 +649,83 @@ public function edit (Request $request, Message $message)
 
 
 
-//  forward function 
-
-// public function forwardMultiple(Request $request)
-// {
-//     $request->validate([
-//         'receiver_ids' => 'required|array|min:1',
-//         'message_ids' => 'required|array|min:1',
-//     ]);
-
-//     $sender = auth()->user();
-
-//     $forwardedChats = [];
-
-//     foreach ($request->receiver_ids as $receiverId) {
-
-//     $receiver = User::findOrFail($receiverId);
-
-//     // ❌ prevent self chat
-//     if ($receiver->id === $sender->id) {
-//         continue;
-//     }
-
-//     $chat = Chat::where(function ($q) use ($sender, $receiver) {
-//         $q->where('teacher_id', $sender->id)
-//           ->where('student_id', $receiver->id);
-//     })->orWhere(function ($q) use ($sender, $receiver) {
-//         $q->where('teacher_id', $receiver->id)
-//           ->where('student_id', $sender->id);
-//     })->first();
-
-//     if (!$chat) {
-//         $chat = Chat::create([
-//             'teacher_id' => $sender->id,
-//             'student_id' => $receiver->id,
-//             'type' => 'private',
-//         ]);
-//     }
-
-//     foreach ($request->message_ids as $id) {
-//         $msg = Message::findOrFail($id);
-
-//         Message::create([
-//             'chat_id' => $chat->id,
-//             'sender_id' => $sender->id,
-//             'type' => $msg->type,
-//             'message' => $msg->message,
-//             'file' => $msg->file,
-//             'files' => $msg->files,
-//             'forwarded_from' => $msg->sender_id,
-//         ]);
-//     }
-
-//         $forwardedChats[] = Chat::with(['teacher','student','messages' => function ($q) {
-//             $q->latest()->limit(50);
-//         }])->find($chat->id);
-//     }
-
-//     return response()->json([
-//         'success' => true,
-//         'chats' => $forwardedChats,
-//     ]);
-// }
-
-
+ //forward function 
 public function forwardMultiple(Request $request)
 {
     $request->validate([
-        'receiver_ids' => 'required|array|min:1',
-        'message_ids' => 'required|array|min:1',
+        'user_ids' => 'required|array',
+        'user_ids.*' => 'exists:users,id',
+
+        'message_ids' => 'required|array',
+        'message_ids.*' => 'exists:messages,id',
     ]);
 
-    $sender = auth()->user();
-    $forwardedChats = [];
+    $authId = auth()->id();
 
-    foreach ($request->receiver_ids as $receiverId) {
+    $messagesToForward = Message::with('files')->whereIn('id', $request->message_ids)->get();
 
-        if ($receiverId == $sender->id) continue; // ❌ prevent self chat bug
+    $createdMessages = [];
 
-        $receiver = User::findOrFail($receiverId);
+    foreach ($request->user_ids as $userId) {
 
-        // ✅ ALWAYS normalize chat pair (prevents duplicate chat)
-        $chat = Chat::where(function ($q) use ($sender, $receiver) {
-            $q->where('teacher_id', $sender->id)
-              ->where('student_id', $receiver->id);
-        })->orWhere(function ($q) use ($sender, $receiver) {
-            $q->where('teacher_id', $receiver->id)
-              ->where('student_id', $sender->id);
-        })->first();
+        $chat = Chat::firstOrCreate(
+            $this->getChatPair($authId, $userId)
+        );
 
-        if (!$chat) {
-            $chat = Chat::create([
-                'teacher_id' => $sender->id,
-                'student_id' => $receiver->id,
-                'type' => 'private',
+        $groupId = uniqid('fwd_');
+
+        foreach ($messagesToForward as $original) {
+
+            $msg = Message::create([
+                'chat_id'     => $chat->id,
+                'sender_id'   => $authId,
+                'receiver_id' => $userId,
+
+                // 🔥 KEEP TYPE SEPARATE (VERY IMPORTANT)
+                'type'        => $original->type,
+
+                // 🔥 ONLY TEXT IF EXISTS
+                'message'     => $original->type === 'text' ? $original->message : null,
+
+                'group_id'    => $groupId,
+
+                'forwarded_from' => $original->id,
+                'is_forwarded'   => true,
+
+                'is_read'     => false,
             ]);
+
+            // 🔥 HANDLE FILES PROPERLY
+            if ($original->files && $original->files->count()) {
+                foreach ($original->files as $file) {
+                    $msg->files()->create([
+                        'file_url'  => $file->file_url,
+                        'file_name' => $file->file_name,
+                        'type'      => $file->type,
+                    ]);
+                }
+            }
+
+            $msg->load(['sender', 'files']);
+
+            broadcast(new NewMessage($msg))->toOthers();
+
+            $createdMessages[] = $msg;
         }
-
-        foreach ($request->message_ids as $id) {
-
-            $msg = Message::find($id);
-            if (!$msg) continue;
-
-            $chat->messages()->create([
-                'sender_id' => $sender->id,
-                'type' => $msg->type,
-                'message' => $msg->message,
-                'files' => $msg->files, // MUST be JSON column
-                'forwarded_from' => $msg->sender_id,
-            ]);
-        }
-
-        $forwardedChats[] = Chat::with(['teacher','student','messages'])
-            ->find($chat->id);
     }
 
     return response()->json([
         'success' => true,
-        'chats' => $forwardedChats,
+        'messages' => $createdMessages
     ]);
+}
+
+private function getChatPair($userA, $userB)
+{
+    return [
+        'user_one_id' => min($userA, $userB),
+        'user_two_id' => max($userA, $userB),
+    ];
 }
 
 // React Function react

@@ -20,7 +20,7 @@ use App\Models\User;
 
 class OrderController extends Controller
 {
-    // ✅ CREATE ORDER 
+    // ✅ CREATE ORDER  createChat
 
     public function create(Request $request)
 {
@@ -526,40 +526,60 @@ public function deleteDraft($id)
 
 
     public function createChat(Request $request)
-{
-    $request->validate([
-        'seller_id' => 'required|exists:users,id',
-        'order_id' => 'required|exists:orders,id',
-    ]);
+    {
+        $request->validate([
+            'user_id' => 'required|exists:users,id',   // 👈 the OTHER user
+            'order_id' => 'required|exists:orders,id',
+        ]);
 
-    $buyerId = auth()->id();
-    $sellerId = $request->seller_id;
+        $currentUserId = auth()->id();       // 👈 logged in user
+        $otherUserId = $request->user_id;    // 👈 who we want to chat with
+        $orderId = $request->order_id;
 
-    // normalize chat (IMPORTANT)
-    $userOne = min($buyerId, $sellerId);
-    $userTwo = max($buyerId, $sellerId);
+        // 🚫 Prevent chatting with yourself
+        if ($currentUserId == $otherUserId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You cannot chat with yourself'
+            ], 400);
+        }
 
-    $chat = Chat::firstOrCreate([
-        'user_one_id' => $userOne,
-        'user_two_id' => $userTwo,
-        'type' => 'marketplace',
-    ]);
+        // 🔍 Ensure order exists
+        $order = Order::findOrFail($orderId);
 
-    // optional auto message
-    Message::create([
-        'chat_id' => $chat->id,
-        'sender_id' => $buyerId,
-        'receiver_id' => $sellerId,
-        'type' => 'text',
-        'message' => "Hi, I want to discuss my order #{$request->order_id}",
-    ]);
+        // 🛡️ SECURITY: Ensure only buyer or seller can chat
+        $isBuyer = $order->user_id == $currentUserId;
+        $isSeller = $order->seller_id == $currentUserId;
 
-    return response()->json([
-        'success' => true,
-        'chat_id' => $chat->id
-    ]);
-}
+        // 🔁 Normalize users (prevents duplicate chats)
+        $userOne = min($currentUserId, $otherUserId);
+        $userTwo = max($currentUserId, $otherUserId);
 
+        // ✅ Create or get existing chat (unique per order)
+        $chat = Chat::firstOrCreate([
+            'user_one_id' => $userOne,
+            'user_two_id' => $userTwo,
+            'order_id' => $orderId, // 👈 VERY IMPORTANT
+            'type' => 'marketplace',
+        ]);
+
+        // ✉️ Optional: only send auto message if chat is new
+        if ($chat->wasRecentlyCreated) {
+            Message::create([
+                'chat_id' => $chat->id,
+                'sender_id' => $currentUserId,
+                'receiver_id' => $otherUserId,
+                'type' => 'text',
+                'message' => "Hi, I want to discuss order #{$orderId}",
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'chat' => $chat,
+            'chat_id' => $chat->id
+        ]);
+    }
 public function unreadCount($orderId)
 {
     $userId = auth()->id();

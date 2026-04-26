@@ -19,7 +19,8 @@ class Message extends Model
         'file_name',
         'read_by',
         'is_pinned',
-        'group_id'
+        'group_id',
+        'is_forwarded'
     ];
 
     protected $casts = [
@@ -28,6 +29,22 @@ class Message extends Model
         'edited' => 'boolean'
     ];
     
+
+    public function replyTo()
+    {
+        return $this->belongsTo(Message::class, 'replied_to');
+    }
+
+    public function replies()
+    {
+        return $this->hasMany(Message::class, 'replied_to');
+    }
+
+    public function forwardedMessage()
+        {
+            return $this->belongsTo(Message::class, 'forwarded_from');
+        }
+
     public function reader()
         {
             return $this->belongsTo(User::class, 'read_by');
