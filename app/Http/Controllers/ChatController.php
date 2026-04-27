@@ -32,16 +32,12 @@ public function messages(Chat $chat)
         ], 403);
     }
 
-    $messages = $chat->messages()
+    $messages = Message::where('chat_id', $chat->id)
         ->with([
             'sender:id,first_name,last_name,role',
-            'readBy:id,first_name,last_name',
-
-            // ✅ reply message + sender
-            'replyTo:id,chat_id,message,type,file,file_name,sender_id',
             'replyTo.sender:id,first_name,last_name'
         ])
-        ->orderBy('created_at')
+        ->orderBy('id', 'asc') // ✅ safer than created_at
         ->get();
 
     $result = [];
@@ -61,43 +57,40 @@ public function messages(Chat $chat)
             'created_at' => $msg->created_at?->toISOString(),
             'status' => 'sent',
 
-            // ✅ REPLY DATA
+            // ✅ FULL REPLY OBJECT (VERY IMPORTANT)
             'replied_to' => $msg->replyTo ? [
                 'id' => $msg->replyTo->id,
                 'type' => $msg->replyTo->type,
                 'message' => $msg->replyTo->message,
 
-                // ✅ file support
                 'file_url' => $msg->replyTo->file
                     ? asset('storage/' . $msg->replyTo->file)
                     : null,
                 'file_name' => $msg->replyTo->file_name,
 
-                // ✅ IMPORTANT: USER INFO
                 'sender' => $msg->replyTo->sender ? [
                     'id' => $msg->replyTo->sender->id,
                     'first_name' => $msg->replyTo->sender->first_name,
                     'last_name' => $msg->replyTo->sender->last_name,
                 ] : null,
-
             ] : null,
         ];
 
         // ================= GROUPED FILES =================
         if ($msg->group_id) {
 
+            // ✅ FIRST MESSAGE IN GROUP
             if (!isset($groupMap[$msg->group_id])) {
 
-                $groupMap[$msg->group_id] = count($result);
+                $groupMap[$msg->group_id] = $base;
+                $groupMap[$msg->group_id]['files'] = [];
 
-                $base['files'] = [];
-
-                $result[] = $base;
+                // ✅ IMPORTANT: push by reference (FIXES missing messages)
+                $result[] = &$groupMap[$msg->group_id];
             }
 
-            $index = $groupMap[$msg->group_id];
-
-            $result[$index]['files'][] = [
+            // ✅ ADD FILE TO GROUP
+            $groupMap[$msg->group_id]['files'][] = [
                 'file_url' => $msg->file
                     ? asset('storage/' . $msg->file)
                     : null,
@@ -107,7 +100,7 @@ public function messages(Chat $chat)
 
         } else {
 
-            // ================= SINGLE FILE =================
+            // ================= SINGLE MESSAGE =================
             $base['files'] = [[
                 'file_url' => $msg->file
                     ? asset('storage/' . $msg->file)
