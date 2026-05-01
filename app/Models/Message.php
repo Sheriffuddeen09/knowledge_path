@@ -26,7 +26,8 @@ class Message extends Model
     protected $casts = [
         'files' => 'array',
         'delivered_at' => 'datetime',
-        'edited' => 'boolean'
+        'edited' => 'boolean',
+        'is_forwarded' => 'boolean',
     ];
     
 
