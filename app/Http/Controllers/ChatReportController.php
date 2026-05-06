@@ -8,7 +8,7 @@ use App\Models\Notification;
 use App\Mail\UserReportedMail;
 use App\Mail\ReporterConfirmationMail;
 use Illuminate\Support\Facades\Mail;
-
+use Illuminate\Support\Facades\DB;
 
 
 class ChatReportController extends Controller

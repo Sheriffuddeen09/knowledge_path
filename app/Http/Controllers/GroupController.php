@@ -251,7 +251,6 @@ public function removeMember(Request $request, $chatId)
 
     $chat = Chat::findOrFail($chatId);
 
-    // ❌ BLOCK NON-ADMIN
     if (!$chat->isAdmin($authId)) {
         return response()->json([
             'message' => 'Unauthorized'
@@ -262,11 +261,19 @@ public function removeMember(Request $request, $chatId)
         'user_id' => 'required|exists:users,id'
     ]);
 
-    $chat->members()->detach($request->user_id);
+    DB::table('chat_user')
+        ->where('chat_id', $chatId)
+        ->where('user_id', $request->user_id)
+        ->update([
+            'status' => 'removed',
+            'updated_at' => now(),
+        ]);
 
-    return response()->json(['success' => true]);
+    return response()->json([
+        'success' => true,
+        'message' => 'Member removed'
+    ]);
 }
-
 
 public function addMember(Request $request, Chat $chat)
 {
