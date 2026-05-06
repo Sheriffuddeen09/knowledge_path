@@ -269,6 +269,16 @@ public function removeMember(Request $request, $chatId)
             'updated_at' => now(),
         ]);
 
+    // ✅ SYSTEM MESSAGE
+    $user = DB::table('users')->find($request->user_id);
+
+    Message::create([
+        'chat_id' => $chatId,
+        'sender_id' => $authId,
+        'type' => 'system',
+        'message' => "{$user->first_name} has been removed",
+    ]);
+
     return response()->json([
         'success' => true,
         'message' => 'Member removed'
@@ -295,42 +305,63 @@ public function addMember(Request $request, Chat $chat)
     $isAdmin = $authMember->role === 'admin';
 
     $existing = DB::table('chat_user')
-        ->where('chat_id', $chat->id)
-        ->where('user_id', $request->user_id)
-        ->first();
+    ->where('chat_id', $chat->id)
+    ->where('user_id', $request->user_id)
+    ->first();
 
-    // ✅ HANDLE EXISTING RECORD
-    if ($existing) {
+        $user = DB::table('users')->find($request->user_id);
 
-        if (in_array($existing->status, ['pending', 'approved'])) {
-            return response()->json(['message' => 'Already in group or pending'], 409);
-        }
+        if ($existing) {
 
-        if (in_array($existing->status, ['rejected', 'removed'])) {
+            // 🚫 already active
+            if (in_array($existing->status, ['approved', 'pending'])) {
+                return response()->json([
+                    'message' => 'Already in group or pending'
+                ], 409);
+            }
 
-            DB::table('chat_user')
-                ->where('id', $existing->id)
-                ->update([
-                    'status' => $isAdmin ? 'approved' : 'pending',
-                    'role' => 'member',
-                    'updated_at' => now(),
+            // 🔁 re-add (removed, rejected, left)
+            if (in_array($existing->status, ['removed', 'rejected', 'left'])) {
+
+                DB::table('chat_user')
+                    ->where('id', $existing->id)
+                    ->update([
+                        'status' => $isAdmin ? 'approved' : 'pending',
+                        'role' => 'member',
+                        'updated_at' => now(),
+                    ]);
+
+                // ✅ SYSTEM MESSAGE
+                Message::create([
+                    'chat_id' => $chat->id,
+                    'sender_id' => auth()->id(),
+                    'type' => 'system',
+                    'message' => "{$user->first_name} has been added",
                 ]);
 
-            return response()->json([
-                'message' => 'User re-added successfully'
-            ]);
+                return response()->json([
+                    'message' => 'User re-added successfully'
+                ]);
+            }
         }
-    }
 
-    // ✅ NEW INSERT
-    DB::table('chat_user')->insert([
-        'chat_id'    => $chat->id,
-        'user_id'    => $request->user_id,
-        'role'       => 'member',
-        'status'     => $isAdmin ? 'approved' : 'pending',
-        'created_at' => now(),
-        'updated_at' => now(),
-    ]);
+        // ✅ ONLY insert if truly new
+        DB::table('chat_user')->insert([
+            'chat_id'    => $chat->id,
+            'user_id'    => $request->user_id,
+            'role'       => 'member',
+            'status'     => $isAdmin ? 'approved' : 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // ✅ SYSTEM MESSAGE
+        Message::create([
+            'chat_id' => $chat->id,
+            'sender_id' => auth()->id(),
+            'type' => 'system',
+            'message' => "{$user->first_name} has been added",
+        ]);
 
     return response()->json([
         'message' => $isAdmin
@@ -338,6 +369,7 @@ public function addMember(Request $request, Chat $chat)
             : 'Request sent, awaiting approval'
     ]);
 }
+
 
 
 public function joinByInvite($token)
@@ -419,10 +451,10 @@ public function generateInviteLink(Chat $chat)
     $authId = auth()->id();
 
     $exists = DB::table('chat_user')
-    ->where('chat_id', $chat->id)
-    ->where('user_id', $request->user_id)
-    ->where('status', 'pending')
-    ->exists();
+        ->where('chat_id', $chat->id)
+        ->where('user_id', $request->user_id)
+        ->where('status', 'pending')
+        ->exists();
 
     if (!$exists) {
         return response()->json(['message' => 'No pending request found'], 404);
@@ -445,11 +477,20 @@ public function generateInviteLink(Chat $chat)
             'status' => 'approved'
         ]);
 
+    // ✅ ADD SYSTEM MESSAGE
+    $user = DB::table('users')->find($request->user_id);
+
+    Message::create([
+        'chat_id' => $chat->id,
+        'sender_id' => $authId,
+        'type' => 'system',
+        'message' => "{$user->first_name} has been added",
+    ]);
+
     return response()->json([
         'message' => 'Member approved'
     ]);
 }
-
 
 public function rejectMember(Request $request, Chat $chat)
 {
@@ -472,11 +513,20 @@ public function rejectMember(Request $request, Chat $chat)
             'status' => 'rejected'
         ]);
 
+    // ✅ OPTIONAL
+    $user = DB::table('users')->find($request->user_id);
+
+    Message::create([
+        'chat_id' => $chat->id,
+        'sender_id' => $authId,
+        'type' => 'system',
+        'message' => "{$user->first_name} request was rejected",
+    ]);
+
     return response()->json([
         'message' => 'Request rejected'
     ]);
 }
-
 
 public function pendingMembers(Chat $chat)
 {
@@ -527,26 +577,45 @@ public function pendingCount(Chat $chat)
 
 
 
+
 public function exitGroup(Chat $chat)
 {
     $userId = auth()->id();
 
-    $isAdmin = DB::table('chat_user')
+    $member = DB::table('chat_user')
         ->where('chat_id', $chat->id)
         ->where('user_id', $userId)
-        ->where('role', 'admin')
-        ->exists();
+        ->first();
 
-    // remove user
+    if (!$member) {
+        return response()->json(['message' => 'Not a member'], 403);
+    }
+
+    $isAdmin = $member->role === 'admin';
+
+    // ❌ DO NOT DELETE
+    // ✅ MARK AS LEFT
     DB::table('chat_user')
         ->where('chat_id', $chat->id)
         ->where('user_id', $userId)
-        ->delete();
+        ->update([
+            'status' => 'left',
+            'updated_at' => now()
+        ]);
 
-    // ✅ if admin left → assign new admin
+    // 🔥 system message
+    Message::create([
+        'chat_id' => $chat->id,
+        'sender_id' => $userId,
+        'type' => 'system',
+        'message' => "{$user->first_name} has left the group",
+    ]);
+
+    // ✅ assign new admin if needed
     if ($isAdmin) {
         $newAdmin = DB::table('chat_user')
             ->where('chat_id', $chat->id)
+            ->where('status', 'approved') // 🔥 only active users
             ->first();
 
         if ($newAdmin) {
@@ -566,7 +635,6 @@ public function exitGroup(Chat $chat)
 
     return response()->json(['message' => 'Exited group']);
 }
-
 
 
 }

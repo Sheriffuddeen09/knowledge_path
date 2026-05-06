@@ -87,7 +87,7 @@ public function store(Request $request)
 }
 
 
-public function index()
+public function chatReport()
 {
     return ChatReport::with([
         'chat',

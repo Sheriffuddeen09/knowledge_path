@@ -165,7 +165,7 @@ class OrderController extends Controller
         }
 
         // =========================
-        // 🔥 6. EMAILS
+        // 🔥 6. EMAILS index
         // =========================
         Mail::to("odukoyasheriff@gmail.com")
             ->send(new OrderNotificationMail($order, 'created'));

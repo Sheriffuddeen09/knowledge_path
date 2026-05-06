@@ -61,7 +61,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/chat/{chatId}/disappearing', [ChatController::class, 'setDisappearing']);
 
-// Product /api/messages/mark-seen
+// Product /api/messages/mark-seen orders
     Route::get('/products',[ProductController::class,'index']);
     Route::get('/products/{id}',[ProductController::class,'show']);
     Route::middleware('auth:sanctum')->post('/products', [ProductController::class, 'store']);
@@ -103,7 +103,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/order/create', [OrderController::class, 'create']);
     Route::post('/chat/create', [OrderController::class, 'createChat']);
     Route::get('/orders', [OrderController::class, 'index']);
-    Route::get('/chat/{chatId}', [OrderController::class, 'orders']);
     Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
     Route::post('/order/cancel/{id}', [OrderController::class, 'cancel']);
 
@@ -146,7 +145,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
 
-    // Reports
+    // Reports /chat/reports
     Route::get('/comment/report/{commentId}', [CommentReportController::class, 'getCommentReport']);
     Route::get('/post/report/{postId}', [PostReportController::class, 'getPostReport']);
     Route::get('/chat/report/{chatId}', [ChatReportController::class, 'getChatReport']);
@@ -443,6 +442,7 @@ Route::get('/download-file', function (Request $request) {
         Route::get('/invite/group/{token}', function () {
             return redirect(config('app.frontend_url') . request()->getRequestUri());
         });
+        Route::post('/groups/{chat}/exit', [GroupController::class, 'exitGroup']);
         Route::get('/groups/{chat}/pending-count', [GroupController::class, 'pendingCount']);
         Route::get('/groups/{chat}/pending-members', [GroupController::class, 'pendingMembers']);
         Route::post('/groups/{chat}/approve-member', [GroupController::class, 'approveMember']);
@@ -477,7 +477,7 @@ Route::get('/download-file', function (Request $request) {
     Route::post('/messages/{message}/seen', [ChatController::class, 'markSeen']);
     Route::post('/messages/typing', [ChatController::class, 'typing']);
     Route::post('/chat/report', [ChatReportController::class, 'store']);
-    Route::get('/chat/reports', [ChatReportController::class, 'index']);
+    Route::get('/chat/reports', [ChatReportController::class, 'chatReport']);
     Route::delete('/messages/{message}', [ChatController::class, 'destroy']);
     Route::delete('/messages/{message}/forward', [ChatController::class, 'forward']);
     Route::post('/messages/forward-multiple', [ChatController::class, 'forwardMultiple']);
@@ -498,7 +498,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/users/online-status-bulk', [UserController::class, 'onlineStatusBulk']);
 });
 
-// /chat/report
+// /chat/report OrderController
 Route::middleware('auth:sanctum')->get('/users/{user}/status', function (\App\Models\User $user) {
     return response()->json([
         'online' => $user->isOnline(),
