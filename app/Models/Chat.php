@@ -1,10 +1,10 @@
 <?php
 namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 
-class Chat extends Model
-{
+class Chat extends Model {
     protected $fillable = [
         'teacher_id',
         'student_id',
@@ -13,7 +13,40 @@ class Chat extends Model
         'type',
         'status',
         'read_by',
+        'name',
+        'image',
+        'created_by',
+        'only_admin_send',
     ];
+
+    protected $appends = ['image_url'];
+
+    public function getImageUrlAttribute()
+    {
+        return $this->image
+            ? asset('storage/' . $this->image)
+            : null;
+    }
+
+    public function admins()
+        {
+            return $this->belongsToMany(User::class, 'chat_user')
+                ->withPivot('role')
+                ->wherePivot('role', 'admin');
+        }
+
+    public function members()
+        {
+            return $this->belongsToMany(User::class)
+                ->withPivot('role', 'status')
+                ->wherePivot('status', 'approved'); // 🔥 KEY FIX
+        }
+
+        
+    public function isAdmin($userId)
+        {
+            return $this->admins()->where('user_id', $userId)->exists();
+        }
 
     public function readBy()
         {
@@ -61,5 +94,12 @@ class Chat extends Model
             ->where('blocked_id', $userId)
             ->exists();
     }
+
+    public function users(): BelongsToMany
+        {
+            return $this->belongsToMany(User::class, 'chat_user')
+                ->withPivot(['role', 'last_read_message_id'])
+                ->withTimestamps();
+        }
 
 }

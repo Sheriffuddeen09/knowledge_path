@@ -19,6 +19,8 @@ use FFMpeg\Coordinate\TimeCode;
 use FFMpeg\Format\Video\X264;
 use App\Helpers\VideoHelper;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class ChatController extends Controller
 {
@@ -29,11 +31,20 @@ public function messages(Chat $chat)
 {
     $userId = auth()->id();
 
-    if ($chat->isBlockedFor($userId)) {
-        return response()->json([
-            'message' => 'This chat is blocked'
-        ], 403);
-    }
+    // ✅ check if current user is admin
+        $isAdmin = DB::table('chat_user')
+            ->where('chat_id', $chat->id)
+            ->where('user_id', $userId)
+            ->where('role', 'admin')
+            ->exists();
+
+        // ✅ check if only admin can send
+        $onlyAdminCanSend = $chat->only_admin_send ?? false;
+            if ($chat->isBlockedFor($userId)) {
+                return response()->json([
+                    'message' => 'This chat is blocked'
+                ], 403);
+            }
 
     // ✅ MY LAST READ
     $myLastReadId = DB::table('chat_user')
@@ -180,10 +191,14 @@ public function messages(Chat $chat)
     }
 
     return response()->json([
-        'messages' => $result,
-        'last_read_message_id' => $myLastReadId,
-        'unread_count' => $unreadCount,
-    ]);
+    'messages' => $result,
+    'last_read_message_id' => $myLastReadId,
+    'unread_count' => $unreadCount,
+
+    // ✅ ADD THESE
+    'is_admin' => $isAdmin,
+    'only_admin_can_send' => $onlyAdminCanSend,
+]);
 }
 
 
@@ -229,31 +244,40 @@ public function index()
     $userId = auth()->id();
 
     $chats = Chat::where(function ($q) use ($userId) {
-            $q->where('teacher_id', $userId)
-              ->orWhere('student_id', $userId)
-              ->orWhere('user_one_id', $userId)
-              ->orWhere('user_two_id', $userId);
-        })
-        // 🔥 ADD THIS SORTING
-        ->withMax('messages', 'created_at')
-        ->orderByDesc('messages_max_created_at')
-        ->with([
-            'teacher',
-            'student',
 
-            'messages' => function ($q) {
-                $q->latest()
-                  ->limit(1)
-                  ->with([
-                      'sender:id,first_name,last_name',
-                      'reader:id,first_name,last_name'
-                  ]);
-            },
-        ])
-        ->get();
+        // ✅ PRIVATE CHATS
+        $q->where('teacher_id', $userId)
+          ->orWhere('student_id', $userId)
+          ->orWhere('user_one_id', $userId)
+          ->orWhere('user_two_id', $userId)
+
+          // ✅ GROUP CHATS (FIXED - SIMPLE + CORRECT)
+          ->orWhereHas('users', function ($sub) use ($userId) {
+              $sub->where('chat_user.user_id', $userId);
+          });
+
+    })
+    ->withMax('messages', 'created_at')
+    ->orderByDesc('messages_max_created_at')
+    ->with([
+        'teacher',
+        'student',
+        'messages' => function ($q) {
+            $q->latest()
+              ->limit(1)
+              ->with([
+                  'sender:id,first_name,last_name',
+                  'reader:id,first_name,last_name'
+              ]);
+        },
+    ])
+    ->get();
 
     $chats->each(function ($chat) use ($userId) {
 
+        // =========================
+        // UNREAD COUNT
+        // =========================
         $chat->unread_count = $chat->messages()
             ->whereNull('read_at')
             ->where('sender_id', '!=', $userId)
@@ -264,11 +288,48 @@ public function index()
 
         unset($chat->messages);
 
-        if ($chat->type === 'student_teacher') {
-            $chat->other_user = $chat->teacher_id == $userId
-                ? $chat->student
-                : $chat->teacher;
+        // =========================
+        // GROUP CHAT LOGIC
+        // =========================
+        if ($chat->type === 'group') {
+
+            $chat->group_name = $chat->name;
+
+            // 🔥 MY ROLE (admin/member)
+            $chat->my_role = DB::table('chat_user')
+                ->where('chat_id', $chat->id)
+                ->where('user_id', $userId)
+                ->value('role');
+
+            // 🔥 MEMBERSHIP STATUS (pending/approved/rejected)
+            $chat->membership_status = DB::table('chat_user')
+                ->where('chat_id', $chat->id)
+                ->where('user_id', $userId)
+                ->value('status');
+
+            // =========================
+            // MEMBERS LIST (ONLY ACTIVE)
+            // =========================
+            $chat->members = DB::table('chat_user')
+                ->join('users', 'users.id', '=', 'chat_user.user_id')
+                ->where('chat_user.chat_id', $chat->id)
+                ->where(function ($q) {
+                    $q->where('chat_user.status', 'approved')
+                      ->orWhere('chat_user.role', 'admin');
+                })
+                ->select(
+                    'users.id',
+                    'users.first_name',
+                    'users.last_name',
+                    'chat_user.role as role'
+                )
+                ->get();
+
         } else {
+
+            // =========================
+            // PRIVATE CHAT LOGIC
+            // =========================
             $otherId = $chat->user_one_id == $userId
                 ? $chat->user_two_id
                 : $chat->user_one_id;
@@ -276,6 +337,9 @@ public function index()
             $chat->other_user = User::find($otherId);
         }
 
+        // =========================
+        // BLOCK INFO
+        // =========================
         $block = $chat->blocks()->first();
 
         $chat->block_info = $block ? [
@@ -286,6 +350,9 @@ public function index()
             'is_blocked_by_other' => $block->blocker_id != $userId,
         ] : null;
 
+        // =========================
+        // MESSAGE STATUS
+        // =========================
         $chat->latest_message_status = $latest
             ? (
                 $latest->read_at
@@ -300,7 +367,6 @@ public function index()
 
     return response()->json($chats);
 }
-
 
 public function send(Request $request)
 {
@@ -707,105 +773,61 @@ public function edit (Request $request, Message $message)
 
 
  //forward function 
+
 public function forwardMultiple(Request $request)
 {
     $request->validate([
-        'user_ids' => 'required|array',
+        'user_ids' => 'nullable|array',
         'user_ids.*' => 'exists:users,id',
+
+        'group_ids' => 'nullable|array',
+        'group_ids.*' => 'exists:chats,id',
+
         'message_ids' => 'required|array',
         'message_ids.*' => 'exists:messages,id',
     ]);
 
+    if (empty($request->user_ids) && empty($request->group_ids)) {
+        return response()->json([
+            'message' => 'No recipients selected'
+        ], 422);
+    }
+
     $authId = auth()->id();
 
-    $initialMessages = Message::whereIn('id', $request->message_ids)->get();
-
-    // 🔥 get group IDs
-    $groupIds = $initialMessages
-        ->pluck('group_id')
-        ->filter()
-        ->unique();
-
-    // 🔥 get ALL messages in those groups
-    $groupMessages = Message::whereIn('group_id', $groupIds)->get();
-
-    // 🔥 merge + remove duplicates
-    $messagesToForward = $initialMessages
-        ->merge($groupMessages)
-        ->unique('id')
-        ->values();
+    // ✅ ONLY selected messages
+    $messagesToForward = Message::whereIn('id', $request->message_ids)->get();
 
     $createdMessages = [];
 
-    foreach ($request->user_ids as $userId) {
+    /*
+    |--------------------------------------------------------------------------
+    | 🔥 FORWARD TO GROUPS
+    |--------------------------------------------------------------------------
+    */
+    foreach ($request->group_ids ?? [] as $groupId) {
 
-        $chat = Chat::firstOrCreate(
-            $this->getChatPair($authId, $userId)
-        );
+        $chat = Chat::find($groupId);
+        if (!$chat || $chat->type !== 'group') continue;
 
-        // 🔥 Split messages
-        $fileMessages = $messagesToForward->filter(fn($m) => $m->file);
-        $textMessages = $messagesToForward->filter(fn($m) => !$m->file);
+        foreach ($messagesToForward as $original) {
 
-        // ================= TEXT (NO GROUP) =================
-        foreach ($textMessages as $original) {
-
-            $msg = Message::create([
-                'chat_id'     => $chat->id,
-                'sender_id'   => $authId,
-                'receiver_id' => $userId,
-
-                'type'        => 'text',
-                'message'     => $original->message,
-
-                'file'        => null,
-                'file_name'   => null,
-
-                'group_id'    => null,
-
-                'forwarded_from' => $original->id,
-                'is_forwarded'   => true,
-            ]);
-
-            $msg->load(['sender:id,first_name,last_name']);
-            broadcast(new NewMessage($msg))->toOthers();
-
-            $createdMessages[] = $msg;
-        }
-
-        // ================= FILES =================
-        // ================= FILES =================
-if ($fileMessages->count() > 0) {
-
-    // 🔥 Group files by ORIGINAL group_id (or fallback to id)
-    $groupedFiles = $fileMessages->groupBy(function ($m) {
-        return $m->group_id ?: 'single_' . $m->id;
-    });
-
-    foreach ($groupedFiles as $originalGroupId => $files) {
-
-        // 🔥 If more than 1 file → create new group
-        $newGroupId = $files->count() > 1
-            ? uniqid('fwd_file_')
-            : null;
-
-        foreach ($files as $original) {
+            // ✅ FIX: always trace back to root message
+            $rootId = $original->forwarded_from ?? $original->id;
 
             $msg = Message::create([
-                'chat_id'     => $chat->id,
-                'sender_id'   => $authId,
-                'receiver_id' => $userId,
+                'chat_id'   => $chat->id,
+                'sender_id' => $authId,
 
-                'type'        => $original->type,
-                'message'     => null,
+                'type'      => $original->type,
+                'message'   => $original->message,
 
-                'file'        => $original->file,
-                'file_name'   => $original->file_name,
+                'file'      => $original->file,
+                'file_name' => $original->file_name,
 
-                // ✅ preserve grouping per original set
-                'group_id'    => $newGroupId,
+                'group_id'  => null,
 
-                'forwarded_from' => $original->id,
+                'forwarded_from' => $rootId, // 🔥 KEY FIX
                 'is_forwarded'   => true,
             ]);
 
@@ -815,7 +837,45 @@ if ($fileMessages->count() > 0) {
             $createdMessages[] = $msg;
         }
     }
-}
+
+    /*
+    |--------------------------------------------------------------------------
+    | 🔥 FORWARD TO USERS
+    |--------------------------------------------------------------------------
+    */
+    foreach ($request->user_ids ?? [] as $userId) {
+
+        $chat = Chat::firstOrCreate(
+            $this->getChatPair($authId, $userId)
+        );
+
+        foreach ($messagesToForward as $original) {
+
+            // ✅ FIX: always trace back to root
+            $rootId = $original->forwarded_from ?? $original->id;
+
+            $msg = Message::create([
+                'chat_id'     => $chat->id,
+                'sender_id'   => $authId,
+                'receiver_id' => $userId,
+
+                'type'        => $original->type,
+                'message'     => $original->message,
+
+                'file'        => $original->file,
+                'file_name'   => $original->file_name,
+
+                'group_id'    => null,
+
+                'forwarded_from' => $rootId, // 🔥 KEY FIX
+                'is_forwarded'   => true,
+            ]);
+
+            $msg->load(['sender:id,first_name,last_name']);
+            broadcast(new NewMessage($msg))->toOthers();
+
+            $createdMessages[] = $msg;
+        }
     }
 
     return response()->json([
@@ -1019,6 +1079,8 @@ public function markAsReadChat($chatId)
         'last_read_message_id' => $lastMessage->id
     ]);
 }
+
+
 
 
 }

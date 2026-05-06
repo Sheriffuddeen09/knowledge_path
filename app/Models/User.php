@@ -18,6 +18,12 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    public function chats()
+        {
+            return $this->belongsToMany(Chat::class, 'chat_user')
+                ->withPivot(['role', 'last_read_message_id'])
+                ->withTimestamps();
+        }
     public function library()
     {
         return $this->belongsToMany(Post::class, 'post_saves')

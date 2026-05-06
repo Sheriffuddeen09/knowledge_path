@@ -13,12 +13,23 @@ return new class extends Migration
     {
         Schema::create('chat_user', function (Blueprint $table) {
             $table->id();
+
             $table->foreignId('chat_id')->constrained()->cascadeOnDelete();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
 
+            // 🔥 ROLE (VERY IMPORTANT)
+            $table->enum('role', ['admin', 'member'])->default('member');
+
+            // 🔥 read system
             $table->unsignedBigInteger('last_read_message_id')->nullable();
 
+            // 🔥 optional controls
+            $table->boolean('is_muted')->default(false);
+            $table->timestamp('joined_at')->nullable();
+            $table->timestamp('left_at')->nullable();
+
             $table->timestamps();
+
             $table->unique(['chat_id', 'user_id']);
         });
     }

@@ -53,6 +53,8 @@ use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\WishlistController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\GroupController;
+
 
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -435,9 +437,29 @@ Route::get('/download-file', function (Request $request) {
         'Accept-Ranges' => 'bytes',
     ]);
     });
+
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/invite/group/{token}', function () {
+            return redirect(config('app.frontend_url') . request()->getRequestUri());
+        });
+        Route::get('/groups/{chat}/pending-count', [GroupController::class, 'pendingCount']);
+        Route::get('/groups/{chat}/pending-members', [GroupController::class, 'pendingMembers']);
+        Route::post('/groups/{chat}/approve-member', [GroupController::class, 'approveMember']);
+        Route::post('/groups/{chat}/reject-member', [GroupController::class, 'rejectMember']);
+        Route::post('/groups/{chat}/add-member', [GroupController::class, 'addMember']);
+        Route::post('/groups/{chat}/toggle-admin', [GroupController::class, 'toggleAdmin']);
+        Route::delete('/groups/{chat}/members/{user}', [GroupController::class, 'removeMember']);
+        Route::post('/groups/{chat}/update', [GroupController::class, 'updateGroup']);
+        Route::post('/groups/{chat}/remove-member', [GroupController::class, 'removeMember']);
+        Route::get('/groups/{chat}/invite-link', [GroupController::class, 'generateInviteLink']);
+        Route::post('/invite/group/{token}', [GroupController::class, 'joinByInvite']);
+
+    });
     Route::post('/chats/{chat}/read', [ChatController::class, 'markAsReadChat']);
 
     Route::put('/messages/pin', [ChatController::class, 'pin']);
+    Route::post('/groups', [GroupController::class, 'createGroup']);
     Route::delete('/messages/pin', [ChatController::class, 'unpin']);
 
     Route::post('/messages/{id}/read', [ChatController::class, 'markAsRead']);
@@ -476,7 +498,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/users/online-status-bulk', [UserController::class, 'onlineStatusBulk']);
 });
 
-// routes/api.php
+// /chat/report
 Route::middleware('auth:sanctum')->get('/users/{user}/status', function (\App\Models\User $user) {
     return response()->json([
         'online' => $user->isOnline(),
