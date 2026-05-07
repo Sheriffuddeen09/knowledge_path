@@ -58,22 +58,42 @@ public function messages(Chat $chat)
         ->where('user_id', '!=', $userId)
         ->value('last_read_message_id');
 
-    // ✅ mark delivered
-    Message::where('chat_id', $chat->id)
-        ->whereNull('delivered_at')
-        ->where('sender_id', '!=', $userId)
-        ->update([
-            'delivered_at' => now()
-        ]);
+        Message::where('chat_id', $chat->id)
+            ->whereNull('delivered_at')
+            ->where('sender_id', '!=', $userId)
+            ->update([
+                'delivered_at' => now()
+            ]);
 
-    $messages = Message::where('chat_id', $chat->id)
-        ->with([
-            'sender:id,first_name,last_name,role',
-            'replyTo:id,chat_id,message,type,file,file_name,sender_id',
-            'replyTo.sender:id,first_name,last_name'
-        ])
-        ->orderBy('id', 'asc')
-        ->get();
+        // ✅ GET MEMBERSHIP
+        $membership = DB::table('chat_user')
+            ->where('chat_id', $chat->id)
+            ->where('user_id', $userId)
+            ->first();
+
+        // ✅ JOIN DATE
+        $joinedAt = $membership?->joined_at;
+
+        // ✅ FILTERED MESSAGES
+        $messages = Message::where('chat_id', $chat->id)
+
+            ->when($joinedAt, function ($query) use ($joinedAt) {
+
+                $query->where(function ($q) use ($joinedAt) {
+
+                    $q->where('created_at', '>=', $joinedAt)
+                    ->orWhere('type', 'system');
+                });
+            })
+
+            ->with([
+                'sender:id,first_name,last_name,role',
+                'replyTo:id,chat_id,message,type,file,file_name,sender_id',
+                'replyTo.sender:id,first_name,last_name'
+            ])
+
+            ->orderBy('id', 'asc')
+            ->get();
 
     // ✅ unread count (based on MY read)
     $unreadCount = Message::where('chat_id', $chat->id)
