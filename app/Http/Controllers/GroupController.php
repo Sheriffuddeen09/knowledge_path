@@ -691,4 +691,20 @@ public function deleteGroup(Chat $chat)
     ]);
 }
 
+public function getGroups()
+{
+    $userId = auth()->id();
+
+    $groups = Chat::where('type', 'group')
+        ->whereHas('users', function ($q) use ($userId) {
+            $q->where('user_id', $userId)
+              ->where('status', 'approved'); // only active members
+        })
+        ->select('id', 'name', 'image')
+        ->get();
+
+    return response()->json($groups);
+}
+
+
 }

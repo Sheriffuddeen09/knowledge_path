@@ -21,6 +21,11 @@ class Chat extends Model {
 
     protected $appends = ['image_url'];
 
+    public function group()
+        {
+            return $this->belongsTo(Group::class);
+        }
+
     public function getImageUrlAttribute()
     {
         return $this->image

@@ -454,7 +454,10 @@ Route::get('/download-file', function (Request $request) {
         Route::post('/groups/{chat}/remove-member', [GroupController::class, 'removeMember']);
         Route::get('/groups/{chat}/invite-link', [GroupController::class, 'generateInviteLink']);
         Route::post('/invite/group/{token}', [GroupController::class, 'joinByInvite']);
+        Route::get('/groups', [GroupController::class, 'getGroups']);
         Route::middleware('auth:sanctum')->post('/groups/{chat}/delete',[GroupController::class, 'deleteGroup']);
+
+        Route::post('/messages/forward', [ChatController::class, 'forward']);
 
     });
     Route::post('/chats/{chat}/read', [ChatController::class, 'markAsReadChat']);

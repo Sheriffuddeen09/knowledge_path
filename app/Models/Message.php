@@ -23,13 +23,20 @@ class Message extends Model
         'is_forwarded'
     ];
 
+
     protected $casts = [
         'files' => 'array',
         'delivered_at' => 'datetime',
         'edited' => 'boolean',
         'is_forwarded' => 'boolean',
     ];
+
     
+
+    public function files()
+        {
+            return $this->hasMany(MessageFile::class);
+        }
 
     public function replyTo()
     {

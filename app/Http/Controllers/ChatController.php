@@ -21,6 +21,9 @@ use App\Helpers\VideoHelper;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use App\Models\Group;
+use App\Models\MessageFile;
+
 
 class ChatController extends Controller
 {
@@ -797,112 +800,92 @@ public function edit (Request $request, Message $message)
 public function forwardMultiple(Request $request)
 {
     $request->validate([
-        'user_ids' => 'nullable|array',
-        'user_ids.*' => 'exists:users,id',
-
-        'group_ids' => 'nullable|array',
-        'group_ids.*' => 'exists:chats,id',
-
         'message_ids' => 'required|array',
         'message_ids.*' => 'exists:messages,id',
-    ]);
 
-    if (empty($request->user_ids) && empty($request->group_ids)) {
-        return response()->json([
-            'message' => 'No recipients selected'
-        ], 422);
-    }
+        'targets' => 'required|array',
+        'targets.*.id' => 'required|integer',
+        'targets.*.type' => 'required|in:user,group',
+    ]);
 
     $authId = auth()->id();
 
-    // ✅ ONLY selected messages
-    $messagesToForward = Message::whereIn('id', $request->message_ids)->get();
+    $messages = Message::whereIn('id', $request->message_ids)->get();
 
-    $createdMessages = [];
+    $lastChat = null; // 🔥 IMPORTANT
 
-    /*
-    |--------------------------------------------------------------------------
-    | 🔥 FORWARD TO GROUPS
-    |--------------------------------------------------------------------------
-    */
-    foreach ($request->group_ids ?? [] as $groupId) {
+    foreach ($request->targets as $target) {
 
-        $chat = Chat::find($groupId);
-        if (!$chat || $chat->type !== 'group') continue;
+        // =========================
+        // USER PRIVATE CHAT
+        // =========================
+        if ($target['type'] === 'user') {
 
-        foreach ($messagesToForward as $original) {
+            $otherUserId = $target['id'];
 
-            // ✅ FIX: always trace back to root message
-            $rootId = $original->forwarded_from ?? $original->id;
+            if ($otherUserId == $authId) continue;
 
-            $msg = Message::create([
-                'chat_id'   => $chat->id,
-                'sender_id' => $authId,
+            $pair = $this->getChatPair($authId, $otherUserId);
 
-                'type'      => $original->type,
-                'message'   => $original->message,
+            $chat = Chat::where('user_one_id', $pair['user_one_id'])
+                ->where('user_two_id', $pair['user_two_id'])
+                ->first();
 
-                'file'      => $original->file,
-                'file_name' => $original->file_name,
+            if (!$chat) {
+                $chat = Chat::create([
+                    'user_one_id' => $pair['user_one_id'],
+                    'user_two_id' => $pair['user_two_id'],
+                    'type' => 'private'
+                ]);
+            }
 
-                'group_id'  => null,
+            foreach ($messages as $msg) {
+                $chat->messages()->create([
+                    'sender_id' => $authId,
+                    'type' => $msg->type,
+                    'message' => $msg->message,
+                    'file' => $msg->file,
+                    'is_forwarded' => true,
+                ]);
+            }
 
-                'forwarded_from' => $rootId, // 🔥 KEY FIX
-                'is_forwarded'   => true,
-            ]);
-
-            $msg->load(['sender:id,first_name,last_name']);
-            broadcast(new NewMessage($msg))->toOthers();
-
-            $createdMessages[] = $msg;
+            $lastChat = $chat; // 🔥 store last chat
         }
-    }
+            // =========================
+            // GROUP CHAT FORWARD (FIXED)
+            // =========================
+            if ($target['type'] === 'group') {
 
-    /*
-    |--------------------------------------------------------------------------
-    | 🔥 FORWARD TO USERS
-    |--------------------------------------------------------------------------
-    */
-    foreach ($request->user_ids ?? [] as $userId) {
+            $chat = Chat::where('id', $target['id'])
+                ->where('type', 'group')
+                ->first();
 
-        $chat = Chat::firstOrCreate(
-            $this->getChatPair($authId, $userId)
-        );
+            if (!$chat) {
+                logger('GROUP CHAT NOT FOUND', ['id' => $target['id']]);
+                continue;
+            }
 
-        foreach ($messagesToForward as $original) {
+            foreach ($messages as $msg) {
+                $chat->messages()->create([
+                    'sender_id' => $authId,
+                    'type' => $msg->type,
+                    'message' => $msg->message,
+                    'file' => $msg->file,
+                    'is_forwarded' => true,
+                ]);
+            }
 
-            // ✅ FIX: always trace back to root
-            $rootId = $original->forwarded_from ?? $original->id;
-
-            $msg = Message::create([
-                'chat_id'     => $chat->id,
-                'sender_id'   => $authId,
-                'receiver_id' => $userId,
-
-                'type'        => $original->type,
-                'message'     => $original->message,
-
-                'file'        => $original->file,
-                'file_name'   => $original->file_name,
-
-                'group_id'    => null,
-
-                'forwarded_from' => $rootId, // 🔥 KEY FIX
-                'is_forwarded'   => true,
-            ]);
-
-            $msg->load(['sender:id,first_name,last_name']);
-            broadcast(new NewMessage($msg))->toOthers();
-
-            $createdMessages[] = $msg;
+            $lastChat = $chat;
         }
-    }
+        }
 
     return response()->json([
-        'success' => true,
-        'messages' => $createdMessages
-    ]);
+            'message' => 'Messages forwarded successfully',
+            'chat_id' => $lastChat?->id,
+            'chat_type' => $lastChat?->type
+        ]);
 }
+
 
 
 private function getChatPair($userA, $userB)
