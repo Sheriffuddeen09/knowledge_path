@@ -443,6 +443,25 @@ Route::get('/download-file', function (Request $request) {
             '/chats/{chat}/disappearing',
             [ChatController::class, 'updateDisappearing']
         );
+
+        Route::middleware('auth:sanctum')->group(function () {
+            Route::get(
+                '/two-step',
+                [ChatController::class, 'twoStepStatus']
+            );
+            Route::post(
+                '/two-step/setup',
+                [ChatController::class, 'setupTwoStep']
+            );
+            Route::post(
+                '/two-step/change',
+                [ChatController::class, 'changeTwoStep']
+            );
+            Route::delete(
+                '/two-step/remove',
+                [ChatController::class, 'removeTwoStep']
+            );
+        });
         Route::get('/invite/group/{token}', function () {
             return redirect(config('app.frontend_url') . request()->getRequestUri());
         });

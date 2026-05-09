@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use App\Models\Group;
 use App\Models\MessageFile;
+use Illuminate\Support\Facades\Hash;
 
 
 class ChatController extends Controller
@@ -264,114 +265,7 @@ public function oldMessage(Request $request)
     ]);
 }
 
-// public function index()
-// {
-//     $userId = auth()->id();
 
-//     $chats = Chat::where(function ($q) use ($userId) {
-
-//         $q->where('teacher_id', $userId)
-//           ->orWhere('student_id', $userId)
-//           ->orWhere('user_one_id', $userId)
-//           ->orWhere('user_two_id', $userId)
-
-//           ->orWhereHas('users', function ($sub) use ($userId) {
-//               $sub->where('chat_user.user_id', $userId);
-//           });
-
-//     })
-//     ->withMax('messages', 'created_at')
-//     ->orderByDesc('messages_max_created_at')
-//     ->with([
-//         'teacher',
-//         'student',
-//         'messages' => function ($q) {
-//             $q->latest()
-//               ->limit(1)
-//               ->with([
-//                   'sender:id,first_name,last_name',
-//                   'reader:id,first_name,last_name'
-//               ]);
-//         },
-//     ])
-//     ->get();
-
-//     $chats->each(function ($chat) use ($userId) {
-
-//         $chat->unread_count = $chat->messages()
-//             ->whereNull('read_at')
-//             ->where('sender_id', '!=', $userId)
-//             ->count();
-
-//         $latest = $chat->messages->first();
-//         $chat->latest_message = $latest;
-
-//         unset($chat->messages);
-
-//         if ($chat->type === 'group') {
-
-//             $chat->group_name = $chat->name;
-
-//             // 🔥 MY ROLE (admin/member)
-//             $chat->my_role = DB::table('chat_user')
-//                 ->where('chat_id', $chat->id)
-//                 ->where('user_id', $userId)
-//                 ->value('role');
-
-//             // 🔥 MEMBERSHIP STATUS (pending/approved/rejected)
-//             $chat->membership_status = DB::table('chat_user')
-//                 ->where('chat_id', $chat->id)
-//                 ->where('user_id', $userId)
-//                 ->value('status');
-
-//             $chat->members = DB::table('chat_user')
-//                 ->join('users', 'users.id', '=', 'chat_user.user_id')
-//                 ->where('chat_user.chat_id', $chat->id)
-//                 ->where(function ($q) {
-//                     $q->where('chat_user.status', 'approved')
-//                       ->orWhere('chat_user.role', 'admin');
-//                 })
-//                 ->select(
-//                     'users.id',
-//                     'users.first_name',
-//                     'users.last_name',
-//                     'chat_user.role as role'
-//                 )
-//                 ->get();
-
-//         } else {
-
-//             $otherId = $chat->user_one_id == $userId
-//                 ? $chat->user_two_id
-//                 : $chat->user_one_id;
-
-//             $chat->other_user = User::find($otherId);
-//         }
-
-//         $block = $chat->blocks()->first();
-
-//         $chat->block_info = $block ? [
-//             'blocked' => true,
-//             'blocker_id' => $block->blocker_id,
-//             'blocked_id' => $block->blocked_id,
-//             'is_blocked_by_me' => $block->blocker_id == $userId,
-//             'is_blocked_by_other' => $block->blocker_id != $userId,
-//         ] : null;
-
-//         $chat->latest_message_status = $latest
-//             ? (
-//                 $latest->read_at
-//                     ? 'read'
-//                     : ($latest->delivered_at ? 'delivered' : 'sent')
-//             )
-//             : null;
-
-//         $chat->latest_message_read_by_name =
-//             $latest?->reader?->first_name ?? null;
-//     });
-
-//     return response()->json($chats);
-// }
 
 public function index()
 {
@@ -1303,5 +1197,65 @@ public function updateDisappearing(
     ]);
 }
 
+
+
+
+public function twoStepStatus()
+{
+    $user = auth()->user();
+
+    return response()->json([
+        'enabled' => $user->two_step_enabled,
+    ]);
+}
+
+public function setupTwoStep(Request $request)
+{
+    $request->validate([
+        'pin' => 'required|digits:6',
+    ]);
+
+    $user = auth()->user();
+
+    $user->update([
+        'two_step_pin' => Hash::make($request->pin),
+        'two_step_enabled' => true,
+    ]);
+
+    return response()->json([
+        'message' => 'Two-step verification enabled',
+    ]);
+}
+
+public function changeTwoStep(Request $request)
+{
+    $request->validate([
+        'pin' => 'required|digits:6',
+    ]);
+
+    $user = auth()->user();
+
+    $user->update([
+        'two_step_pin' => Hash::make($request->pin),
+    ]);
+
+    return response()->json([
+        'message' => 'PIN updated successfully',
+    ]);
+}
+
+public function removeTwoStep()
+{
+    $user = auth()->user();
+
+    $user->update([
+        'two_step_pin' => null,
+        'two_step_enabled' => false,
+    ]);
+
+    return response()->json([
+        'message' => 'Two-step verification disabled',
+    ]);
+}
 
 }
