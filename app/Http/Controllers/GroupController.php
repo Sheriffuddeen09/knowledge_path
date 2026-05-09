@@ -667,13 +667,12 @@ public function deleteGroup(Chat $chat)
         ], 404);
     }
 
-    // ✅ HIDE GROUP FROM THIS USER ONLY
+    // 🔥 HIDE CHAT FOR THIS USER
     DB::table('chat_user')
         ->where('chat_id', $chat->id)
         ->where('user_id', $userId)
         ->update([
-            'status' => 'deleted',
-            'updated_at' => now(),
+            'hidden_at' => now(),
         ]);
 
     // ✅ SYSTEM MESSAGE
@@ -690,6 +689,7 @@ public function deleteGroup(Chat $chat)
         'message' => 'Group deleted successfully'
     ]);
 }
+
 
 public function getGroups()
 {

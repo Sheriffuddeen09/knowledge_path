@@ -439,6 +439,10 @@ Route::get('/download-file', function (Request $request) {
 
 
     Route::middleware('auth:sanctum')->group(function () {
+        Route::middleware('auth:sanctum')->post(
+            '/chats/{chat}/disappearing',
+            [ChatController::class, 'updateDisappearing']
+        );
         Route::get('/invite/group/{token}', function () {
             return redirect(config('app.frontend_url') . request()->getRequestUri());
         });

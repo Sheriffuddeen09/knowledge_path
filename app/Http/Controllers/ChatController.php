@@ -49,6 +49,8 @@ public function messages(Chat $chat)
                 ], 403);
             }
 
+    // Expire AT
+    
     // ✅ MY LAST READ
     $myLastReadId = DB::table('chat_user')
         ->where('chat_id', $chat->id)
@@ -262,84 +264,253 @@ public function oldMessage(Request $request)
     ]);
 }
 
+// public function index()
+// {
+//     $userId = auth()->id();
+
+//     $chats = Chat::where(function ($q) use ($userId) {
+
+//         $q->where('teacher_id', $userId)
+//           ->orWhere('student_id', $userId)
+//           ->orWhere('user_one_id', $userId)
+//           ->orWhere('user_two_id', $userId)
+
+//           ->orWhereHas('users', function ($sub) use ($userId) {
+//               $sub->where('chat_user.user_id', $userId);
+//           });
+
+//     })
+//     ->withMax('messages', 'created_at')
+//     ->orderByDesc('messages_max_created_at')
+//     ->with([
+//         'teacher',
+//         'student',
+//         'messages' => function ($q) {
+//             $q->latest()
+//               ->limit(1)
+//               ->with([
+//                   'sender:id,first_name,last_name',
+//                   'reader:id,first_name,last_name'
+//               ]);
+//         },
+//     ])
+//     ->get();
+
+//     $chats->each(function ($chat) use ($userId) {
+
+//         $chat->unread_count = $chat->messages()
+//             ->whereNull('read_at')
+//             ->where('sender_id', '!=', $userId)
+//             ->count();
+
+//         $latest = $chat->messages->first();
+//         $chat->latest_message = $latest;
+
+//         unset($chat->messages);
+
+//         if ($chat->type === 'group') {
+
+//             $chat->group_name = $chat->name;
+
+//             // 🔥 MY ROLE (admin/member)
+//             $chat->my_role = DB::table('chat_user')
+//                 ->where('chat_id', $chat->id)
+//                 ->where('user_id', $userId)
+//                 ->value('role');
+
+//             // 🔥 MEMBERSHIP STATUS (pending/approved/rejected)
+//             $chat->membership_status = DB::table('chat_user')
+//                 ->where('chat_id', $chat->id)
+//                 ->where('user_id', $userId)
+//                 ->value('status');
+
+//             $chat->members = DB::table('chat_user')
+//                 ->join('users', 'users.id', '=', 'chat_user.user_id')
+//                 ->where('chat_user.chat_id', $chat->id)
+//                 ->where(function ($q) {
+//                     $q->where('chat_user.status', 'approved')
+//                       ->orWhere('chat_user.role', 'admin');
+//                 })
+//                 ->select(
+//                     'users.id',
+//                     'users.first_name',
+//                     'users.last_name',
+//                     'chat_user.role as role'
+//                 )
+//                 ->get();
+
+//         } else {
+
+//             $otherId = $chat->user_one_id == $userId
+//                 ? $chat->user_two_id
+//                 : $chat->user_one_id;
+
+//             $chat->other_user = User::find($otherId);
+//         }
+
+//         $block = $chat->blocks()->first();
+
+//         $chat->block_info = $block ? [
+//             'blocked' => true,
+//             'blocker_id' => $block->blocker_id,
+//             'blocked_id' => $block->blocked_id,
+//             'is_blocked_by_me' => $block->blocker_id == $userId,
+//             'is_blocked_by_other' => $block->blocker_id != $userId,
+//         ] : null;
+
+//         $chat->latest_message_status = $latest
+//             ? (
+//                 $latest->read_at
+//                     ? 'read'
+//                     : ($latest->delivered_at ? 'delivered' : 'sent')
+//             )
+//             : null;
+
+//         $chat->latest_message_read_by_name =
+//             $latest?->reader?->first_name ?? null;
+//     });
+
+//     return response()->json($chats);
+// }
+
 public function index()
 {
     $userId = auth()->id();
 
     $chats = Chat::where(function ($q) use ($userId) {
 
-        // ✅ PRIVATE CHATS
         $q->where('teacher_id', $userId)
-          ->orWhere('student_id', $userId)
-          ->orWhere('user_one_id', $userId)
-          ->orWhere('user_two_id', $userId)
+            ->orWhere('student_id', $userId)
+            ->orWhere('user_one_id', $userId)
+            ->orWhere('user_two_id', $userId)
 
-          // ✅ GROUP CHATS (FIXED - SIMPLE + CORRECT)
-          ->orWhereHas('users', function ($sub) use ($userId) {
-              $sub->where('chat_user.user_id', $userId);
-          });
+            ->orWhereHas('users', function ($sub) use ($userId) {
+                $sub->where('chat_user.user_id', $userId);
+            });
 
     })
+
     ->withMax('messages', 'created_at')
+
     ->orderByDesc('messages_max_created_at')
+
     ->with([
         'teacher',
         'student',
+
         'messages' => function ($q) {
             $q->latest()
-              ->limit(1)
-              ->with([
-                  'sender:id,first_name,last_name',
-                  'reader:id,first_name,last_name'
-              ]);
+                ->limit(1)
+                ->with([
+                    'sender:id,first_name,last_name',
+                    'reader:id,first_name,last_name'
+                ]);
         },
     ])
-    ->get();
+
+    ->get()
+
+    ->filter(function ($chat) use ($userId) {
+
+        // only groups use membership
+        if ($chat->type !== 'group') {
+            return true;
+        }
+
+        $membership = DB::table('chat_user')
+            ->where('chat_id', $chat->id)
+            ->where('user_id', $userId)
+            ->first();
+
+        // no membership
+        if (!$membership) {
+            return false;
+        }
+
+        if (
+            $membership->hidden_at &&
+            in_array(
+                $membership->status,
+                ['left', 'removed', 'rejected']
+            )
+        ) {
+            return false;
+        }
+
+        if (
+            $membership->hidden_at &&
+            in_array(
+                $membership->status,
+                ['approved', 'pending']
+            )
+        ) {
+
+            $latestMessage = Message::where(
+                'chat_id',
+                $chat->id
+            )
+            ->latest()
+            ->first();
+
+            // no new message after hidden
+            if (
+                !$latestMessage ||
+                $latestMessage->created_at <=
+                $membership->hidden_at
+            ) {
+                return false;
+            }
+
+            DB::table('chat_user')
+                ->where('chat_id', $chat->id)
+                ->where('user_id', $userId)
+                ->update([
+                    'hidden_at' => null,
+                ]);
+        }
+
+        return true;
+    })
+
+    ->values();
 
     $chats->each(function ($chat) use ($userId) {
 
-        // =========================
-        // UNREAD COUNT
-        // =========================
         $chat->unread_count = $chat->messages()
             ->whereNull('read_at')
             ->where('sender_id', '!=', $userId)
             ->count();
 
         $latest = $chat->messages->first();
+
         $chat->latest_message = $latest;
 
         unset($chat->messages);
 
-        // =========================
-        // GROUP CHAT LOGIC
-        // =========================
         if ($chat->type === 'group') {
 
             $chat->group_name = $chat->name;
 
-            // 🔥 MY ROLE (admin/member)
             $chat->my_role = DB::table('chat_user')
                 ->where('chat_id', $chat->id)
                 ->where('user_id', $userId)
                 ->value('role');
 
-            // 🔥 MEMBERSHIP STATUS (pending/approved/rejected)
             $chat->membership_status = DB::table('chat_user')
                 ->where('chat_id', $chat->id)
                 ->where('user_id', $userId)
                 ->value('status');
 
-            // =========================
-            // MEMBERS LIST (ONLY ACTIVE)
-            // =========================
             $chat->members = DB::table('chat_user')
                 ->join('users', 'users.id', '=', 'chat_user.user_id')
+
                 ->where('chat_user.chat_id', $chat->id)
+
                 ->where(function ($q) {
                     $q->where('chat_user.status', 'approved')
-                      ->orWhere('chat_user.role', 'admin');
+                        ->orWhere('chat_user.role', 'admin');
                 })
+
                 ->select(
                     'users.id',
                     'users.first_name',
@@ -350,9 +521,6 @@ public function index()
 
         } else {
 
-            // =========================
-            // PRIVATE CHAT LOGIC
-            // =========================
             $otherId = $chat->user_one_id == $userId
                 ? $chat->user_two_id
                 : $chat->user_one_id;
@@ -360,9 +528,6 @@ public function index()
             $chat->other_user = User::find($otherId);
         }
 
-        // =========================
-        // BLOCK INFO
-        // =========================
         $block = $chat->blocks()->first();
 
         $chat->block_info = $block ? [
@@ -373,14 +538,15 @@ public function index()
             'is_blocked_by_other' => $block->blocker_id != $userId,
         ] : null;
 
-        // =========================
-        // MESSAGE STATUS
-        // =========================
         $chat->latest_message_status = $latest
             ? (
                 $latest->read_at
                     ? 'read'
-                    : ($latest->delivered_at ? 'delivered' : 'sent')
+                    : (
+                        $latest->delivered_at
+                            ? 'delivered'
+                            : 'sent'
+                    )
             )
             : null;
 
@@ -390,6 +556,8 @@ public function index()
 
     return response()->json($chats);
 }
+
+
 
 public function send(Request $request)
 {
@@ -430,8 +598,20 @@ public function send(Request $request)
 
     // 🔥 DISAPPEARING MODE
     $expiresAt = null;
-    if ($chat->disappearing_mode && $chat->disappearing_time > 0) {
-        $expiresAt = now()->addSeconds($chat->disappearing_time);
+
+    switch ($chat->disappearing_mode) {
+
+        case '24h':
+            $expiresAt = now()->addHours(24);
+            break;
+
+        case '7d':
+            $expiresAt = now()->addDays(7);
+            break;
+
+        case '90d':
+            $expiresAt = now()->addDays(90);
+            break;
     }
 
     $messages = [];
@@ -639,9 +819,20 @@ return response()->json([
     
     $expiresAt = null;
 
-    if ($chat->disappearing_mode && $chat->disappearing_time > 0) {
-            $expiresAt = now()->addSeconds($chat->disappearing_time);
-        }
+    switch ($chat->disappearing_mode) {
+
+        case '24h':
+            $expiresAt = now()->addHours(24);
+            break;
+
+        case '7d':
+            $expiresAt = now()->addDays(7);
+            break;
+
+        case '90d':
+            $expiresAt = now()->addDays(90);
+            break;
+    }
 
     $message = Message::create([
         'chat_id'   => $chat->id,
@@ -1084,6 +1275,33 @@ public function markAsReadChat($chatId)
 }
 
 
+public function updateDisappearing(
+    Request $request,
+    Chat $chat
+) {
+
+    $request->validate([
+        'mode' => 'required|in:24h,7d,90d,off',
+    ]);
+
+    $chat->update([
+        'disappearing_mode' => $request->mode,
+    ]);
+
+    // optional system message
+    $chat->messages()->create([
+        'sender_id' => auth()->id(),
+        'type' => 'system',
+        'message' => auth()->user()->first_name .
+            ' changed disappearing messages to ' .
+            $request->mode,
+    ]);
+
+    return response()->json([
+        'success' => true,
+        'mode' => $chat->disappearing_mode,
+    ]);
+}
 
 
 }

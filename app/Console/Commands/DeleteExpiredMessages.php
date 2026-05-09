@@ -12,19 +12,16 @@ class DeleteExpiredMessages extends Command
 
    
    public function handle()
-    {
-        $messages = Message::whereNotNull('expires_at')
-            ->where('expires_at', '<=', now())
-            ->get();
+        {
+            Message::whereNotNull('expires_at')
+                ->where('expires_at', '<=', now())
+                ->delete();
 
-        foreach ($messages as $msg) {
-            event(new MessageDeleted($msg->id, $msg->chat_id));
-            $msg->delete();
+            return 0;
         }
-    }
 
-protected function schedule(Schedule $schedule)
-{
-    $schedule->command('messages:delete-expired')->everyMinute();
-}
+    protected function schedule(Schedule $schedule)
+    {
+        $schedule->command('messages:delete-expired')->everyMinute();
+    }
 }

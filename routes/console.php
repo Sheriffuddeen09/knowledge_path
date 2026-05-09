@@ -3,6 +3,17 @@
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use App\Models\Chat;
+use Illuminate\Support\Facades\Schedule;
+use App\Models\Message;
+
+
+Schedule::call(function () {
+
+    Message::whereNotNull('expires_at')
+        ->where('expires_at', '<=', now())
+        ->delete();
+
+})->everyMinute();
 
 
 Artisan::command('inspire', function () {
@@ -18,3 +29,5 @@ Broadcast::channel('chat.{chatId}', function ($user, $chatId) {
         })
         ->exists();
 });
+
+

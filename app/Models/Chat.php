@@ -17,6 +17,7 @@ class Chat extends Model {
         'image',
         'created_by',
         'only_admin_send',
+        'disappearing_mode',
     ];
 
     protected $appends = ['image_url'];
