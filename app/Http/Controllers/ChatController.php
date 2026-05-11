@@ -227,29 +227,35 @@ public function messages(Chat $chat)
 ]);
 }
 
-
 public function oldMessage(Request $request)
 {
     $chatId = $request->query('chat_id');
     $before = $request->query('before');
 
     if (!$chatId) {
-        return response()->json(['message' => 'chat_id is required'], 422);
+        return response()->json([
+            'message' => 'chat_id is required'
+        ], 422);
     }
 
     $query = Message::where('chat_id', $chatId);
 
+    // 🔥 load messages older than current first message
     if ($before) {
         $query->where('id', '<', $before);
     }
 
     $messages = $query
         ->orderBy('id', 'desc')
-        ->limit(20)
+        ->limit(30)
         ->get()
+        ->reverse()
+        ->values()
         ->map(function ($msg) {
+
             return [
                 ...$msg->toArray(),
+
                 'created_at' => $msg->created_at?->toISOString(),
 
                 'status' => match (true) {
@@ -264,6 +270,8 @@ public function oldMessage(Request $request)
         'data' => $messages
     ]);
 }
+
+
 
 
 
@@ -895,7 +903,9 @@ public function forwardMultiple(Request $request)
 
     $authId = auth()->id();
 
-    $messages = Message::whereIn('id', $request->message_ids)->get();
+    $messages = Message::with('files')
+    ->whereIn('id', $request->message_ids)
+    ->get();
 
     $lastChat = null; // 🔥 IMPORTANT
 
@@ -925,13 +935,27 @@ public function forwardMultiple(Request $request)
             }
 
             foreach ($messages as $msg) {
-                $chat->messages()->create([
+
+                $newMessage = $chat->messages()->create([
                     'sender_id' => $authId,
                     'type' => $msg->type,
                     'message' => $msg->message,
                     'file' => $msg->file,
                     'is_forwarded' => true,
                 ]);
+
+                // 🔥 copy all files
+                if ($msg->files && $msg->files->count()) {
+
+                    foreach ($msg->files as $file) {
+
+                        $newMessage->files()->create([
+                            'file_url' => $file->file_url,
+                            'file_name' => $file->file_name,
+                            'type' => $file->type,
+                        ]);
+                    }
+                }
             }
 
             $lastChat = $chat; // 🔥 store last chat
@@ -951,13 +975,26 @@ public function forwardMultiple(Request $request)
             }
 
             foreach ($messages as $msg) {
-                $chat->messages()->create([
+                $newMessage = $chat->messages()->create([
                     'sender_id' => $authId,
                     'type' => $msg->type,
                     'message' => $msg->message,
                     'file' => $msg->file,
                     'is_forwarded' => true,
                 ]);
+
+                // 🔥 copy all files
+                if ($msg->files && $msg->files->count()) {
+
+                    foreach ($msg->files as $file) {
+
+                        $newMessage->files()->create([
+                            'file_url' => $file->file_url,
+                            'file_name' => $file->file_name,
+                            'type' => $file->type,
+                        ]);
+                    }
+                }
             }
 
             $lastChat = $chat;
@@ -1255,6 +1292,43 @@ public function removeTwoStep()
 
     return response()->json([
         'message' => 'Two-step verification disabled',
+    ]);
+}
+
+
+public function verifyEncryption(Chat $chat)
+{
+    $chat->update([
+        'is_verified' => true
+    ]);
+
+    return response()->json([
+        'message' => 'Encryption verified'
+    ]);
+}
+
+public function encryption(Chat $chat)
+{
+    if (!$chat->security_code) {
+
+        $chat->security_code =
+            collect(range(1, 12))
+            ->map(fn () =>
+                random_int(10000, 99999)
+            )
+            ->implode(' ');
+
+        $chat->save();
+    }
+
+    return response()->json([
+        'chat_id' => $chat->id,
+
+        'security_code' =>
+            $chat->security_code,
+
+        'verified' =>
+            $chat->is_verified,
     ]);
 }
 

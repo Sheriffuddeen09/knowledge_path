@@ -439,6 +439,14 @@ Route::get('/download-file', function (Request $request) {
 
 
     Route::middleware('auth:sanctum')->group(function () {
+        Route::middleware('auth:sanctum')->get(
+            '/chats/{chat}/encryption',
+            [ChatController::class, 'encryption']
+        );
+        Route::post(
+            '/chats/{chat}/verify-encryption',
+            [ChatController::class, 'verifyEncryption']
+        );
         Route::middleware('auth:sanctum')->post(
             '/chats/{chat}/disappearing',
             [ChatController::class, 'updateDisappearing']
