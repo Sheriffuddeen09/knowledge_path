@@ -4,15 +4,20 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
 
-            $table->string('two_step_pin')->nullable();
+            $table->string('theme_mode')
+                  ->default('light');
 
-            $table->boolean('two_step_enabled')
-                  ->default(false);
+            $table->string('theme_color')
+                  ->default('blue');
+
+            $table->string('text_color')
+                  ->default('auto');
         });
     }
 
@@ -21,8 +26,9 @@ return new class extends Migration {
         Schema::table('users', function (Blueprint $table) {
 
             $table->dropColumn([
-                'two_step_pin',
-                'two_step_enabled',
+                'theme_mode',
+                'theme_color',
+                'text_color'
             ]);
         });
     }

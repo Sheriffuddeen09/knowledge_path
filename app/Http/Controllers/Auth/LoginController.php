@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use App\Events\UserOnline;
 use App\Events\UserOffline;
+use App\Models\UserSession;
 
 class LoginController extends Controller
 {
@@ -98,7 +99,8 @@ class LoginController extends Controller
 }
 
    
-    public function login(Request $request)
+ 
+public function login(Request $request)
 {
     $request->validate([
         'email' => 'required|email',
@@ -106,54 +108,129 @@ class LoginController extends Controller
         'remember_me' => 'nullable|boolean'
     ]);
 
-    // Get user
-    $user = User::where('email', $request->email)->first();
+    $user = User::where(
+        'email',
+        $request->email
+    )->first();
 
-    if (!$user || !Hash::check($request->password, $user->password)) {
+    if (
+        !$user ||
+        !Hash::check(
+            $request->password,
+            $user->password
+        )
+    ) {
+
         throw ValidationException::withMessages([
-            'email' => ['Invalid email or password']
+            'email' => [
+                'Invalid email or password'
+            ]
         ]);
     }
 
-    // Delete old tokens
-    $user->tokens()->delete();
+    if ($user->two_step_enabled) {
 
-    // Remember me
-    $remember = $request->remember_me ? true : false;
+        $requiresPin = false;
 
-    // Token expiration: 3 days if not remembering, 30 days if remembering
+        // NEVER VERIFIED
+        if (
+            !$user->two_step_verified_at
+        ) {
+
+            $requiresPin = true;
+        }
+
+        // MORE THAN 30 DAYS
+        elseif (
+            now()->diffInDays(
+                $user->two_step_verified_at
+            ) > 30
+        ) {
+
+            $requiresPin = true;
+        }
+
+        if ($requiresPin) {
+
+            return response()->json([
+
+                'status' => false,
+
+                'requires_two_step' => true,
+
+                'message' =>
+                    'Two-step verification required',
+
+                'user_id' => $user->id,
+
+            ]);
+        }
+    }
+
+    $remember =
+        $request->remember_me
+        ? true
+        : false;
+
     $expiresAt = $remember
-        ? now()->addDays(30)    // Remember Me enabled
-        : now()->addDays(3);    // Auto logout after 3 days
+        ? now()->addDays(30)
+        : now()->addDays(3);
 
-    // Create Sanctum token
-    $token = $user->createToken('auth_token', ['*'], $expiresAt)->plainTextToken;
+    $token = $user->createToken(
+        'auth_token',
+        ['*'],
+        $expiresAt
+    )->plainTextToken;
 
-    // Determine redirect URL based on role
-    $role = strtolower(trim($user->role));
+    UserSession::updateOrCreate(
 
-    $redirect = $role === 'student'
+        [
+            'user_id' => $user->id
+        ],
+
+        [
+            'token' => $token,
+            'expires_at' => $expiresAt
+        ]
+    );
+
+    $role = strtolower(
+        trim($user->role)
+    );
+
+    $redirect =
+        $role === 'student'
         ? '/student/dashboard'
         : '/admin/dashboard';
 
-    $userId = auth()->id();
+    // UPDATE LAST VERIFIED
+    $user->two_step_verified_at =
+        now();
 
-    if ($userId) {
-        event(new UserOnline((int) $userId));
-    }
+    $user->save();
 
+    event(new UserOnline(
+        (int) $user->id
+    ));
 
     return response()->json([
+
         'status' => true,
-        'message' => $remember 
+
+        'message' => $remember
             ? 'Login successful — Remember Me enabled'
             : 'Login successful',
+
         'token' => $token,
+
         'expires_at' => $expiresAt,
+
         'user' => $user,
+
         'redirect' => $redirect
     ]);
 }
+
 
     public function logout(Request $request)
     {

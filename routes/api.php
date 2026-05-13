@@ -54,8 +54,66 @@ use App\Http\Controllers\WishlistController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\GroupController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ThemeController;
+use App\Http\Controllers\TwoStepController;
 
 
+Route::middleware('auth:sanctum')->group(function () {
+
+    Route::get(
+        '/theme',
+        [ThemeController::class, 'getTheme']
+    );
+
+    Route::post(
+        '/theme/update',
+        [ThemeController::class, 'updateTheme']
+    );
+});
+
+
+Route::middleware('auth:sanctum')
+    ->group(function () {
+
+    Route::get(
+        '/accounts',
+        [AuthController::class, 'accounts']
+    );
+
+    Route::get(
+        '/switch-account/{id}',
+        [AuthController::class, 'switchAccount']
+    );
+
+    Route::delete(
+        '/remove-account/{id}',
+        [AuthController::class, 'removeAccount']
+    );
+});
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    Route::get(
+        '/two-step',
+        [TwoStepController::class, 'status']
+    );
+
+    Route::post(
+        '/two-step/setup',
+        [TwoStepController::class, 'setup']
+    );
+
+    Route::post(
+        '/two-step/change',
+        [TwoStepController::class, 'change']
+    );
+
+    Route::delete(
+        '/two-step/remove',
+        [TwoStepController::class, 'remove']
+    );
+});
 
 Route::middleware('auth:sanctum')->group(function () {
 
@@ -451,25 +509,6 @@ Route::get('/download-file', function (Request $request) {
             '/chats/{chat}/disappearing',
             [ChatController::class, 'updateDisappearing']
         );
-
-        Route::middleware('auth:sanctum')->group(function () {
-            Route::get(
-                '/two-step',
-                [ChatController::class, 'twoStepStatus']
-            );
-            Route::post(
-                '/two-step/setup',
-                [ChatController::class, 'setupTwoStep']
-            );
-            Route::post(
-                '/two-step/change',
-                [ChatController::class, 'changeTwoStep']
-            );
-            Route::delete(
-                '/two-step/remove',
-                [ChatController::class, 'removeTwoStep']
-            );
-        });
         Route::get('/invite/group/{token}', function () {
             return redirect(config('app.frontend_url') . request()->getRequestUri());
         });

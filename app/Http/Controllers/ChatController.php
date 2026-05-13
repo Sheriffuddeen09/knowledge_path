@@ -936,6 +936,7 @@ public function forwardMultiple(Request $request)
 
             foreach ($messages as $msg) {
 
+    // 1. CREATE MESSAGE
                 $newMessage = $chat->messages()->create([
                     'sender_id' => $authId,
                     'type' => $msg->type,
@@ -944,17 +945,13 @@ public function forwardMultiple(Request $request)
                     'is_forwarded' => true,
                 ]);
 
-                // 🔥 copy all files
-                if ($msg->files && $msg->files->count()) {
-
-                    foreach ($msg->files as $file) {
-
-                        $newMessage->files()->create([
-                            'file_url' => $file->file_url,
-                            'file_name' => $file->file_name,
-                            'type' => $file->type,
-                        ]);
-                    }
+                // 2. ATTACH FILE (ONLY IF EXISTS)
+                if ($msg->file) {
+                    $newMessage->files()->create([
+                        'file_url' => asset('storage/' . $msg->file),
+                        'file_name' => $msg->file_name,
+                        'type' => $msg->type,
+                    ]);
                 }
             }
 
@@ -975,37 +972,35 @@ public function forwardMultiple(Request $request)
             }
 
             foreach ($messages as $msg) {
-                $newMessage = $chat->messages()->create([
-                    'sender_id' => $authId,
+
+            // 1. CREATE MESSAGE
+            $newMessage = $chat->messages()->create([
+                'sender_id' => $authId,
+                'type' => $msg->type,
+                'message' => $msg->message,
+                'file' => $msg->file,
+                'is_forwarded' => true,
+            ]);
+
+            // 2. ATTACH FILE (ONLY IF EXISTS)
+            if ($msg->file) {
+                $newMessage->files()->create([
+                    'file_url' => asset('storage/' . $msg->file),
+                    'file_name' => $msg->file_name,
                     'type' => $msg->type,
-                    'message' => $msg->message,
-                    'file' => $msg->file,
-                    'is_forwarded' => true,
                 ]);
-
-                // 🔥 copy all files
-                if ($msg->files && $msg->files->count()) {
-
-                    foreach ($msg->files as $file) {
-
-                        $newMessage->files()->create([
-                            'file_url' => $file->file_url,
-                            'file_name' => $file->file_name,
-                            'type' => $file->type,
-                        ]);
-                    }
-                }
             }
-
+        }
             $lastChat = $chat;
         }
         }
 
+
     return response()->json([
-            'message' => 'Messages forwarded successfully',
-            'chat_id' => $lastChat?->id,
-            'chat_type' => $lastChat?->type
-        ]);
+                'message' => 'Messages forwarded successfully',
+                'chat_id' => $lastChat?->id,
+                'chat_type' => $lastChat?->type
+            ]);
 }
 
 
