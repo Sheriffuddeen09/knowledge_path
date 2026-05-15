@@ -103,7 +103,8 @@ class RegisterController extends Controller
         'location' => 'required|string',
         'gender' => 'required|in:male,female,other',
         'role' => 'required|in:student,admin',
-        'password' => 'required|string|min:8|confirmed'
+        'password' => 'required|string|min:8|confirmed',
+        'privacy' => 'accepted',
     ]);
 
     if ($validator->fails()) {
@@ -131,7 +132,8 @@ class RegisterController extends Controller
         'gender' => $request->gender,
         'role' => $request->role,
         'password' => Hash::make($request->password),
-        'email_verified_at' => now()
+        'email_verified_at' => now(),
+        'privacy' => $request->privacy,
     ]);
 
     $otpRecord->delete();
@@ -168,7 +170,6 @@ class RegisterController extends Controller
         ]);
     }
 
-    // Automatically log the user in
     Auth::login($user);
 
     // Redirect based on role

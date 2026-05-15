@@ -18,6 +18,11 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    public function passkeys()
+        {
+            return $this->hasMany(Passkey::class);
+        }
+
     public function chats()
         {
             return $this->belongsToMany(Chat::class, 'chat_user')
@@ -143,7 +148,8 @@ class User extends Authenticatable
         'address',
         'city',
         'state',
-        'zip'
+        'zip',
+        'privacy'
     ];
 
     // Hidden attributes

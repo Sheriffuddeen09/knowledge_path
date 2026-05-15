@@ -174,7 +174,7 @@ public function login(Request $request)
 
     $expiresAt = $remember
         ? now()->addDays(30)
-        : now()->addDays(3);
+        : now()->addDays(20);
 
     $token = $user->createToken(
         'auth_token',
@@ -244,19 +244,32 @@ public function login(Request $request)
 
    public function deleteAccount(Request $request)
 {
-    $user = auth()->user();
+    $user = $request->user();
 
     if (!$user) {
+
         return response()->json([
             'status' => false,
             'message' => 'Unauthorized'
         ], 401);
     }
 
+    // DELETE SANCTUM TOKENS
     if (method_exists($user, 'tokens')) {
+
         $user->tokens()->delete();
     }
 
+    // LOGOUT USER
+    Auth::logout();
+
+    // INVALIDATE SESSION
+    $request->session()->invalidate();
+
+    // REGENERATE TOKEN
+    $request->session()->regenerateToken();
+
+    // DELETE ACCOUNT
     $user->delete();
 
     return response()->json([

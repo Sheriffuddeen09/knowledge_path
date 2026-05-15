@@ -57,6 +57,45 @@ use App\Http\Controllers\GroupController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TwoStepController;
+use App\Http\Controllers\Api\PasskeyController;
+use App\Http\Controllers\Api\BiodataController;
+
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    Route::get('/biodata/me', [BiodataController::class, 'me']);
+    Route::get('/biodata/{id}', [BiodataController::class, 'show']);
+
+    Route::post('/biodata', [BiodataController::class, 'store']);
+    Route::put('/biodata', [BiodataController::class, 'update']);
+
+    Route::post('/biodata/education', [BiodataController::class, 'addEducation']);
+    Route::post('/biodata/career', [BiodataController::class, 'addCareer']);
+});
+
+
+Route::middleware('auth:sanctum')->group(function () {
+
+
+    Route::post('/passkeys/login/options', [
+        PasskeyController::class,
+        'generateLoginOptions'
+    ]);
+
+    Route::post('/passkeys/login/verify', [
+        PasskeyController::class,
+        'verifyLogin'
+    ]);
+
+    Route::get('/passkeys', [PasskeyController::class, 'status']);
+
+    Route::post('/passkeys', [PasskeyController::class, 'store']);
+
+    Route::delete('/passkeys/{id}', [PasskeyController::class, 'destroy']);
+});
+
+
+
 
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -113,13 +152,18 @@ Route::middleware('auth:sanctum')->group(function () {
         '/two-step/remove',
         [TwoStepController::class, 'remove']
     );
-});
 
+  
+});
+  Route::post(
+    '/verify-two-step',
+    [TwoStepController::class, 'verify']
+);
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/chat/{chatId}/disappearing', [ChatController::class, 'setDisappearing']);
 
-// Product /api/messages/mark-seen orders
+// Product /api/messages/mark-seen orders delete-account
     Route::get('/products',[ProductController::class,'index']);
     Route::get('/products/{id}',[ProductController::class,'show']);
     Route::middleware('auth:sanctum')->post('/products', [ProductController::class, 'store']);
