@@ -9,18 +9,25 @@ class TeacherForm extends Model
 {
     use HasFactory;
 
+    protected $casts = [
+                            'qualification' => 'array',
+                            'experience' => 'array',
+                            'specialization' => 'array',
+                            'compliment' => 'array',
+                        ];
+
     protected $fillable = [
-        'user_id',
-        'coursetitle_id',
-        'qualification',
-        'experience',
-        'specialization',
-        'course_payment',
-        'currency',
-        'compliment',
-        'logo',
-        'cv',
-    ];
+                            'user_id',
+                            'coursetitle_id',
+                            'qualification',
+                            'experience',
+                            'specialization',
+                            'course_payment',
+                            'currency',
+                            'compliment',
+                            'logo',
+                            'cv',
+                        ];
 
 
     public function user()
@@ -28,8 +35,17 @@ class TeacherForm extends Model
         return $this->belongsTo(User::class);
     }
     public function coursetitle()
-{
-    return $this->belongsTo(Coursetitle::class);
-}
+        {
+            return $this->belongsTo(Coursetitle::class);
+        }
+
+        protected $appends = ['logo_url'];
+
+    public function getLogoUrlAttribute()
+        {
+            return $this->logo
+                ? asset('storage/' . $this->logo)
+                : null;
+        }
 
 }

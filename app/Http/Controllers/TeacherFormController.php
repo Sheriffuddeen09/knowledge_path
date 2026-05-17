@@ -217,21 +217,33 @@ public function update(Request $request)
         ])
     ]);
 
-    return response()->json([
-        'status' => true,
-        'message' => 'Teacher profile updated successfully',
-        'data' => [
-            'coursetitle_id' => (int)$form->coursetitle_id,
-            'qualification' => $form->qualification ?? [],
-            'experience' => $form->experience ?? [],
-            'specialization' => $form->specialization ?? [],
-            'compliment' => $form->compliment ?? [],
-            'course_payment' => $form->course_payment,
-            'currency' => $form->currency,
-            'logo' => $form->logo,
-            'cv' => $form->cv,
-        ]
-    ]);
+    $form = $form->fresh();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Teacher profile updated successfully',
+            'data' => [
+                'id' => $form->id,
+
+                'coursetitle_id' => (int) $form->coursetitle_id,
+
+                'qualification' => $form->qualification ?? [],
+                'experience' => $form->experience ?? [],
+                'specialization' => $form->specialization ?? [],
+                'compliment' => $form->compliment ?? [],
+
+                'course_payment' => $form->course_payment,
+                'currency' => $form->currency,
+
+                // ✅ full urls
+                'logo' => $form->logo
+                    ? asset('storage/' . $form->logo)
+                    : null,
+
+                'cv' => $form->cv,
+            ]
+        ]);
+   
 }
 
 

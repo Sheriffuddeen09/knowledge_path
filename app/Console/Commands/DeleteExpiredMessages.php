@@ -3,25 +3,22 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use App\Models\Message;
 
 class DeleteExpiredMessages extends Command
 {
+    protected $signature = 'messages:delete-expired';
 
-    protected $signature = 'app:delete-expired-messages';
-    protected $description = 'Command description';
+    protected $description = 'Delete expired disappearing messages';
 
-   
-   public function handle()
-        {
-            Message::whereNotNull('expires_at')
-                ->where('expires_at', '<=', now())
-                ->delete();
-
-            return 0;
-        }
-
-    protected function schedule(Schedule $schedule)
+    public function handle()
     {
-        $schedule->command('messages:delete-expired')->everyMinute();
+        $deleted = Message::whereNotNull('expires_at')
+            ->where('expires_at', '<=', now())
+            ->delete();
+
+        $this->info("Deleted {$deleted} messages");
+
+        return 0;
     }
 }

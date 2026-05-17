@@ -3,3 +3,5 @@ php artisan config:clear
 php artisan cache:clear
 php artisan route:list
 
+
+php artisan db:seed --class=CoursetitleSeeder

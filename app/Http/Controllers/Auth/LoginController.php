@@ -254,30 +254,17 @@ public function login(Request $request)
         ], 401);
     }
 
-    // DELETE SANCTUM TOKENS
-    if (method_exists($user, 'tokens')) {
-
-        $user->tokens()->delete();
-    }
-
-    // LOGOUT USER
-    Auth::logout();
-
-    // INVALIDATE SESSION
-    $request->session()->invalidate();
-
-    // REGENERATE TOKEN
-    $request->session()->regenerateToken();
+    // DELETE ALL TOKENS
+    $user->tokens()->delete();
 
     // DELETE ACCOUNT
     $user->delete();
 
     return response()->json([
         'status' => true,
-        'message' => 'Account Deleted'
+        'message' => 'Account Deleted Successfully'
     ]);
 }
-
 
 }
 

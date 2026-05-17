@@ -17,6 +17,8 @@ class CoursetitleSeeder extends Seeder
             "Poem",
             "Nahwu",
             "Sorf",
+            "Tawheed",
+            "Tajweed",
             "Other"
         ];
 

@@ -35,7 +35,7 @@ public function messages(Chat $chat)
 {
     $userId = auth()->id();
 
-    // ✅ check if current user is admin
+    // ✅ check if current user is admin 'replied_to' =>
         $isAdmin = DB::table('chat_user')
             ->where('chat_id', $chat->id)
             ->where('user_id', $userId)
@@ -65,11 +65,15 @@ public function messages(Chat $chat)
         ->value('last_read_message_id');
 
         Message::where('chat_id', $chat->id)
-            ->whereNull('delivered_at')
-            ->where('sender_id', '!=', $userId)
-            ->update([
-                'delivered_at' => now()
-            ]);
+        ->where(function ($query) {
+            $query->whereNull('expires_at')
+                ->orWhere('expires_at', '>', now());
+        })
+        ->whereNull('delivered_at')
+        ->where('sender_id', '!=', $userId)
+        ->update([
+            'delivered_at' => now()
+        ]);
 
         // ✅ GET MEMBERSHIP
         $membership = DB::table('chat_user')
@@ -82,6 +86,11 @@ public function messages(Chat $chat)
 
         // ✅ FILTERED MESSAGES
         $messages = Message::where('chat_id', $chat->id)
+            ->where(function ($query) {
+
+                $query->whereNull('expires_at')
+                    ->orWhere('expires_at', '>', now());
+            })
 
             ->when($joinedAt, function ($query) use ($joinedAt) {
 
@@ -101,24 +110,27 @@ public function messages(Chat $chat)
             ->orderBy('id', 'asc')
             ->get();
 
-    // ✅ unread count (based on MY read)
-    $unreadCount = Message::where('chat_id', $chat->id)
-        ->where('sender_id', '!=', $userId)
-        ->where('id', '>', $myLastReadId ?? 0)
-        ->count();
+            $unreadCount = Message::where('chat_id', $chat->id)
+            ->where(function ($query) {
 
-    $result = [];
-    $groupMap = [];
+                $query->whereNull('expires_at')
+                    ->orWhere('expires_at', '>', now());
+            })
+            ->where('sender_id', '!=', $userId)
+            ->where('id', '>', $myLastReadId ?? 0)
+            ->count();
 
-    // ✅ get reader info
-    $readerUser = DB::table('chat_user')
-        ->join('users', 'users.id', '=', 'chat_user.user_id')
-        ->where('chat_user.chat_id', $chat->id)
-        ->where('chat_user.user_id', '!=', $userId)
-        ->select('users.id', 'users.first_name', 'users.last_name')
-        ->first();
+            $result = [];
+            $groupMap = [];
 
-    foreach ($messages as $msg) {
+            $readerUser = DB::table('chat_user')
+                ->join('users', 'users.id', '=', 'chat_user.user_id')
+                ->where('chat_user.chat_id', $chat->id)
+                ->where('chat_user.user_id', '!=', $userId)
+                ->select('users.id', 'users.first_name', 'users.last_name')
+                ->first();
+
+        foreach ($messages as $msg) {
 
         // ================= STATUS =================
         $status = 'sent';
@@ -169,7 +181,13 @@ public function messages(Chat $chat)
             'read_by' => $readBy,
             'read_by_name' => $readByName,
 
-            'replied_to' => $msg->replyTo ? [
+           'replied_to' => (
+                $msg->replyTo &&
+                (
+                    !$msg->replyTo->expires_at ||
+                    $msg->replyTo->expires_at > now()
+                )
+            ) ? [
                 'id' => $msg->replyTo->id,
                 'type' => $msg->replyTo->type,
                 'message' => $msg->replyTo->message,
@@ -178,10 +196,12 @@ public function messages(Chat $chat)
                     : null,
                 'file_name' => $msg->replyTo->file_name,
                 'sender' => $msg->replyTo->sender ? [
-                    'id' => $msg->replyTo->sender->id,
-                    'first_name' => $msg->replyTo->sender->first_name,
-                    'last_name' => $msg->replyTo->sender->last_name,
+                'id' => $msg->replyTo->sender->id,
+                'first_name' => $msg->replyTo->sender->first_name,
+                'last_name' => $msg->replyTo->sender->last_name,
+
                 ] : null,
+
             ] : null,
         ];
 
@@ -273,7 +293,7 @@ public function oldMessage(Request $request)
 
 
 
-
+//$lastMessage
 
 public function index()
 {
@@ -301,12 +321,16 @@ public function index()
         'student',
 
         'messages' => function ($q) {
-            $q->latest()
-                ->limit(1)
-                ->with([
-                    'sender:id,first_name,last_name',
-                    'reader:id,first_name,last_name'
-                ]);
+        $q->where(function ($query) {
+                $query->whereNull('expires_at')
+                    ->orWhere('expires_at', '>', now());
+            })
+            ->latest()
+            ->limit(1)
+            ->with([
+                'sender:id,first_name,last_name',
+                'reader:id,first_name,last_name'
+            ]);
         },
     ])
 
@@ -348,11 +372,15 @@ public function index()
         ) {
 
             $latestMessage = Message::where(
-                'chat_id',
-                $chat->id
-            )
-            ->latest()
-            ->first();
+                    'chat_id',
+                    $chat->id
+                )
+                ->where(function ($query) {
+                    $query->whereNull('expires_at')
+                        ->orWhere('expires_at', '>', now());
+                })
+                ->latest()
+                ->first();
 
             // no new message after hidden
             if (
@@ -379,9 +407,13 @@ public function index()
     $chats->each(function ($chat) use ($userId) {
 
         $chat->unread_count = $chat->messages()
-            ->whereNull('read_at')
-            ->where('sender_id', '!=', $userId)
-            ->count();
+        ->where(function ($query) {
+            $query->whereNull('expires_at')
+                ->orWhere('expires_at', '>', now());
+        })
+        ->whereNull('read_at')
+        ->where('sender_id', '!=', $userId)
+        ->count();
 
         $latest = $chat->messages->first();
 

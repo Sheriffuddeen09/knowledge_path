@@ -163,7 +163,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/chat/{chatId}/disappearing', [ChatController::class, 'setDisappearing']);
 
-// Product /api/messages/mark-seen orders delete-account
+// Product /api/messages/mark-seen orders delete-account teacher/save
     Route::get('/products',[ProductController::class,'index']);
     Route::get('/products/{id}',[ProductController::class,'show']);
     Route::middleware('auth:sanctum')->post('/products', [ProductController::class, 'store']);
