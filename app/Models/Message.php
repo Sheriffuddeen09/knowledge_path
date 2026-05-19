@@ -25,6 +25,7 @@ class Message extends Model
     'expires_at', // 🔥 ADD THIS
     'delivered_at',
     'read_at',
+    'iv',
 ];
 
 

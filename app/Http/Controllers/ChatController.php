@@ -24,7 +24,8 @@ use Illuminate\Validation\Rule;
 use App\Models\Group;
 use App\Models\MessageFile;
 use Illuminate\Support\Facades\Hash;
-
+use App\Services\MessageCryptoService;
+use Illuminate\Support\Str;
 
 class ChatController extends Controller
 {
@@ -35,7 +36,7 @@ public function messages(Chat $chat)
 {
     $userId = auth()->id();
 
-    // ✅ check if current user is admin 'replied_to' =>
+    // ✅ check if current user is admin 'replied_to' => 'message'
         $isAdmin = DB::table('chat_user')
             ->where('chat_id', $chat->id)
             ->where('user_id', $userId)
@@ -50,7 +51,7 @@ public function messages(Chat $chat)
                 ], 403);
             }
 
-    // Expire AT
+   
     
     // ✅ MY LAST READ
     $myLastReadId = DB::table('chat_user')
@@ -102,11 +103,21 @@ public function messages(Chat $chat)
             ->orderBy('id', 'asc')
             ->get();
 
+            $lastReadId = $myLastReadId ?? 0;
+
+            $lastOpenedAt = DB::table('chat_user')
+                ->where('chat_id', $chat->id)
+                ->where('user_id', $userId)
+                ->value('last_opened_at');
+
             $unreadCount = Message::where('chat_id', $chat->id)
-            ->active()
-            ->where('sender_id', '!=', $userId)
-            ->where('id', '>', $myLastReadId ?? 0)
-            ->count();
+                ->active()
+                ->where('sender_id', '!=', $userId)
+                ->where('id', '>', $lastReadId)
+                ->when($lastOpenedAt, function ($q) use ($lastOpenedAt) {
+                    $q->where('created_at', '>', $lastOpenedAt);
+                })
+                ->count();
 
             $result = [];
             $groupMap = [];
@@ -120,23 +131,19 @@ public function messages(Chat $chat)
 
         foreach ($messages as $msg) {
 
-        // ================= STATUS =================
         $status = 'sent';
 
         if ($msg->sender_id == $userId) {
 
-            // ✅ READ (OTHER USER HAS READ IT)
             if ($otherLastReadId && $msg->id <= $otherLastReadId) {
                 $status = 'read';
             }
 
-            // ✅ DELIVERED
             elseif ($msg->delivered_at) {
                 $status = 'delivered';
             }
         }
 
-        // ================= READER =================
         $readBy = null;
         $readByName = null;
 
@@ -157,6 +164,7 @@ public function messages(Chat $chat)
             'sender_id' => $msg->sender_id,
             'type' => $msg->type,
             'message' => $msg->message,
+            'iv' => $msg->iv,
             'group_id' => $msg->group_id,
             'sender' => $msg->sender,
             'is_forwarded' => $msg->is_forwarded ?? false,
@@ -224,14 +232,28 @@ public function messages(Chat $chat)
         }
     }
 
+    try {
+
+    $chatKey = decrypt($chat->chat_key_user1);
+
+    } catch (\Exception $e) {
+
+        $chatKey = base64_encode(random_bytes(32));
+
+        $chat->update([
+            'chat_key_user1' => encrypt($chatKey),
+            'chat_key_user2' => encrypt($chatKey),
+        ]);
+    }
+
     return response()->json([
     'messages' => $result,
     'last_read_message_id' => $myLastReadId,
     'unread_count' => $unreadCount,
-
-    // ✅ ADD THESE
     'is_admin' => $isAdmin,
     'only_admin_can_send' => $onlyAdminCanSend,
+
+    'chat_key' => $chatKey,
 ]);
 }
 
@@ -385,11 +407,16 @@ public function index()
 
     $chats->each(function ($chat) use ($userId) {
 
+        $lastReadId = DB::table('chat_user')
+            ->where('chat_id', $chat->id)
+            ->where('user_id', $userId)
+            ->value('last_read_message_id');
+
         $chat->unread_count = $chat->messages()
-        ->active()
-        ->whereNull('read_at')
-        ->where('sender_id', '!=', $userId)
-        ->count();
+            ->active()
+            ->where('sender_id', '!=', $userId)
+            ->where('id', '>', $lastReadId ?? 0)
+            ->count();
 
         $latest = $chat->messages->first();
 
@@ -484,10 +511,48 @@ public function send(Request $request)
         'trim_end'   => 'nullable|array',
         'replied_to' => 'nullable|exists:messages,id',
         'group_id' => 'nullable|string',
+        'iv' => 'nullable|string',
     ]);
 
-    
     $chat = Chat::findOrFail($request->chat_id);
+
+        if (!$chat->chat_key_user1 || !$chat->chat_key_user2) {
+
+            $chatKey = base64_encode(random_bytes(32));
+            $chat->chat_key_user1 = encrypt($chatKey);
+            $chat->chat_key_user2 = encrypt($chatKey);
+            $chat->save();
+
+        }
+
+        try {
+            $chatKey = decrypt($chat->chat_key_user1);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Chat encryption corrupted. Please reinitialize.'
+            ], 422);
+        }
+
+        if (empty($chatKey)) {
+            return response()->json([
+                'message' => 'Chat encryption key missing.'
+            ], 422);
+        }
+
+
+        $messageText = $request->message;
+        $iv = $request->iv;
+
+        if (!$iv && $request->message) {
+
+            $encrypted = MessageCryptoService::encrypt(
+                $request->message,
+                $chatKey
+            );
+
+            $messageText = $encrypted['data'];
+            $iv = $encrypted['iv'];
+        }
 
     if ($chat->isBlockedFor(auth()->id())) {
         return response()->json(['message' => 'You are blocked in this chat'], 403);
@@ -591,13 +656,16 @@ public function send(Request $request)
                 'sender_id'   => auth()->id(),
                 'receiver_id' => $receiverId,
                 'type'        => $type,
-                'message'     => $request->message,
+
+                'message'     => $messageText,
+                'iv'          => $iv,
+
                 'file'        => $path,
-                'file_name' => $cleanName,
+                'file_name'   => $cleanName,
                 'replied_to'  => $request->replied_to,
                 'is_read'     => false,
                 'expires_at'  => $expiresAt,
-                'group_id' => $groupId,
+                'group_id'    => $groupId,
             ]);
         }
     }
@@ -634,12 +702,14 @@ public function send(Request $request)
             'sender_id'   => auth()->id(),
             'receiver_id' => $receiverId,
             'type'        => $type,
-            'message'     => $request->message,
+            'message'     => $messageText,
+            'iv'          => $iv,
             'file'        => $path,
-            'file_name'   => $file->getClientOriginalName(),
+            'file_name'   => $cleanName,
             'replied_to'  => $request->replied_to,
             'is_read'     => false,
             'expires_at'  => $expiresAt,
+            'group_id'    => $groupId,
         ]);
     }
     else {
@@ -648,11 +718,12 @@ public function send(Request $request)
             'sender_id'   => auth()->id(),
             'receiver_id' => $receiverId,
             'type'        => 'text',
-            'message'     => $request->message,
+            'message'     => $messageText,
+            'iv'          => $iv,
             'replied_to'  => $request->replied_to,
             'is_read'     => false,
             'expires_at'  => $expiresAt,
-        ]);
+            ]);
     }
     foreach ($messages as $message) {
 
@@ -672,25 +743,48 @@ public function send(Request $request)
     $grouped = collect($messages)
     ->groupBy('group_id')
     ->map(function ($group) {
-        $first = $group->first();
-        return [
-            ...$first->toArray(),
-            'group_id' => $first->group_id,
-            'files' => $group->map(fn($msg) => [
-                'file_url' => asset('storage/' . $msg->file),
-                'file_name' => $msg->file_name,
-                'type' => $msg->type,
-            ])->values(),
-        ];
-    })
-    ->values();
+
+    $first = $group->first();
+
+    return [
+
+        'id' => $first->id,
+        'chat_id' => $first->chat_id,
+        'sender_id' => $first->sender_id,
+        'receiver_id' => $first->receiver_id,
+
+        'type' => $first->type,
+
+        'message' => $first->message,
+        'iv' => $first->iv,
+
+        'group_id' => $first->group_id,
+
+        'sender' => $first->sender,
+
+        'created_at' => $first->created_at,
+        'updated_at' => $first->updated_at,
+
+        'replied_to' => $first->replied_to,
+
+        'files' => $group->map(fn($msg) => [
+            'file_url' => $msg->file
+                ? asset('storage/' . $msg->file)
+                : null,
+
+            'file_name' => $msg->file_name,
+            'type' => $msg->type,
+        ])->values(),
+    ];
+})
+->values();
 return response()->json([
     'messages' => $grouped
 ]);
 }
 
 
-// sendvoice note function block
+// sendvoice note function block 
    public function sendVoice(Request $request)
 {
     $request->validate([
@@ -699,8 +793,41 @@ return response()->json([
         'replied_to' => 'nullable|exists:messages,id',
 
     ]);
+        $chat = Chat::findOrFail($request->chat_id);
 
-    $chat = Chat::findOrFail($request->chat_id);
+        // ===============================
+        // ENSURE CHAT KEY EXISTS (SAFE)
+        // ===============================
+        if (!$chat->chat_key_user1 || !$chat->chat_key_user2) {
+
+            $chatKey = base64_encode(random_bytes(32)); // 256-bit key
+
+            $chat->chat_key_user1 = $chatKey;
+            $chat->chat_key_user2 = $chatKey;
+
+            $chat->save();
+        }
+
+        // ===============================
+        // DECRYPT SAFELY
+        // ===============================
+        try {
+            $chatKey = decrypt($chat->chat_key_user1);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Chat encryption corrupted. Please reinitialize.'
+            ], 422);
+        }
+
+        // HARD GUARD
+        if (empty($chatKey)) {
+            return response()->json([
+                'message' => 'Chat encryption key missing.'
+            ], 422);
+        }
+
+    $messageText = $request->message;
+    $iv = $request->iv;
 
     // 🔒 BLOCK CHECK
     if ($chat->isBlockedFor(auth()->id())) {
@@ -742,7 +869,9 @@ return response()->json([
         'replied_to' => $request->replied_to,
         'expires_at' => $expiresAt,
         'is_read' => false,
-
+        'message' => $messageText,
+        'iv' => $iv,
+            
     ]);
 
     $message->load('sender');
@@ -811,23 +940,34 @@ public function destroy(Message $message)
 {
     $userId = auth()->id();
 
-    // Sender → delete for everyone
+    // ✅ Sender → delete for everyone
     if ($message->sender_id === $userId) {
-        $message->delete();
+
+        $message->update([
+            'deleted' => true,
+            'message' => null,
+            'file' => null,
+        ]);
+
         return response()->json([
-            'message' => 'Message deleted for everyone'
+            'message' => 'Message deleted for everyone',
+            'deleted_for_everyone' => true,
+            'message_id' => $message->id,
         ]);
     }
 
-    // Other user → delete only for me
+    // ✅ Other user → delete only for me
     $message->users()
-        ->updateExistingPivot($userId, ['deleted' => true]);
+        ->updateExistingPivot($userId, [
+            'deleted' => true
+        ]);
 
     return response()->json([
-        'message' => 'Message deleted for you'
+        'message' => 'Message deleted for you',
+        'deleted_for_everyone' => false,
+        'message_id' => $message->id,
     ]);
 }
-
 
 // Clear all message function
 
@@ -1288,40 +1428,33 @@ public function removeTwoStep()
 }
 
 
-public function verifyEncryption(Chat $chat)
-{
-    $chat->update([
-        'is_verified' => true
-    ]);
+    public function verifyEncryption(Chat $chat)
+        {
+            $chat->update([
+                'is_verified' => true
+            ]);
 
-    return response()->json([
-        'message' => 'Encryption verified'
-    ]);
-}
+            return response()->json([
+                'message' => 'Encryption verified'
+            ]);
+        }
 
-public function encryption(Chat $chat)
-{
-    if (!$chat->security_code) {
 
-        $chat->security_code =
-            collect(range(1, 12))
-            ->map(fn () =>
-                random_int(10000, 99999)
-            )
-            ->implode(' ');
-
-        $chat->save();
+    public function getEncryption(Chat $chat)
+    {
+        return response()->json([
+            'security_code' => Str::random(60),
+            'chat_id' => $chat->id
+        ]);
     }
 
-    return response()->json([
-        'chat_id' => $chat->id,
+    public function autoVerify(Chat $chat)
+    {
+        return response()->json([
+            'verified' => true,
+            'chat_id' => $chat->id
+        ]);
+    }
 
-        'security_code' =>
-            $chat->security_code,
-
-        'verified' =>
-            $chat->is_verified,
-    ]);
-}
 
 }

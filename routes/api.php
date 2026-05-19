@@ -59,7 +59,36 @@ use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TwoStepController;
 use App\Http\Controllers\Api\PasskeyController;
 use App\Http\Controllers\Api\BiodataController;
+use App\Http\Controllers\EncryptionController;
 
+
+// /messages/
+Route::middleware('auth:sanctum')->group(function () {
+
+    Route::get(
+        '/chats/{chat}/encryption',
+        [ChatController::class, 'getEncryption']
+    );
+
+    Route::post(
+        '/chats/{chat}/auto-verify',
+        [ChatController::class, 'autoVerify']
+    );
+
+});
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    Route::post('/save-public-key', [
+        EncryptionController::class,
+        'savePublicKey'
+    ]);
+
+    Route::post('/chats/{chat}/generate-key', [
+        EncryptionController::class,
+        'generateChatKey'
+    ]);
+});
 
 Route::middleware('auth:sanctum')->group(function () {
 
@@ -541,14 +570,7 @@ Route::get('/download-file', function (Request $request) {
 
 
     Route::middleware('auth:sanctum')->group(function () {
-        Route::middleware('auth:sanctum')->get(
-            '/chats/{chat}/encryption',
-            [ChatController::class, 'encryption']
-        );
-        Route::post(
-            '/chats/{chat}/verify-encryption',
-            [ChatController::class, 'verifyEncryption']
-        );
+       
         Route::middleware('auth:sanctum')->post(
             '/chats/{chat}/disappearing',
             [ChatController::class, 'updateDisappearing']
