@@ -95,10 +95,12 @@ public function messages(Chat $chat)
             })
 
             ->with([
-                'sender:id,first_name,last_name,role',
-                'replyTo:id,chat_id,message,type,file,file_name,sender_id',
-                'replyTo.sender:id,first_name,last_name'
-            ])
+                    'sender:id,first_name,last_name,role',
+                    'replyTo:id,chat_id,message,type,file,file_name,sender_id',
+                    'replyTo.sender:id,first_name,last_name',
+                    'reactions:id,message_id,user_id,emoji',
+                    'reactions.user:id,first_name,last_name'
+                ])
 
             ->orderBy('id', 'asc')
             ->get();
@@ -165,6 +167,20 @@ public function messages(Chat $chat)
             'type' => $msg->type,
             'message' => $msg->message,
             'iv' => $msg->iv,
+            'reactions' => $msg->reactions->map(function ($reaction) {
+
+                return [
+                    'id' => $reaction->id,
+                    'emoji' => $reaction->emoji,
+                    'user_id' => $reaction->user_id,
+
+                    'user' => $reaction->user ? [
+                        'id' => $reaction->user->id,
+                        'first_name' => $reaction->user->first_name,
+                        'last_name' => $reaction->user->last_name,
+                    ] : null,
+                ];
+            }),
             'group_id' => $msg->group_id,
             'sender' => $msg->sender,
             'is_forwarded' => $msg->is_forwarded ?? false,
@@ -1002,19 +1018,29 @@ public function clearChat(Chat $chat)
 
 
 // Edit function
-
-public function edit (Request $request, Message $message)
+public function edit(Request $request, Message $message)
 {
     abort_if($message->sender_id !== auth()->id(), 403);
-    abort_if($message->type !== 'text', 403);
+
+    abort_if(
+        !in_array($message->type, [
+            'text',
+            'image',
+            'video'
+        ]),
+        403
+    );
+
     abort_if($message->seen_at, 403);
 
     $request->validate([
-        'message' => 'required|string'
+        'message' => 'required|string',
+        'iv' => 'required|string',
     ]);
 
     $message->update([
         'message' => $request->message,
+        'iv' => $request->iv,
         'edited' => true,
     ]);
 
@@ -1022,7 +1048,6 @@ public function edit (Request $request, Message $message)
         'message' => $message->fresh()
     ]);
 }
-
 
 
  //forward function 

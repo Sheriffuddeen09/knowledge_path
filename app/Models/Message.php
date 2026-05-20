@@ -40,6 +40,7 @@ class Message extends Model
 
     
 
+
     public function files()
         {
             return $this->hasMany(MessageFile::class);
