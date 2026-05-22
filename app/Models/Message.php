@@ -6,30 +6,36 @@ use Illuminate\Database\Eloquent\Model;
 
 class Message extends Model
 {
-    protected $fillable = [
-        'chat_id',
-        'sender_id',
-        'type',
-        'message',
-        'file',
-        'edited',
-        'forwarded_from', 
-        'replied_to',
-        'user_id',
-        'file_name',
-        'read_by',
-        'is_pinned',
-        'group_id',
-        'is_forwarded'
-    ];
+   protected $fillable = [
+    'chat_id',
+    'sender_id',
+    'receiver_id',
+    'type',
+    'message',
+    'file',
+    'edited',
+    'forwarded_from',
+    'replied_to',
+    'user_id',
+    'file_name',
+    'read_by',
+    'is_pinned',
+    'group_id',
+    'is_forwarded',
+    'expires_at', // 🔥 ADD THIS
+    'delivered_at',
+    'read_at',
+];
 
 
     protected $casts = [
-        'files' => 'array',
-        'delivered_at' => 'datetime',
-        'edited' => 'boolean',
-        'is_forwarded' => 'boolean',
-    ];
+    'files' => 'array',
+    'delivered_at' => 'datetime',
+    'expires_at' => 'datetime', // 🔥 ADD THIS
+    'read_at' => 'datetime',
+    'edited' => 'boolean',
+    'is_forwarded' => 'boolean',
+];
 
     
 
@@ -112,6 +118,14 @@ public function getFileUrlAttribute()
         : null;
 }
 
+
+    public function scopeActive($query)
+        {
+            return $query->where(function ($q) {
+                $q->whereNull('expires_at')
+                ->orWhere('expires_at', '>', now());
+            });
+        }
 }
 
  

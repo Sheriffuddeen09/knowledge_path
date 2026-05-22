@@ -65,10 +65,7 @@ public function messages(Chat $chat)
         ->value('last_read_message_id');
 
         Message::where('chat_id', $chat->id)
-        ->where(function ($query) {
-            $query->whereNull('expires_at')
-                ->orWhere('expires_at', '>', now());
-        })
+        ->active()
         ->whereNull('delivered_at')
         ->where('sender_id', '!=', $userId)
         ->update([
@@ -86,12 +83,7 @@ public function messages(Chat $chat)
 
         // ✅ FILTERED MESSAGES
         $messages = Message::where('chat_id', $chat->id)
-            ->where(function ($query) {
-
-                $query->whereNull('expires_at')
-                    ->orWhere('expires_at', '>', now());
-            })
-
+            ->active()
             ->when($joinedAt, function ($query) use ($joinedAt) {
 
                 $query->where(function ($q) use ($joinedAt) {
@@ -111,11 +103,7 @@ public function messages(Chat $chat)
             ->get();
 
             $unreadCount = Message::where('chat_id', $chat->id)
-            ->where(function ($query) {
-
-                $query->whereNull('expires_at')
-                    ->orWhere('expires_at', '>', now());
-            })
+            ->active()
             ->where('sender_id', '!=', $userId)
             ->where('id', '>', $myLastReadId ?? 0)
             ->count();
@@ -321,16 +309,13 @@ public function index()
         'student',
 
         'messages' => function ($q) {
-        $q->where(function ($query) {
-                $query->whereNull('expires_at')
-                    ->orWhere('expires_at', '>', now());
-            })
-            ->latest()
-            ->limit(1)
-            ->with([
-                'sender:id,first_name,last_name',
-                'reader:id,first_name,last_name'
-            ]);
+            $q->active()
+                ->latest()
+                ->limit(1)
+                ->with([
+                    'sender:id,first_name,last_name',
+                    'reader:id,first_name,last_name'
+                ]);
         },
     ])
 
@@ -371,14 +356,8 @@ public function index()
             )
         ) {
 
-            $latestMessage = Message::where(
-                    'chat_id',
-                    $chat->id
-                )
-                ->where(function ($query) {
-                    $query->whereNull('expires_at')
-                        ->orWhere('expires_at', '>', now());
-                })
+            $latestMessage = Message::where('chat_id', $chat->id)
+                ->active()
                 ->latest()
                 ->first();
 
@@ -407,10 +386,7 @@ public function index()
     $chats->each(function ($chat) use ($userId) {
 
         $chat->unread_count = $chat->messages()
-        ->where(function ($query) {
-            $query->whereNull('expires_at')
-                ->orWhere('expires_at', '>', now());
-        })
+        ->active()
         ->whereNull('read_at')
         ->where('sender_id', '!=', $userId)
         ->count();
@@ -530,25 +506,22 @@ public function send(Request $request)
             : $chat->user_one_id;
     }
 
-    // 🔥 DISAPPEARING MODE
-    $expiresAt = null;
+        $mode = $chat->disappearing_mode;
 
-    switch ($chat->disappearing_mode) {
+        $expiresAt = match ($mode) {
+            '24h' => now()->addHours(24),
+            '7d' => now()->addDays(7),
+            '90d' => now()->addDays(90),
+            default => null,
+        };
 
-        case '24h':
-            $expiresAt = now()->addHours(24);
-            break;
+        $messages = [];
 
-        case '7d':
-            $expiresAt = now()->addDays(7);
-            break;
-
-        case '90d':
-            $expiresAt = now()->addDays(90);
-            break;
-    }
-
-    $messages = [];
+            logger([
+            'chat_id' => $chat->id,
+            'mode' => $chat->disappearing_mode,
+            'expires_at' => $expiresAt,
+            ]);
 
     // 🔥 SAFE FILE NAME
     $generateFileName = function ($file) {
@@ -751,22 +724,14 @@ return response()->json([
     }
     
     
-    $expiresAt = null;
+    $mode = $chat->disappearing_mode;
 
-    switch ($chat->disappearing_mode) {
-
-        case '24h':
-            $expiresAt = now()->addHours(24);
-            break;
-
-        case '7d':
-            $expiresAt = now()->addDays(7);
-            break;
-
-        case '90d':
-            $expiresAt = now()->addDays(90);
-            break;
-    }
+    $expiresAt = match ($mode) {
+        '24h' => now()->addHours(24),
+        '7d' => now()->addDays(7),
+        '90d' => now()->addDays(90),
+        default => null,
+    };
 
     $message = Message::create([
         'chat_id'   => $chat->id,
