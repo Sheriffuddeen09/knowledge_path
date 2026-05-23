@@ -563,16 +563,6 @@ public function deleteDraft($id)
             'type' => 'marketplace',
         ]);
 
-        // ✉️ Optional: only send auto message if chat is new
-        if ($chat->wasRecentlyCreated) {
-            Message::create([
-                'chat_id' => $chat->id,
-                'sender_id' => $currentUserId,
-                'receiver_id' => $otherUserId,
-                'type' => 'text',
-                'message' => "Hi, I want to discuss order #{$orderId}",
-            ]);
-        }
 
         return response()->json([
             'success' => true,

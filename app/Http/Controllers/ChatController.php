@@ -31,7 +31,6 @@ class ChatController extends Controller
 {
 
 
-
 public function messages(Chat $chat)
 {
     $userId = auth()->id();
@@ -82,28 +81,29 @@ public function messages(Chat $chat)
         // ✅ JOIN DATE
         $joinedAt = $membership?->joined_at;
 
-        // ✅ FILTERED MESSAGES
+        // ✅ FILTERED MESSAGES MessageUser
         $messages = Message::where('chat_id', $chat->id)
-            ->active()
-            ->when($joinedAt, function ($query) use ($joinedAt) {
+        ->active()
+        ->whereDoesntHave('messageUsers', function ($q) use ($userId) {
+            $q->where('user_id', $userId)
+            ->where('deleted', 1);
+        })
+        ->when($joinedAt, function ($query) use ($joinedAt) {
+            $query->where(function ($q) use ($joinedAt) {
+                $q->where('created_at', '>=', $joinedAt)
+                ->orWhere('type', 'system');
+            });
+        })
+        ->with([
+            'sender:id,first_name,last_name,role',
+            'replyTo:id,chat_id,message,type,file,file_name,sender_id',
+            'replyTo.sender:id,first_name,last_name',
+            'reactions:id,message_id,user_id,emoji',
+            'reactions.user:id,first_name,last_name'
+        ])
+        ->orderBy('id', 'asc')
+        ->get();
 
-                $query->where(function ($q) use ($joinedAt) {
-
-                    $q->where('created_at', '>=', $joinedAt)
-                    ->orWhere('type', 'system');
-                });
-            })
-
-            ->with([
-                    'sender:id,first_name,last_name,role',
-                    'replyTo:id,chat_id,message,type,file,file_name,sender_id',
-                    'replyTo.sender:id,first_name,last_name',
-                    'reactions:id,message_id,user_id,emoji',
-                    'reactions.user:id,first_name,last_name'
-                ])
-
-            ->orderBy('id', 'asc')
-            ->get();
 
             $lastReadId = $myLastReadId ?? 0;
 
@@ -116,9 +116,6 @@ public function messages(Chat $chat)
                 ->active()
                 ->where('sender_id', '!=', $userId)
                 ->where('id', '>', $lastReadId)
-                ->when($lastOpenedAt, function ($q) use ($lastOpenedAt) {
-                    $q->where('created_at', '>', $lastOpenedAt);
-                })
                 ->count();
 
             $result = [];
@@ -159,13 +156,13 @@ public function messages(Chat $chat)
             $readByName = $readerUser->first_name . ' ' . $readerUser->last_name;
         }
 
-        // ================= BASE =================
+        // ================= BASE clearChat =================
         $base = [
             'id' => $msg->id,
             'chat_id' => $msg->chat_id,
             'sender_id' => $msg->sender_id,
             'type' => $msg->type,
-            'message' => $msg->message,
+            'message' => $msg->message ? $msg->message : null,
             'iv' => $msg->iv,
             'reactions' => $msg->reactions->map(function ($reaction) {
 
@@ -273,6 +270,36 @@ public function messages(Chat $chat)
 ]);
 }
 
+public function deleteChat(Chat $chat)
+{
+    $userId = auth()->id();
+
+    // ✅ CHECK USER EXISTS IN CHAT
+    $member = DB::table('chat_user')
+        ->where('chat_id', $chat->id)
+        ->where('user_id', $userId)
+        ->first();
+
+    if (!$member) {
+        return response()->json([
+            'message' => 'Chat not found'
+        ], 404);
+    }
+
+    // ✅ HIDE CHAT FOR CURRENT USER ONLY
+    DB::table('chat_user')
+        ->where('chat_id', $chat->id)
+        ->where('user_id', $userId)
+        ->update([
+            'hidden_at' => now(),
+        ]);
+
+    return response()->json([
+        'message' => 'Chat removed successfully'
+    ]);
+}
+
+
 public function oldMessage(Request $request)
 {
     $chatId = $request->query('chat_id');
@@ -319,7 +346,7 @@ public function oldMessage(Request $request)
 
 
 
-//$lastMessage
+//clearChat $chat->messages()
 
 public function index()
 {
@@ -338,16 +365,18 @@ public function index()
 
     })
 
-    ->withMax('messages', 'created_at')
-
     ->orderByDesc('messages_max_created_at')
 
     ->with([
         'teacher',
         'student',
 
-        'messages' => function ($q) {
+        'messages' => function ($q) use ($userId) {
             $q->active()
+                ->whereDoesntHave('messageUsers', function ($sub) use ($userId) {
+                    $sub->where('user_id', $userId)
+                        ->where('deleted', 1);
+                })
                 ->latest()
                 ->limit(1)
                 ->with([
@@ -356,7 +385,6 @@ public function index()
                 ]);
         },
     ])
-
     ->get()
 
     ->filter(function ($chat) use ($userId) {
@@ -430,11 +458,22 @@ public function index()
 
         $chat->unread_count = $chat->messages()
             ->active()
+            ->whereDoesntHave('messageUsers', function ($q) use ($userId) {
+                $q->where('user_id', $userId)
+                ->where('deleted', 1);
+            })
             ->where('sender_id', '!=', $userId)
             ->where('id', '>', $lastReadId ?? 0)
             ->count();
 
-        $latest = $chat->messages->first();
+        $latest = Message::where('chat_id', $chat->id)
+                ->active()
+                ->whereDoesntHave('messageUsers', function ($q) use ($userId) {
+                    $q->where('user_id', $userId)
+                    ->where('deleted', 1);
+                })
+                ->latest()
+                ->first();
 
         $chat->latest_message = $latest;
 
@@ -753,6 +792,18 @@ public function send(Request $request)
         foreach ($userIds as $userId) {
             $message->users()->attach($userId, ['deleted' => false]);
         }
+
+        // ✅ RESTORE CHAT FOR USERS THAT REMOVED IT
+        DB::table('chat_user')
+            ->where('chat_id', $chat->id)
+
+            // ✅ don't restore for sender
+            ->where('user_id', '!=', auth()->id())
+
+            ->update([
+                'hidden_at' => null,
+            ]);
+
         $message->load(['sender', 'repliedMessage.sender']);
         broadcast(new NewMessage($message))->toOthers();
     }
@@ -992,12 +1043,6 @@ public function clearChat(Chat $chat)
 {
     $userId = auth()->id();
 
-    // Make sure user belongs to this chat
-    abort_if(
-        $chat->teacher_id !== $userId && $chat->student_id !== $userId,
-        403,
-        'Unauthorized'
-    );
 
     // Get all message IDs in this chat
     $messageIds = Message::where('chat_id', $chat->id)->pluck('id');

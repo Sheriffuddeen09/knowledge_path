@@ -60,9 +60,36 @@ use App\Http\Controllers\TwoStepController;
 use App\Http\Controllers\Api\PasskeyController;
 use App\Http\Controllers\Api\BiodataController;
 use App\Http\Controllers\EncryptionController;
+use App\Http\Controllers\CommunityController;
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    Route::post(
+        '/communities/create',
+        [CommunityController::class, 'create']
+    );
+
+});
 
 
-// /messages/
+Route::middleware('auth:sanctum')->group(function () {
+
+    Route::get(
+        '/communities',
+        [CommunityController::class, 'index']
+    );
+
+    Route::get(
+        '/community/{id}/messages',
+        [CommunityController::class, 'messages']
+    );
+
+    Route::post(
+        '/community/send',
+        [CommunityMessageController::class, 'sendCommunityFile']
+    );
+});
+// /clear
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::get(
@@ -593,6 +620,8 @@ Route::get('/download-file', function (Request $request) {
         Route::get('/groups', [GroupController::class, 'getGroups']);
         Route::middleware('auth:sanctum')->post('/groups/{chat}/delete',[GroupController::class, 'deleteGroup']);
 
+
+        Route::middleware('auth:sanctum')->post('/chats/{chat}/delete',[ChatController::class, 'deleteChat']);
         Route::post('/messages/forward', [ChatController::class, 'forward']);
 
     });

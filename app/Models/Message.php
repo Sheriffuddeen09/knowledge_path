@@ -40,7 +40,11 @@ class Message extends Model
 
     
 
-
+    public function messageUsers()
+        {
+            return $this->hasMany(MessageUser::class, 'message_id');
+        }
+        
     public function files()
         {
             return $this->hasMany(MessageFile::class);
