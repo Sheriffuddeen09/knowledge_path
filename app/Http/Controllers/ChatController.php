@@ -96,7 +96,7 @@ public function messages(Chat $chat)
         })
         ->with([
             'sender:id,first_name,last_name,role',
-            'replyTo:id,chat_id,message,type,file,file_name,sender_id',
+            'replyTo:id,chat_id,message,type,file,file_name,sender_id,iv',
             'replyTo.sender:id,first_name,last_name',
             'reactions:id,message_id,user_id,emoji',
             'reactions.user:id,first_name,last_name'
@@ -162,7 +162,7 @@ public function messages(Chat $chat)
             'chat_id' => $msg->chat_id,
             'sender_id' => $msg->sender_id,
             'type' => $msg->type,
-            'message' => $msg->message ? $msg->message : null,
+            'message' => $msg->message,
             'iv' => $msg->iv,
             'reactions' => $msg->reactions->map(function ($reaction) {
 
@@ -199,17 +199,16 @@ public function messages(Chat $chat)
             ) ? [
                 'id' => $msg->replyTo->id,
                 'type' => $msg->replyTo->type,
-                'message' => $msg->replyTo->message,
+                'preview' => $msg->replyTo->preview,
                 'file_url' => $msg->replyTo->file
                     ? asset('storage/' . $msg->replyTo->file)
                     : null,
                 'file_name' => $msg->replyTo->file_name,
-                'sender' => $msg->replyTo->sender ? [
-                'id' => $msg->replyTo->sender->id,
-                'first_name' => $msg->replyTo->sender->first_name,
-                'last_name' => $msg->replyTo->sender->last_name,
-
-                ] : null,
+                'sender' => [
+                    'id' => $msg->replyTo->sender->id,
+                    'first_name' => $msg->replyTo->sender->first_name,
+                    'last_name' => $msg->replyTo->sender->last_name,
+                ]
 
             ] : null,
         ];
@@ -598,6 +597,13 @@ public function send(Request $request)
         $messageText = $request->message;
         $iv = $request->iv;
 
+        $plainText = $request->message;
+
+        $encrypted = MessageCryptoService::encrypt(
+                            $plainText,
+                            $chatKey
+                        );
+
         if (!$iv && $request->message) {
 
             $encrypted = MessageCryptoService::encrypt(
@@ -717,7 +723,15 @@ public function send(Request $request)
 
                 'file'        => $path,
                 'file_name'   => $cleanName,
-                'replied_to'  => $request->replied_to,
+                'preview' => Str::limit($plainText, 40),
+                'replied_to' => $request->replied_to ? [
+                'id' => $request->replied_to,
+                'type' => Message::find($request->replied_to)?->type,
+                'message' => null, // ❗ important
+                'preview' => Str::limit(
+                    Message::find($request->replied_to)?->message, 40
+                ),
+            ] : null,
                 'is_read'     => false,
                 'expires_at'  => $expiresAt,
                 'group_id'    => $groupId,
@@ -761,7 +775,8 @@ public function send(Request $request)
             'iv'          => $iv,
             'file'        => $path,
             'file_name'   => $cleanName,
-            'replied_to'  => $request->replied_to,
+            'preview' => Str::limit($plainText, 40),
+            'replied_to' => $request->replied_to,
             'is_read'     => false,
             'expires_at'  => $expiresAt,
             'group_id'    => $groupId,
@@ -775,7 +790,8 @@ public function send(Request $request)
             'type'        => 'text',
             'message'     => $messageText,
             'iv'          => $iv,
-            'replied_to'  => $request->replied_to,
+            'preview' => Str::limit($plainText, 40),
+            'replied_to' => $request->replied_to,
             'is_read'     => false,
             'expires_at'  => $expiresAt,
             ]);
@@ -833,6 +849,7 @@ public function send(Request $request)
         'updated_at' => $first->updated_at,
 
         'replied_to' => $first->replied_to,
+        'preview' => Str::limit($plainText, 40),
 
         'files' => $group->map(fn($msg) => [
             'file_url' => $msg->file

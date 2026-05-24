@@ -11,6 +11,7 @@ class Community extends Model
         'creator_id',
         'community_name',
         'community_description',
+        'community_image',
         'owner_id',
         'only_admin_can_message',
         'disappearing_mode',
@@ -20,12 +21,41 @@ class Community extends Model
         {
             return $this->belongsToMany(
                 User::class,
-                'community_members',
-                'community_id',
-                'user_id'
-            )->withTimestamps();
+                'community_members'
+            )
+            ->withPivot([
+                'role',
+                'membership_status',
+                'can_message',
+                'muted',
+                'joined_at'
+            ]);
         }
 
+        public function lastMessage()
+            {
+                return $this->hasOne(
+                    CommunityMessage::class
+                )->latestOfMany();
+            }
+
+    // ✅ OWNER
+    public function owner()
+    {
+        return $this->belongsTo(
+            User::class,
+            'owner_id'
+        );
+    }
+
+    // ✅ CREATOR
+    public function creator()
+    {
+        return $this->belongsTo(
+            User::class,
+            'creator_id'
+        );
+    }
     public function messages()
     {
         return $this->hasMany(

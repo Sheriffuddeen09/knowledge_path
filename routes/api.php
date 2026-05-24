@@ -69,6 +69,32 @@ Route::middleware('auth:sanctum')->group(function () {
         [CommunityController::class, 'create']
     );
 
+    Route::get(
+        '/communities',
+        [CommunityController::class, 'index']
+    );
+
+
+    Route::get('/communities', [CommunityController::class, 'index']);
+    Route::get('/community/{id}/messages', [CommunityController::class, 'messages']);
+
+     Route::post(
+        '/community/messages/send',
+        [CommunityController::class, 'sendCommunityMessage']
+    );
+
+    // VOICE
+    Route::post(
+        '/community/messages/voice',
+        [CommunityController::class, 'sendCommunityVoice']
+    );
+
+    // GET MESSAGES
+    Route::get(
+        '/community/{community}/messages',
+        [CommunityController::class, 'messages']
+    );
+
 });
 
 
