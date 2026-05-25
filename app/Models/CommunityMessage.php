@@ -13,6 +13,7 @@ class CommunityMessage extends Model
         'type',
         'file',
         'replied_to',
+        'response_mode',
     ];
 
     public function sender()
@@ -26,4 +27,17 @@ class CommunityMessage extends Model
             Community::class
         );
     }
+
+    public function reactions()
+        {
+        return $this->hasMany(
+            CommunityMessageReaction::class,
+            'community_message_id'
+        );
+        }
+
+        public function repliedTo()
+        {
+            return $this->belongsTo(CommunityMessage::class, 'replied_to');
+        }
 }

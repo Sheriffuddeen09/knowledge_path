@@ -83,6 +83,11 @@ Route::middleware('auth:sanctum')->group(function () {
         [CommunityController::class, 'sendCommunityMessage']
     );
 
+    Route::post(
+        '/community/messages/react',
+        [CommunityController::class, 'react']
+    );
+
     // VOICE
     Route::post(
         '/community/messages/voice',

@@ -34,36 +34,25 @@ class ChatController extends Controller
 public function messages(Chat $chat)
 {
     $userId = auth()->id();
-
-    // ✅ check if current user is admin 'replied_to' => 'message'
         $isAdmin = DB::table('chat_user')
             ->where('chat_id', $chat->id)
             ->where('user_id', $userId)
             ->where('role', 'admin')
             ->exists();
-
-        // ✅ check if only admin can send
         $onlyAdminCanSend = $chat->only_admin_send ?? false;
             if ($chat->isBlockedFor($userId)) {
                 return response()->json([
                     'message' => 'This chat is blocked'
                 ], 403);
             }
-
-   
-    
-    // ✅ MY LAST READ
     $myLastReadId = DB::table('chat_user')
         ->where('chat_id', $chat->id)
         ->where('user_id', $userId)
         ->value('last_read_message_id');
-
-    // ✅ OTHER USER LAST READ (🔥 THIS IS THE FIX)
     $otherLastReadId = DB::table('chat_user')
         ->where('chat_id', $chat->id)
         ->where('user_id', '!=', $userId)
         ->value('last_read_message_id');
-
         Message::where('chat_id', $chat->id)
         ->active()
         ->whereNull('delivered_at')
@@ -71,17 +60,11 @@ public function messages(Chat $chat)
         ->update([
             'delivered_at' => now()
         ]);
-
-        // ✅ GET MEMBERSHIP
         $membership = DB::table('chat_user')
             ->where('chat_id', $chat->id)
             ->where('user_id', $userId)
             ->first();
-
-        // ✅ JOIN DATE
         $joinedAt = $membership?->joined_at;
-
-        // ✅ FILTERED MESSAGES MessageUser
         $messages = Message::where('chat_id', $chat->id)
         ->active()
         ->whereDoesntHave('messageUsers', function ($q) use ($userId) {
@@ -96,67 +79,72 @@ public function messages(Chat $chat)
         })
         ->with([
             'sender:id,first_name,last_name,role',
-            'replyTo:id,chat_id,message,type,file,file_name,sender_id,iv',
-            'replyTo.sender:id,first_name,last_name',
             'reactions:id,message_id,user_id,emoji',
             'reactions.user:id,first_name,last_name'
         ])
         ->orderBy('id', 'asc')
         ->get();
-
-
             $lastReadId = $myLastReadId ?? 0;
-
             $lastOpenedAt = DB::table('chat_user')
                 ->where('chat_id', $chat->id)
                 ->where('user_id', $userId)
                 ->value('last_opened_at');
-
             $unreadCount = Message::where('chat_id', $chat->id)
                 ->active()
                 ->where('sender_id', '!=', $userId)
                 ->where('id', '>', $lastReadId)
                 ->count();
-
             $result = [];
             $groupMap = [];
-
             $readerUser = DB::table('chat_user')
                 ->join('users', 'users.id', '=', 'chat_user.user_id')
                 ->where('chat_user.chat_id', $chat->id)
                 ->where('chat_user.user_id', '!=', $userId)
                 ->select('users.id', 'users.first_name', 'users.last_name')
                 ->first();
-
         foreach ($messages as $msg) {
-
         $status = 'sent';
-
         if ($msg->sender_id == $userId) {
-
             if ($otherLastReadId && $msg->id <= $otherLastReadId) {
                 $status = 'read';
             }
-
             elseif ($msg->delivered_at) {
                 $status = 'delivered';
             }
         }
-
         $readBy = null;
         $readByName = null;
-
         if ($status === 'read' && $readerUser) {
             $readBy = [
                 'id' => $readerUser->id,
                 'first_name' => $readerUser->first_name,
                 'last_name' => $readerUser->last_name,
             ];
-
             $readByName = $readerUser->first_name . ' ' . $readerUser->last_name;
         }
 
-        // ================= BASE clearChat =================
+        $replyData = null;
+        if ($msg->replied_to) {
+            // Handle parsing if it arrived as a raw JSON string from SQLite storage
+            $repliedArray = is_string($msg->replied_to) 
+                ? json_decode($msg->replied_to, true) 
+                : $msg->replied_to;
+
+            if (is_array($repliedArray)) {
+                $replyData = [
+                    'id'      => $repliedArray['id'] ?? null,
+                    'type'    => $repliedArray['type'] ?? 'text',
+                    'message' => $repliedArray['message'] ?? null, // Passing raw ciphertext message string
+                    'iv'      => $repliedArray['iv'] ?? null,      // Passing matching parent vector reference string
+                    'sender'  => [
+                        'id'         => $repliedArray['sender']['id'] ?? null,
+                        'first_name' => $repliedArray['sender']['first_name'] ?? 'User',
+                        'last_name'  => $repliedArray['sender']['last_name'] ?? '',
+                    ]
+                ];
+            }
+        }
+
         $base = [
             'id' => $msg->id,
             'chat_id' => $msg->chat_id,
@@ -165,12 +153,10 @@ public function messages(Chat $chat)
             'message' => $msg->message,
             'iv' => $msg->iv,
             'reactions' => $msg->reactions->map(function ($reaction) {
-
                 return [
                     'id' => $reaction->id,
                     'emoji' => $reaction->emoji,
                     'user_id' => $reaction->user_id,
-
                     'user' => $reaction->user ? [
                         'id' => $reaction->user->id,
                         'first_name' => $reaction->user->first_name,
@@ -182,46 +168,18 @@ public function messages(Chat $chat)
             'sender' => $msg->sender,
             'is_forwarded' => $msg->is_forwarded ?? false,
             'created_at' => $msg->created_at?->toISOString(),
-
             'status' => $status,
             'delivered_at' => $msg->delivered_at,
-
-            // ✅ IMPORTANT FOR FRONTEND
             'read_by' => $readBy,
             'read_by_name' => $readByName,
-
-           'replied_to' => (
-                $msg->replyTo &&
-                (
-                    !$msg->replyTo->expires_at ||
-                    $msg->replyTo->expires_at > now()
-                )
-            ) ? [
-                'id' => $msg->replyTo->id,
-                'type' => $msg->replyTo->type,
-                'preview' => $msg->replyTo->preview,
-                'file_url' => $msg->replyTo->file
-                    ? asset('storage/' . $msg->replyTo->file)
-                    : null,
-                'file_name' => $msg->replyTo->file_name,
-                'sender' => [
-                    'id' => $msg->replyTo->sender->id,
-                    'first_name' => $msg->replyTo->sender->first_name,
-                    'last_name' => $msg->replyTo->sender->last_name,
-                ]
-
-            ] : null,
+            'replied_to'   => $replyData, 
         ];
-
-        // ================= GROUP =================
         if ($msg->group_id) {
-
             if (!isset($groupMap[$msg->group_id])) {
                 $groupMap[$msg->group_id] = $base;
                 $groupMap[$msg->group_id]['files'] = [];
                 $result[] = &$groupMap[$msg->group_id];
             }
-
             $groupMap[$msg->group_id]['files'][] = [
                 'file_url' => $msg->file
                     ? asset('storage/' . $msg->file)
@@ -229,9 +187,7 @@ public function messages(Chat $chat)
                 'file_name' => $msg->file_name,
                 'type' => $msg->type,
             ];
-
         } else {
-
             $base['files'] = [[
                 'file_url' => $msg->file
                     ? asset('storage/' . $msg->file)
@@ -239,32 +195,24 @@ public function messages(Chat $chat)
                 'file_name' => $msg->file_name,
                 'type' => $msg->type,
             ]];
-
             $result[] = $base;
         }
     }
-
     try {
-
     $chatKey = decrypt($chat->chat_key_user1);
-
     } catch (\Exception $e) {
-
         $chatKey = base64_encode(random_bytes(32));
-
         $chat->update([
             'chat_key_user1' => encrypt($chatKey),
             'chat_key_user2' => encrypt($chatKey),
         ]);
     }
-
     return response()->json([
     'messages' => $result,
     'last_read_message_id' => $myLastReadId,
     'unread_count' => $unreadCount,
     'is_admin' => $isAdmin,
     'only_admin_can_send' => $onlyAdminCanSend,
-
     'chat_key' => $chatKey,
 ]);
 }
@@ -594,15 +542,10 @@ public function send(Request $request)
         }
 
 
+        $repliedMessage = $request->replied_to ? Message::find($request->replied_to) : null;
+
         $messageText = $request->message;
         $iv = $request->iv;
-
-        $plainText = $request->message;
-
-        $encrypted = MessageCryptoService::encrypt(
-                            $plainText,
-                            $chatKey
-                        );
 
         if (!$iv && $request->message) {
 
@@ -662,6 +605,17 @@ public function send(Request $request)
     $starts = $request->trim_start ?? [];
     $ends   = $request->trim_end ?? [];
     $types  = $request->types ?? [];
+    $repliedData = $repliedMessage ? [
+        'id'      => $repliedMessage->id,
+        'type'    => $repliedMessage->type,
+        'message' => $repliedMessage->message, // The encrypted ciphertext string
+        'iv'      => $repliedMessage->iv,      // 🔥 CRITICAL: Pass the parent IV to the frontend!
+        'sender'  => $repliedMessage->sender ? [
+        'id'         => $repliedMessage->sender->id,
+        'first_name' => $repliedMessage->sender->first_name,
+        'last_name'  => $repliedMessage->sender->last_name,
+        ] : null,
+    ] : null;
 
     if ($request->hasFile('files')) {
 
@@ -686,6 +640,7 @@ public function send(Request $request)
             $end   = $ends[$index] ?? 0;
 
             $path = null;
+            
 
             if ($type === 'video' && $end > $start) {
                 $tempPath = $file->getRealPath();
@@ -717,21 +672,11 @@ public function send(Request $request)
                 'sender_id'   => auth()->id(),
                 'receiver_id' => $receiverId,
                 'type'        => $type,
-
                 'message'     => $messageText,
                 'iv'          => $iv,
-
                 'file'        => $path,
                 'file_name'   => $cleanName,
-                'preview' => Str::limit($plainText, 40),
-                'replied_to' => $request->replied_to ? [
-                'id' => $request->replied_to,
-                'type' => Message::find($request->replied_to)?->type,
-                'message' => null, // ❗ important
-                'preview' => Str::limit(
-                    Message::find($request->replied_to)?->message, 40
-                ),
-            ] : null,
+                'replied_to'  => $repliedData,
                 'is_read'     => false,
                 'expires_at'  => $expiresAt,
                 'group_id'    => $groupId,
@@ -775,8 +720,7 @@ public function send(Request $request)
             'iv'          => $iv,
             'file'        => $path,
             'file_name'   => $cleanName,
-            'preview' => Str::limit($plainText, 40),
-            'replied_to' => $request->replied_to,
+            'replied_to'  => $repliedData,
             'is_read'     => false,
             'expires_at'  => $expiresAt,
             'group_id'    => $groupId,
@@ -790,8 +734,7 @@ public function send(Request $request)
             'type'        => 'text',
             'message'     => $messageText,
             'iv'          => $iv,
-            'preview' => Str::limit($plainText, 40),
-            'replied_to' => $request->replied_to,
+            'replied_to'  => $repliedData,
             'is_read'     => false,
             'expires_at'  => $expiresAt,
             ]);
@@ -820,7 +763,7 @@ public function send(Request $request)
                 'hidden_at' => null,
             ]);
 
-        $message->load(['sender', 'repliedMessage.sender']);
+        $message->load(['sender']);
         broadcast(new NewMessage($message))->toOthers();
     }
     $grouped = collect($messages)
@@ -849,7 +792,6 @@ public function send(Request $request)
         'updated_at' => $first->updated_at,
 
         'replied_to' => $first->replied_to,
-        'preview' => Str::limit($plainText, 40),
 
         'files' => $group->map(fn($msg) => [
             'file_url' => $msg->file
@@ -866,6 +808,8 @@ return response()->json([
     'messages' => $grouped
 ]);
 }
+
+
 
 
 // sendvoice note function block 

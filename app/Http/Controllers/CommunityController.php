@@ -5,6 +5,9 @@ use App\Models\Community;
 use App\Models\Chat;
 use App\Models\CommunityMember;
 use Illuminate\Http\Request;
+use App\Models\CommunityMessage;
+use App\Events\NewCommunityMessage;
+use App\Models\CommunityMessageReaction;
 
 class CommunityController extends Controller
 
@@ -123,8 +126,8 @@ public function sendCommunityMessage(Request $request)
         'file' => 'nullable|file|max:20480',
         'files' => 'nullable|array',
         'files.*' => 'file|max:20480',
-        'replied_to' =>
-            'nullable|exists:community_messages,id',
+        'replied_to' => 'nullable|exists:community_messages,id',
+        'response_mode' => 'nullable|boolean'
     ]);
 
     $community = Community::findOrFail(
@@ -198,20 +201,14 @@ public function sendCommunityMessage(Request $request)
             );
             $messages[] =
                 CommunityMessage::create([
-                'community_id' =>
-                    $community->id,
-                'sender_id' =>
-                    auth()->id(),
-                'type' =>
-                    $request->types[$index]
-                    ?? 'file',
-                'message' =>
-                    $request->message,
+                'community_id' => $community->id,
+                'sender_id' => auth()->id(),
+                'type' => $request->types[$index] ?? 'file',
+                'message' => $request->message,
                 'file' => $path,
-                'replied_to' =>
-                    $request->replied_to,
-                'expires_at' =>
-                    $expiresAt,
+                'replied_to' => $request->replied_to,
+                'expires_at' => $expiresAt,
+                'response_mode' => $request->boolean('response_mode'),
             ]);
         }
     }
@@ -226,39 +223,30 @@ public function sendCommunityMessage(Request $request)
             'public'
         );
         $messages[] =
-            CommunityMessage::create([
-            'community_id' =>
-                $community->id,
-            'sender_id' =>
-                auth()->id(),
-            'type' =>
-                $request->type ?? 'file',
-            'message' =>
-                $request->message,
-            'file' => $path,
-            'replied_to' =>
-                $request->replied_to,
-            'expires_at' =>
-                $expiresAt,
-        ]);
-    }
+           CommunityMessage::create([
+                'community_id' => $community->id,
+                'sender_id' => auth()->id(),
+                'type' => $request->type ?? 'file',
+                'message' => $request->message,
+                'file' => $path,
+                'replied_to' => $request->replied_to,
+                'expires_at' => $expiresAt,
+                'response_mode' => $request->boolean('response_mode'),
+            ]);
+            }
 
     else {
         $messages[] =
             CommunityMessage::create([
-            'community_id' =>
-                $community->id,
-            'sender_id' =>
-                auth()->id(),
-            'type' => 'text',
-            'message' =>
-                $request->message,
-            'replied_to' =>
-                $request->replied_to,
-            'expires_at' =>
-                $expiresAt,
-        ]);
-    }
+                        'community_id' => $community->id,
+                        'sender_id' => auth()->id(),
+                        'type' => 'text',
+                        'message' => $request->message,
+                        'replied_to' => $request->replied_to,
+                        'expires_at' => $expiresAt, 
+                        'response_mode' => $request->boolean('response_mode'),
+                    ]);
+                }
 
     foreach ($messages as $message) {
         $message->load([
@@ -395,5 +383,57 @@ public function sendCommunityVoice(Request $request)
 
     ]);
 }
+
+  public function react(Request $request)
+    {
+        $request->validate([
+            'message_id' => 'required|exists:community_messages,id',
+            'emoji' => 'required|string|max:20',
+        ]);
+
+        $userId = auth()->id();
+
+        $message = CommunityMessage::findOrFail(
+            $request->message_id
+        );
+
+        // ✅ REMOVE IF SAME REACTION EXISTS
+        $existing = CommunityMessageReaction::where(
+            'community_message_id',
+            $message->id
+        )
+        ->where('user_id', $userId)
+        ->where('emoji', $request->emoji)
+        ->first();
+
+        if ($existing) {
+
+            $existing->delete();
+
+        } else {
+
+            // ✅ ONE REACTION PER USER
+            CommunityMessageReaction::where(
+                'community_message_id',
+                $message->id
+            )
+            ->where('user_id', $userId)
+            ->delete();
+
+            CommunityMessageReaction::create([
+                'community_message_id' => $message->id,
+                'user_id' => $userId,
+                'emoji' => $request->emoji,
+            ]);
+        }
+
+        $message->load([
+            'sender',
+            'reactions.user',
+            'repliedTo.sender',
+        ]);
+
+        return response()->json($message);
+    }
 
 }
