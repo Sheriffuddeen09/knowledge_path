@@ -40,4 +40,12 @@ class CommunityMessage extends Model
         {
             return $this->belongsTo(CommunityMessage::class, 'replied_to');
         }
+
+        public function repliedMessage()
+            {
+                return $this->belongsTo(
+                    CommunityMessage::class,
+                    'replied_to'
+                );
+            }
 }

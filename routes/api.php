@@ -61,8 +61,29 @@ use App\Http\Controllers\Api\PasskeyController;
 use App\Http\Controllers\Api\BiodataController;
 use App\Http\Controllers\EncryptionController;
 use App\Http\Controllers\CommunityController;
-
+//
 Route::middleware('auth:sanctum')->group(function () {
+
+    Route::get(
+    '/community/{id}/pending',
+    [CommunityController::class,
+    'pendingMessages']
+    );
+    
+    Route::post(
+    '/community/pending/send',
+    [CommunityController::class, 'sendPending']
+    );
+
+    Route::post(
+    '/community/messages/{id}/approve',
+    [CommunityController::class, 'approve']
+    );
+
+    Route::post(
+    '/community/messages/{id}/reject',
+    [CommunityController::class, 'reject']
+    );
 
     Route::post(
         '/communities/create',
@@ -117,7 +138,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post(
         '/community/send',
-        [CommunityMessageController::class, 'sendCommunityFile']
+        [CommunityController::class, 'sendCommunityFile']
     );
 });
 // /clear

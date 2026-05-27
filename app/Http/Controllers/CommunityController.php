@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use App\Models\CommunityMessage;
 use App\Events\NewCommunityMessage;
 use App\Models\CommunityMessageReaction;
+use App\Models\CommunityPendingResponse;
 
 class CommunityController extends Controller
 
@@ -435,5 +436,107 @@ public function sendCommunityVoice(Request $request)
 
         return response()->json($message);
     }
+
+    
+    public function approve(Request $request, $id)
+{
+    $request->validate([
+        'text' => 'nullable|string|max:200',
+    ]);
+
+    $pending = CommunityPendingResponse::find($id);
+
+    if (!$pending) {
+        return response()->json([
+            'message' => 'Pending message not found'
+        ], 404);
+    }
+
+    $message = CommunityMessage::create([
+        'community_id' => $pending->community_id,
+        'sender_id' => $pending->sender_id,
+        'message' => $pending->message,
+        'type' => 'text',
+
+        // IMPORTANT: reply system
+        'replied_to' => $pending->reply_to,
+
+        // THIS MAKES IT A RESPONSE MESSAGE
+        'response_mode' => true,
+
+        'approval_status' => 'approved',
+
+        'admin_response' => $request->text,
+    ]);
+
+    /**
+     * IMPORTANT: load FULL reply chain
+     */
+    $message->load([
+        'sender',
+        'repliedMessage.sender'
+    ]);
+
+    $pending->delete();
+
+    return response()->json([
+        'success' => true,
+        'message' => $message,
+    ]);
+}
+
+public function reject(Request $request, $id)
+{
+    $pending = CommunityPendingResponse::find($id);
+
+    if (!$pending) {
+        return response()->json([
+            'message' => 'Pending message not found'
+        ], 404);
+    }
+
+    $pending->delete();
+
+    return response()->json([
+        'success' => true,
+    ]);
+}
+
+public function sendPending(Request $request)
+{
+    $request->validate([
+        'community_id' => 'required',
+        'message' => 'required|string|max:200',
+        'reply_to' => 'nullable'
+    ]);
+
+    CommunityPendingResponse::create([
+        'community_id' => $request->community_id,
+        'sender_id' => auth()->id(),
+        'message' => $request->message,
+        'reply_to' => $request->reply_to,
+        'status' => 'pending',
+    ]);
+
+    return response()->json([
+        'success' => true,
+    ]);
+}
+
+public function pendingMessages($id)
+{
+    $pending = CommunityPendingResponse::with([
+        'sender',
+        'repliedMessage.sender'
+    ])
+    ->where('community_id', $id)
+    ->where('status', 'pending')
+    ->latest()
+    ->get();
+
+    return response()->json([
+        'pending' => $pending
+    ]);
+}
 
 }
