@@ -64,6 +64,12 @@ use App\Http\Controllers\CommunityController;
 //
 Route::middleware('auth:sanctum')->group(function () {
 
+
+    Route::get(
+        '/community/messages/download/{id}',
+        [CommunityController::class, 'download']
+        );
+
     Route::get(
     '/community/{id}/pending',
     [CommunityController::class,

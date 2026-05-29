@@ -15,16 +15,52 @@ class CommunityController extends Controller
 {
 
 
-        public function messages($id)
-        {
-            $community = Community::with(['messages.sender'])
-                ->findOrFail($id);
+       public function messages($id)
+{
+    $community = Community::with([
+        'messages.sender',
+        'messages.repliedMessage.sender'
+    ])->findOrFail($id);
 
-            return response()->json([
-                'messages' => $community->messages
-            ]);
+    $messages = $community->messages->map(function ($msg) {
+
+        // ✅ normalize file structure
+        if ($msg->file) {
+            $msg->files = [[
+                'file_url' => asset('storage/' . $msg->file),
+                'file_name' => basename($msg->file),
+                'type' => $msg->type,
+            ]];
+        } else {
+            $msg->files = [];
         }
 
+        // ✅ normalize sender fallback (prevents null crash)
+        if (!$msg->sender) {
+            $msg->sender = [
+                'id' => $msg->sender_id,
+                'name' => 'Unknown User'
+            ];
+        }
+
+        // ✅ normalize replied message safely
+        if ($msg->repliedMessage) {
+            $msg->replied_message = [
+                'id' => $msg->repliedMessage->id,
+                'message' => $msg->repliedMessage->message,
+                'sender' => $msg->repliedMessage->sender,
+            ];
+        } else {
+            $msg->replied_message = null;
+        }
+
+        return $msg;
+    });
+
+    return response()->json([
+        'messages' => $messages
+    ]);
+}
 
 public function index()
 {
@@ -121,31 +157,115 @@ public function create(Request $request)
 public function sendCommunityMessage(Request $request)
 {
     $request->validate([
+        'action' => 'required|in:send,edit,delete,clear',
         'community_id' => 'required|exists:communities,id',
+        'message_id' => 'nullable|exists:community_messages,id',
         'type' => 'nullable|in:text,image,voice,video,file,audio',
         'message' => 'nullable|string',
         'file' => 'nullable|file|max:20480',
-        'files' => 'nullable|array',
-        'files.*' => 'file|max:20480',
         'replied_to' => 'nullable|exists:community_messages,id',
-        'response_mode' => 'nullable|boolean'
+        'response_mode' => 'nullable|boolean',
     ]);
-
     $community = Community::findOrFail(
         $request->community_id
     );
-
     $member = CommunityMember::where([
         'community_id' => $community->id,
         'user_id' => auth()->id(),
     ])->first();
-
     if (!$member) {
         return response()->json([
             'message' => 'Not a member'
         ], 403);
     }
-
+    if ($request->action === 'delete') {
+        $message = CommunityMessage::findOrFail(
+            $request->message_id
+        );
+        if (
+            $message->sender_id !== auth()->id()
+        ) {
+            return response()->json([
+                'message' => 'Unauthorized'
+            ], 403);
+        }
+        if (
+            $message->file &&
+            Storage::disk('public')->exists(
+                $message->file
+            )
+        ) {
+            Storage::disk('public')->delete(
+                $message->file
+            );
+        }
+        $message->deleted_at = now();
+        $message->save();
+        return response()->json([
+            'success' => true,
+            'action' => 'delete',
+            'message_id' => $message->id,
+            'deleted_at' => $message->deleted_at,
+        ]);
+    }
+    if ($request->action === 'clear') {
+        $message = CommunityMessage::findOrFail(
+            $request->message_id
+        );
+        if (
+            $message->sender_id !== auth()->id()
+        ) {
+            return response()->json([
+                'message' => 'Unauthorized'
+            ], 403);
+        }
+        if (
+            $message->file &&
+            Storage::disk('public')->exists(
+                $message->file
+            )
+        ) {
+            Storage::disk('public')->delete(
+                $message->file
+            );
+        }
+        $message->update([
+            'message' => null,
+            'file' => null,
+            'type' => 'text',
+        ]);
+        return response()->json([
+            'success' => true,
+            'action' => 'clear',
+            'message' => $message,
+        ]);
+    }
+    if ($request->action === 'edit') {
+        $message = CommunityMessage::findOrFail(
+            $request->message_id
+        );
+        if (
+            $message->sender_id !== auth()->id()
+        ) {
+            return response()->json([
+                'message' => 'Unauthorized'
+            ], 403);
+        }
+        $message->update([
+            'message' => $request->message,
+            'edited' => true,
+        ]);
+        $message->load([
+            'sender',
+            'community',
+            'repliedMessage.sender'
+        ]);
+        return response()->json([
+            'success' => true,
+            'action' => 'edit',
+            'message' => $message,
+        ]);
+    }
     if (
         $community->only_admin_can_message &&
         !in_array($member->role, [
@@ -153,13 +273,11 @@ public function sendCommunityMessage(Request $request)
             'admin'
         ])
     ) {
-
         return response()->json([
             'message' =>
                 'Only admins can send messages'
         ], 403);
     }
-
     $mode = $community->disappearing_mode;
     $expiresAt = match ($mode) {
         '24h' => now()->addHours(24),
@@ -167,8 +285,6 @@ public function sendCommunityMessage(Request $request)
         '90d' => now()->addDays(90),
         default => null,
     };
-
-    $messages = [];
     $generateFileName = function ($file) {
         $original = pathinfo(
             $file->getClientOriginalName(),
@@ -187,34 +303,19 @@ public function sendCommunityMessage(Request $request)
             '.' .
             $extension;
     };
-
-    if ($request->hasFile('files')) {
-        foreach (
-            $request->file('files')
-            as $index => $file
-        ) {
-            $storedName =
-                $generateFileName($file);
-            $path = $file->storeAs(
-                'community_files',
-                $storedName,
-                'public'
-            );
-            $messages[] =
-                CommunityMessage::create([
-                'community_id' => $community->id,
-                'sender_id' => auth()->id(),
-                'type' => $request->types[$index] ?? 'file',
-                'message' => $request->message,
-                'file' => $path,
-                'replied_to' => $request->replied_to,
-                'expires_at' => $expiresAt,
-                'response_mode' => $request->boolean('response_mode'),
-            ]);
-        }
-    }
-
-    elseif ($request->hasFile('file')) {
+    $data = [
+        'community_id' => $community->id,
+        'sender_id' => auth()->id(),
+        'type' => $request->type ?? 'text',
+        'message' => $request->message,
+        'replied_to' => $request->replied_to,
+        'expires_at' => $expiresAt,
+        'response_mode' =>
+            $request->boolean(
+                'response_mode'
+            ),
+    ];
+    if ($request->hasFile('file')) {
         $file = $request->file('file');
         $storedName =
             $generateFileName($file);
@@ -223,43 +324,23 @@ public function sendCommunityMessage(Request $request)
             $storedName,
             'public'
         );
-        $messages[] =
-           CommunityMessage::create([
-                'community_id' => $community->id,
-                'sender_id' => auth()->id(),
-                'type' => $request->type ?? 'file',
-                'message' => $request->message,
-                'file' => $path,
-                'replied_to' => $request->replied_to,
-                'expires_at' => $expiresAt,
-                'response_mode' => $request->boolean('response_mode'),
-            ]);
-            }
-
-    else {
-        $messages[] =
-            CommunityMessage::create([
-                        'community_id' => $community->id,
-                        'sender_id' => auth()->id(),
-                        'type' => 'text',
-                        'message' => $request->message,
-                        'replied_to' => $request->replied_to,
-                        'expires_at' => $expiresAt, 
-                        'response_mode' => $request->boolean('response_mode'),
-                    ]);
-                }
-
-    foreach ($messages as $message) {
-        $message->load([
-            'sender',
-            'community'
-        ]);
-        broadcast(
-            new NewCommunityMessage($message)
-        )->toOthers();
+        $data['file'] = $path;
     }
+    $message = CommunityMessage::create(
+        $data
+    );
+    $message->load([
+        'sender',
+        'community',
+        'repliedMessage.sender'
+    ]);
+    broadcast(
+        new NewCommunityMessage($message)
+    )->toOthers();
     return response()->json([
-        'messages' => $messages
+        'success' => true,
+        'action' => 'send',
+        'message' => $message,
     ]);
 }
 
@@ -539,4 +620,60 @@ public function pendingMessages($id)
     ]);
 }
 
+
+    public function download($id)
+    {
+        $message = CommunityMessage::findOrFail($id);
+
+        // only image/video
+        if (
+            !in_array($message->type, [
+                'image',
+                'video'
+            ])
+        ) {
+
+            return response()->json([
+                'message' => 'File not downloadable'
+            ], 403);
+        }
+
+        // file exists
+        if (
+            !$message->file ||
+            !Storage::disk('public')->exists(
+                $message->file
+            )
+        ) {
+
+            return response()->json([
+                'message' => 'File not found'
+            ], 404);
+        }
+
+        $path = Storage::disk('public')
+            ->path($message->file);
+
+        $extension = pathinfo(
+            $path,
+            PATHINFO_EXTENSION
+        );
+
+        $filename =
+            'community_' .
+            $message->id .
+            '_' .
+            time() .
+            '.' .
+            $extension;
+
+        return response()->download(
+            $path,
+            $filename,
+            [
+                'Content-Type' =>
+                    mime_content_type($path),
+            ]
+        );
+    }
 }
