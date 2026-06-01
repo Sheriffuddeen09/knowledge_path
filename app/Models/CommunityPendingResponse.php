@@ -26,4 +26,14 @@ class CommunityPendingResponse extends Model
             'reply_to'
         );
     }
+
+    public function originalMessage()
+        {
+            return $this->belongsTo(
+                CommunityMessage::class,
+                'reply_to'
+            );
+        }
+
+    
 }

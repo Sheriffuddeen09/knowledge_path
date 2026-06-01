@@ -9,6 +9,8 @@ use App\Models\CommunityMessage;
 use App\Events\NewCommunityMessage;
 use App\Models\CommunityMessageReaction;
 use App\Models\CommunityPendingResponse;
+use App\Models\CommunityMessageApproval;
+use Illuminate\Support\Facades\Storage;
 
 class CommunityController extends Controller
 
@@ -16,45 +18,45 @@ class CommunityController extends Controller
 
 
        public function messages($id)
-{
-    $community = Community::with([
-        'messages.sender',
-        'messages.repliedMessage.sender'
-    ])->findOrFail($id);
+        {
+            $community = Community::with([
+            'messages.sender',
+            'messages.repliedMessage.sender',
+            'messages.approvals'
+        ])->findOrFail($id);
 
-    $messages = $community->messages->map(function ($msg) {
+       $messages = $community->messages->map(function ($msg) {
 
-        // ✅ normalize file structure
-        if ($msg->file) {
-            $msg->files = [[
-                'file_url' => asset('storage/' . $msg->file),
-                'file_name' => basename($msg->file),
-                'type' => $msg->type,
-            ]];
-        } else {
-            $msg->files = [];
-        }
+    if ($msg->file) {
+        $msg->files = [[
+            'file_url' => asset('storage/' . $msg->file),
+            'file_name' => basename($msg->file),
+            'type' => $msg->type,
+        ]];
+    } else {
+        $msg->files = [];
+    }
 
-        // ✅ normalize sender fallback (prevents null crash)
-        if (!$msg->sender) {
-            $msg->sender = [
-                'id' => $msg->sender_id,
-                'name' => 'Unknown User'
-            ];
-        }
+    if ($msg->sender) {
+        $msg->sender = $msg->sender;
+    }
 
-        // ✅ normalize replied message safely
-        if ($msg->repliedMessage) {
-            $msg->replied_message = [
-                'id' => $msg->repliedMessage->id,
-                'message' => $msg->repliedMessage->message,
-                'sender' => $msg->repliedMessage->sender,
-            ];
-        } else {
-            $msg->replied_message = null;
-        }
+    if ($msg->repliedMessage) {
+        $msg->replied_message = [
+            'id' => $msg->repliedMessage->id,
+            'message' => $msg->repliedMessage->message,
+            'sender' => $msg->repliedMessage->sender,
+        ];
+    }
 
-        return $msg;
+    // 🔥 IMPORTANT: attach approvals manually
+    $msg->approvals = $msg->approvals ?? [];
+
+    $msg->approval_count = $msg->approvals->count();
+
+
+
+    return $msg;
     });
 
     return response()->json([
@@ -534,28 +536,29 @@ public function sendCommunityVoice(Request $request)
     }
 
     $message = CommunityMessage::create([
-        'community_id' => $pending->community_id,
-        'sender_id' => $pending->sender_id,
-        'message' => $pending->message,
-        'type' => 'text',
-
-        // IMPORTANT: reply system
-        'replied_to' => $pending->reply_to,
-
-        // THIS MAKES IT A RESPONSE MESSAGE
-        'response_mode' => true,
-
+        'community_id'    => $pending->community_id,
+        'sender_id'       => $pending->sender_id,
+        'message'         => $pending->message,
+        'type'            => 'text',
+        'replied_to'      => $pending->reply_to,
+        'response_mode'   => true,
         'approval_status' => 'approved',
-
-        'admin_response' => $request->text,
     ]);
 
-    /**
-     * IMPORTANT: load FULL reply chain
-     */
+    if ($request->filled('text')) {
+
+        CommunityMessageApproval::create([
+            'message_id'     => $message->id,
+            'admin_id'       => auth()->id(),
+            'admin_response' => $request->text,
+            'status'         => 'approved',
+        ]);
+    }
+
     $message->load([
         'sender',
-        'repliedMessage.sender'
+        'repliedMessage.sender',
+        'approvals'
     ]);
 
     $pending->delete();
@@ -604,22 +607,48 @@ public function sendPending(Request $request)
     ]);
 }
 
-public function pendingMessages($id)
-{
-    $pending = CommunityPendingResponse::with([
-        'sender',
-        'repliedMessage.sender'
-    ])
-    ->where('community_id', $id)
-    ->where('status', 'pending')
-    ->latest()
-    ->get();
+    public function pendingMessages($id)
+        {
+            $pending = CommunityPendingResponse::with([
+                'sender',
+                'originalMessage.sender'
+            ])
+            ->where('community_id', $id)
+            ->where('status', 'pending')
+            ->latest()
+            ->get();
+
+            // ADD THIS
+            $pending = $pending->map(function ($msg) {
+
+    if ($msg->originalMessage) {
+
+        $original = $msg->originalMessage;
+
+        if ($original->file) {
+            $original->files = [[
+                'file_url' => asset('storage/' . $original->file),
+                'file_name' => basename($original->file),
+                'type' => $original->type,
+            ]];
+        } else {
+            $original->files = [];
+        }
+
+        $msg->original_message = $original;
+
+    } else {
+
+        $msg->original_message = null;
+    }
+
+    return $msg;
+    });
 
     return response()->json([
         'pending' => $pending
     ]);
-}
-
+    }
 
     public function download($id)
     {

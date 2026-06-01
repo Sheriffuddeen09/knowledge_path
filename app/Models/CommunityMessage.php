@@ -15,15 +15,16 @@ class CommunityMessage extends Model
     ];
     
     protected $fillable = [
-        'community_id',
-        'sender_id',
-        'message',
-        'type',
-        'file',
-        'replied_to',
-        'response_mode',
+    'community_id',
+    'sender_id',
+    'message',
+    'type',
+    'file',
+    'replied_to',
+    'response_mode',
+    'approval_status',
+    'admin_response',
     ];
-
     public function sender()
     {
         return $this->belongsTo(User::class);
@@ -50,10 +51,17 @@ class CommunityMessage extends Model
         }
 
         public function repliedMessage()
-            {
-                return $this->belongsTo(
-                    CommunityMessage::class,
-                    'replied_to'
-                );
-            }
+        {
+            return $this->belongsTo(
+                CommunityMessage::class,
+                'replied_to'
+            );
+        }
+        public function approvals()
+        {
+            return $this->hasMany(
+                CommunityMessageApproval::class,
+                'message_id'
+            );
+        }
 }
