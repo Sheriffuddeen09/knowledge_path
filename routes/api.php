@@ -65,10 +65,25 @@ use App\Http\Controllers\CommunityController;
 Route::middleware('auth:sanctum')->group(function () {
 
 
+    Route::post('/community/messages/forward', [
+            CommunityController::class,
+            'forward'
+        ]);
+    ///pin
+    Route::put(
+    '/community/messages/pin',
+    [CommunityController::class, 'pin']
+    );
+
+    Route::delete(
+        '/community/messages/pin',
+        [CommunityController::class, 'unpin']
+    );
+
     Route::get(
-        '/community/messages/download/{id}',
-        [CommunityController::class, 'download']
-        );
+    '/community/messages/download/{id}',
+    [CommunityController::class, 'download']
+    );
 
     Route::get(
     '/community/{id}/pending',

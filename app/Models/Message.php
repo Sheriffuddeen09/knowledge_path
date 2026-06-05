@@ -25,6 +25,9 @@ class Message extends Model
         'delivered_at',
         'read_at',
         'iv',
+        'forward_source',
+        'forward_source_name',
+        'forward_source_image'
     ];
 
     protected $casts = [
@@ -37,7 +40,21 @@ class Message extends Model
         'replied_to'   => 'array', 
     ];
 
+    public function forwardedFrom()
+    {
+    return $this->belongsTo(CommunityMessage::class, 'forwarded_from');
+    }
 
+    public function getForwardSourceNameAttribute()
+    {
+        return $this->forwardedFrom?->community?->community_name
+            ?? 'Unknown community';
+    }
+
+    public function getForwardSourceImageAttribute()
+    {
+        return $this->forwardedFrom?->community?->community_image;
+    }
     public function messageUsers()
     {
         return $this->hasMany(MessageUser::class, 'message_id');

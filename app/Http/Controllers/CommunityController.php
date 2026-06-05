@@ -6,6 +6,7 @@ use App\Models\Chat;
 use App\Models\CommunityMember;
 use Illuminate\Http\Request;
 use App\Models\CommunityMessage;
+use App\Models\Message;
 use App\Events\NewCommunityMessage;
 use App\Models\CommunityMessageReaction;
 use App\Models\CommunityPendingResponse;
@@ -705,4 +706,273 @@ public function sendPending(Request $request)
             ]
         );
     }
+
+
+    public function pin(Request $request)
+    {
+        $request->validate([
+            'message_id' => 'required|exists:community_messages,id',
+        ]);
+
+        $message = CommunityMessage::findOrFail(
+            $request->message_id
+        );
+
+        $message->update([
+            'is_pinned' => true,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Message pinned successfully',
+            'data' => $message,
+        ]);
+    }
+
+    public function unpin(Request $request)
+    {
+        $request->validate([
+            'message_id' => 'required|exists:community_messages,id',
+        ]);
+
+        $message = CommunityMessage::findOrFail(
+            $request->message_id
+        );
+
+        $message->update([
+            'is_pinned' => false,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Message unpinned successfully',
+            'data' => $message,
+        ]);
+    }
+
+    
+    public function forward(Request $request)
+{
+    $request->validate([
+        'message_ids' => 'required|array|min:1',
+        'message_ids.*' => 'exists:community_messages,id',
+
+        'targets' => 'required|array|min:1',
+        'targets.*.id' => 'required|integer',
+        'targets.*.type' => 'required|in:user,group',
+    ]);
+
+    $authId = auth()->id();
+
+    $communityMessages = CommunityMessage::with([
+        'sender',
+        'community',
+        'approvals',
+    ])
+    ->whereIn('id', $request->message_ids)
+    ->get();
+
+    $createdMessages = [];
+    $lastChat = null;
+    $lastForwardedMessageId = null;
+
+    foreach ($request->targets as $target) {
+
+        // =====================================
+        // PRIVATE CHAT
+        // =====================================
+        if ($target['type'] === 'user') {
+
+            $pair = [
+                'user_one_id' => min(
+                    $authId,
+                    $target['id']
+                ),
+                'user_two_id' => max(
+                    $authId,
+                    $target['id']
+                ),
+            ];
+
+            $chat = Chat::where(
+                'user_one_id',
+                $pair['user_one_id']
+            )
+            ->where(
+                'user_two_id',
+                $pair['user_two_id']
+            )
+            ->first();
+
+            if (!$chat) {
+                $chat = Chat::create([
+                    'user_one_id' => $pair['user_one_id'],
+                    'user_two_id' => $pair['user_two_id'],
+                    'type' => 'private',
+                ]);
+            }
+
+            foreach ($communityMessages as $original) {
+
+                $messageText = $original->message;
+
+                if (
+                    $original->approvals &&
+                    $original->approvals->count()
+                ) {
+                    $latestApproval =
+                        $original->approvals->last();
+
+                    $messageText =
+                        $latestApproval->admin_response
+                        ?: $original->message;
+                }
+
+                $message = Message::create([
+                    'chat_id' => $chat->id,
+                    'sender_id' => $authId,
+
+                    'message' => $messageText,
+                    'type' => $original->type,
+                    'file' => $original->file,
+
+                    'is_forwarded' => true,
+                    'forwarded_from' => $original->id,
+
+                    'forward_source' => 'community',
+
+                    'forward_source_name' =>
+                        $original->community?->community_name,
+
+                    'forward_source_image' =>
+                        $original->community?->community_image,
+                ]);
+
+                $message->load('sender');
+
+                $lastForwardedMessageId =
+                    $message->id;
+
+                $createdMessages[] = $message;
+            }
+
+            $lastChat = $chat;
+        }
+
+        // =====================================
+        // GROUP CHAT
+        // =====================================
+        if ($target['type'] === 'group') {
+
+            $chat = Chat::where('id', $target['id'])
+                ->where('type', 'group')
+                ->first();
+
+            if (!$chat) {
+                continue;
+            }
+
+            foreach ($communityMessages as $original) {
+
+                $messageText = $original->message;
+
+                if (
+                    $original->approvals &&
+                    $original->approvals->count()
+                ) {
+                    $latestApproval =
+                        $original->approvals->last();
+
+                    $messageText =
+                        $latestApproval->admin_response
+                        ?: $original->message;
+                }
+
+                $message = Message::create([
+                    'chat_id' => $chat->id,
+                    'sender_id' => $authId,
+
+                    'message' => $messageText,
+                    'type' => $original->type,
+                    'file' => $original->file,
+
+                    'is_forwarded' => true,
+                    'forwarded_from' => $original->id,
+
+                    'forward_source' => 'community',
+
+                    'forward_source_name' =>
+                        $original->community?->community_name,
+
+                    'forward_source_image' =>
+                        $original->community?->community_image,
+                ]);
+
+                $message->load('sender');
+
+                $lastForwardedMessageId =
+                    $message->id;
+
+                $createdMessages[] = $message;
+
+                \Log::info([
+                        'message_id' => $original->id,
+                        'community' => $original->community,
+                    ]);
+            }
+
+            $lastChat = $chat;
+        }
+    }
+
+    return response()->json([
+        'success' => true,
+        'chat_id' => $lastChat?->id,
+        'chat_type' => $lastChat?->type,
+        'message_id' => $lastForwardedMessageId,
+        'forwarded_count' => count($request->targets),
+        'messages' => $createdMessages,
+    ]);
+}
+
+    private function getPrivateCommunity($userA, $userB)
+    {
+    $pair = [
+        'min' => min($userA, $userB),
+        'max' => max($userA, $userB),
+    ];
+
+    $community = Community::where('type', 'private')
+        ->whereHas('members', function ($q) use ($pair) {
+            $q->where('user_id', $pair['min']);
+        })
+        ->whereHas('members', function ($q) use ($pair) {
+            $q->where('user_id', $pair['max']);
+        })
+        ->first();
+
+    if ($community) {
+        return $community->id;
+    }
+
+    $community = Community::create([
+        'creator_id' => $userA,
+        'owner_id' => $userA,
+        'community_name' => 'Private Chat',
+    ]);
+
+    CommunityMember::insert([
+        [
+            'community_id' => $community->id,
+            'user_id' => $pair['min']
+        ],
+        [
+            'community_id' => $community->id,
+            'user_id' => $pair['max']
+        ],
+    ]);
+
+    return $community->id;
+}
+    
 }

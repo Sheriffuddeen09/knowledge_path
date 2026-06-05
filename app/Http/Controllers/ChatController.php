@@ -125,7 +125,6 @@ public function messages(Chat $chat)
 
         $replyData = null;
         if ($msg->replied_to) {
-            // Handle parsing if it arrived as a raw JSON string from SQLite storage
             $repliedArray = is_string($msg->replied_to) 
                 ? json_decode($msg->replied_to, true) 
                 : $msg->replied_to;
@@ -134,8 +133,8 @@ public function messages(Chat $chat)
                 $replyData = [
                     'id'      => $repliedArray['id'] ?? null,
                     'type'    => $repliedArray['type'] ?? 'text',
-                    'message' => $repliedArray['message'] ?? null, // Passing raw ciphertext message string
-                    'iv'      => $repliedArray['iv'] ?? null,      // Passing matching parent vector reference string
+                    'message' => $repliedArray['message'] ?? null, 
+                    'iv'      => $repliedArray['iv'] ?? null,      
                     'sender'  => [
                         'id'         => $repliedArray['sender']['id'] ?? null,
                         'first_name' => $repliedArray['sender']['first_name'] ?? 'User',
@@ -173,6 +172,11 @@ public function messages(Chat $chat)
             'read_by' => $readBy,
             'read_by_name' => $readByName,
             'replied_to'   => $replyData, 
+            'forward_source' => $msg->forward_source,
+            'forward_source_name' => $msg->forward_source_name,
+            'forward_source_image' => !empty($msg->forward_source_image)
+                ? url('storage/' . $msg->forward_source_image)
+                : null,
         ];
         if ($msg->group_id) {
             if (!isset($groupMap[$msg->group_id])) {
@@ -1070,7 +1074,6 @@ public function forwardMultiple(Request $request)
     ]);
 
     $authId = auth()->id();
-
     $messages = Message::with('files')
     ->whereIn('id', $request->message_ids)
     ->get();
@@ -1078,10 +1081,6 @@ public function forwardMultiple(Request $request)
     $lastChat = null; // 🔥 IMPORTANT
 
     foreach ($request->targets as $target) {
-
-        // =========================
-        // USER PRIVATE CHAT
-        // =========================
         if ($target['type'] === 'user') {
 
             $otherUserId = $target['id'];
@@ -1125,9 +1124,6 @@ public function forwardMultiple(Request $request)
 
             $lastChat = $chat; // 🔥 store last chat
         }
-            // =========================
-            // GROUP CHAT FORWARD (FIXED)
-            // =========================
             if ($target['type'] === 'group') {
 
             $chat = Chat::where('id', $target['id'])
@@ -1171,8 +1167,6 @@ public function forwardMultiple(Request $request)
             ]);
 }
 
-
-
 private function getChatPair($userA, $userB)
 {
     return [
@@ -1181,7 +1175,6 @@ private function getChatPair($userA, $userB)
     ];
 }
 
-// React Function react
 
 public function toggle(Request $request)
 {

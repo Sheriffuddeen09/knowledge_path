@@ -24,6 +24,7 @@ class CommunityMessage extends Model
     'response_mode',
     'approval_status',
     'admin_response',
+    'is_pinned'
     ];
     public function sender()
     {
@@ -64,4 +65,6 @@ class CommunityMessage extends Model
                 'message_id'
             );
         }
+
+        
 }
