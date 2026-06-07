@@ -777,10 +777,6 @@ public function sendPending(Request $request)
     $lastForwardedMessageId = null;
 
     foreach ($request->targets as $target) {
-
-        // =====================================
-        // PRIVATE CHAT
-        // =====================================
         if ($target['type'] === 'user') {
 
             $pair = [
@@ -859,9 +855,6 @@ public function sendPending(Request $request)
             $lastChat = $chat;
         }
 
-        // =====================================
-        // GROUP CHAT
-        // =====================================
         if ($target['type'] === 'group') {
 
             $chat = Chat::where('id', $target['id'])
@@ -915,10 +908,7 @@ public function sendPending(Request $request)
 
                 $createdMessages[] = $message;
 
-                \Log::info([
-                        'message_id' => $original->id,
-                        'community' => $original->community,
-                    ]);
+              
             }
 
             $lastChat = $chat;
