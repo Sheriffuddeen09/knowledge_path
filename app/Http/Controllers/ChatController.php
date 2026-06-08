@@ -177,6 +177,11 @@ public function messages(Chat $chat)
             'forward_source_image' => !empty($msg->forward_source_image)
                 ? url('storage/' . $msg->forward_source_image)
                 : null,
+            'forward_source_message_id' =>
+                $msg->forward_source_message_id,
+
+            'forward_source_community_id' =>
+                $msg->forward_source_community_id,
         ];
         if ($msg->group_id) {
             if (!isset($groupMap[$msg->group_id])) {

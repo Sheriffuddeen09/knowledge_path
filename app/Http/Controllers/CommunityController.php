@@ -18,46 +18,45 @@ class CommunityController extends Controller
 {
 
 
-       public function messages($id)
-        {
-            $community = Community::with([
-            'messages.sender',
-            'messages.repliedMessage.sender',
-            'messages.approvals'
-        ])->findOrFail($id);
+      public function messages($id)
+{
+    $community = Community::with([
+        'messages.sender',
+        'messages.repliedMessage.sender',
+        'messages.approvals'
+    ])->findOrFail($id);
 
-       $messages = $community->messages->map(function ($msg) {
+    $messages = $community->messages->map(function ($msg) {
 
-    if ($msg->file) {
-        $msg->files = [[
-            'file_url' => asset('storage/' . $msg->file),
-            'file_name' => basename($msg->file),
-            'type' => $msg->type,
-        ]];
-    } else {
-        $msg->files = [];
-    }
+        if ($msg->file) {
+            $msg->files = [[
+                'file_url' => asset('storage/' . $msg->file),
+                'file_name' => basename($msg->file),
+                'type' => $msg->type,
+            ]];
+        } else {
+            $msg->files = [];
+        }
 
-    if ($msg->sender) {
-        $msg->sender = $msg->sender;
-    }
+        if ($msg->repliedMessage) {
+            $msg->replied_message = [
+                'id' => $msg->repliedMessage->id,
+                'message' => $msg->repliedMessage->message,
+                'sender' => $msg->repliedMessage->sender,
+            ];
+        }
 
-    if ($msg->repliedMessage) {
-        $msg->replied_message = [
-            'id' => $msg->repliedMessage->id,
-            'message' => $msg->repliedMessage->message,
-            'sender' => $msg->repliedMessage->sender,
-        ];
-    }
+        $msg->approvals = $msg->approvals ?? [];
+        $msg->approval_count = $msg->approvals->count();
 
-    // 🔥 IMPORTANT: attach approvals manually
-    $msg->approvals = $msg->approvals ?? [];
+        // FORWARDED SOURCE DATA
+        $msg->forward_source_message_id =
+            $msg->forward_source_message_id;
 
-    $msg->approval_count = $msg->approvals->count();
+        $msg->forward_source_community_id =
+            $msg->forward_source_community_id;
 
-
-
-    return $msg;
+        return $msg;
     });
 
     return response()->json([
@@ -842,6 +841,11 @@ public function sendPending(Request $request)
 
                     'forward_source_image' =>
                         $original->community?->community_image,
+                    'forward_source_message_id' =>
+                        $original->id,
+
+                    'forward_source_community_id' =>
+                        $original->community_id,
                 ]);
 
                 $message->load('sender');
@@ -899,6 +903,11 @@ public function sendPending(Request $request)
 
                     'forward_source_image' =>
                         $original->community?->community_image,
+                    'forward_source_message_id' =>
+                        $original->id,
+
+                    'forward_source_community_id' =>
+                        $original->community_id,
                 ]);
 
                 $message->load('sender');

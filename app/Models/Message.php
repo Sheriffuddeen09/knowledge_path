@@ -27,7 +27,10 @@ class Message extends Model
         'iv',
         'forward_source',
         'forward_source_name',
-        'forward_source_image'
+        'forward_source_image',
+
+        'forward_source_message_id',
+        'forward_source_community_id',
     ];
 
     protected $casts = [

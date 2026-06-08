@@ -24,7 +24,16 @@ class CommunityMessage extends Model
     'response_mode',
     'approval_status',
     'admin_response',
-    'is_pinned'
+    'is_pinned',
+    
+    'is_forwarded',
+    'forwarded_from',
+    'forward_source',
+    'forward_source_name',
+    'forward_source_image',
+
+    'forward_source_message_id',
+    'forward_source_community_id',
     ];
     public function sender()
     {
