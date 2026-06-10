@@ -28,7 +28,8 @@ class Community extends Model
                 'membership_status',
                 'can_message',
                 'muted',
-                'joined_at'
+                'joined_at',
+                'last_read_message_id',
             ]);
         }
 

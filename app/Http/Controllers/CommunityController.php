@@ -12,13 +12,16 @@ use App\Models\CommunityMessageReaction;
 use App\Models\CommunityPendingResponse;
 use App\Models\CommunityMessageApproval;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
 
 class CommunityController extends Controller
 
 {
 
 
-      public function messages($id)
+     public function messages($id)
 {
     $community = Community::with([
         'messages.sender',
@@ -26,43 +29,99 @@ class CommunityController extends Controller
         'messages.approvals'
     ])->findOrFail($id);
 
-    $messages = $community->messages->map(function ($msg) {
+    $lastReadId = DB::table(
+        'community_members'
+    )
+    ->where(
+        'community_id',
+        $id
+    )
+    ->where(
+        'user_id',
+        auth()->id()
+    )
+    ->value(
+        'last_read_message_id'
+    );
 
-        if ($msg->file) {
-            $msg->files = [[
-                'file_url' => asset('storage/' . $msg->file),
-                'file_name' => basename($msg->file),
-                'type' => $msg->type,
-            ]];
-        } else {
-            $msg->files = [];
-        }
+    $firstUnreadMessageId = null;
 
-        if ($msg->repliedMessage) {
-            $msg->replied_message = [
-                'id' => $msg->repliedMessage->id,
-                'message' => $msg->repliedMessage->message,
-                'sender' => $msg->repliedMessage->sender,
-            ];
-        }
+    $messages = $community
+        ->messages
+        ->sortBy('id')
+        ->map(function ($msg)
+        use (
+            &$firstUnreadMessageId,
+            $lastReadId
+        ) {
+            if (
+                $lastReadId &&
+                !$firstUnreadMessageId &&
+                $msg->id > $lastReadId
+            ) {
 
-        $msg->approvals = $msg->approvals ?? [];
-        $msg->approval_count = $msg->approvals->count();
+                $firstUnreadMessageId =
+                    $msg->id;
+            }
+            if ($msg->file) {
 
-        // FORWARDED SOURCE DATA
-        $msg->forward_source_message_id =
-            $msg->forward_source_message_id;
+                $msg->files = [[
 
-        $msg->forward_source_community_id =
-            $msg->forward_source_community_id;
+                    'file_url' => asset(
+                        'storage/' .
+                        $msg->file
+                    ),
 
-        return $msg;
-    });
+                    'file_name' => basename(
+                        $msg->file
+                    ),
 
-    return response()->json([
-        'messages' => $messages
+                    'type' =>
+                        $msg->type,
+                ]];
+
+            } else {
+
+                $msg->files = [];
+            }
+            if (
+                $msg->repliedMessage
+            ) {
+
+                $msg->replied_message = [
+
+                    'id' =>
+                        $msg
+                        ->repliedMessage
+                        ->id,
+
+                    'message' =>
+                        $msg
+                        ->repliedMessage
+                        ->message,
+
+                    'sender' =>
+                        $msg
+                        ->repliedMessage
+                        ->sender,
+                ];
+            }
+            $msg->approval_count =
+                $msg
+                ->approvals
+                ->count();
+            return $msg;
+        })
+        ->values();
+
+        return response()->json([
+        'messages' =>
+            $messages,
+        'first_unread_message_id' =>
+            $firstUnreadMessageId,
     ]);
 }
+
 
 public function index()
 {
@@ -73,9 +132,7 @@ public function index()
         'lastMessage.sender'
     ])
     ->whereHas('members', function ($q) use ($userId) {
-
         $q->where('user_id', $userId);
-
     })
     ->latest()
     ->get()
@@ -91,13 +148,64 @@ public function index()
         $community->membership_status =
             $member?->pivot?->membership_status;
 
+        $lastReadMessageId =
+            $member?->pivot?->last_read_message_id ?? 0;
+
+        $community->unread_count =
+        CommunityMessage::where('community_id', $community->id)
+            ->where('id', '>', $lastReadMessageId)
+            ->where('sender_id', '!=', $userId)
+            ->when(true, function ($q) use ($userId) {
+                return $q->where('sender_id', '!=', $userId);
+            })
+            ->count();
+
+            \Log::info([
+                'community_id' => $community->id,
+                'user_id' => $userId,
+                'pivot_last_read' => $member?->pivot?->last_read_message_id,
+            ]);
+
         return $community;
+
+        
     });
 
     return response()->json([
         'communities' => $communities
     ]);
 }
+
+
+
+public function markAsRead($communityId)
+{
+    $lastMessageId = CommunityMessage::where(
+        'community_id',
+        $communityId
+    )->max('id');
+
+    $updated = CommunityMember::where(
+        'community_id',
+        $communityId
+    )
+    ->where(
+        'user_id',
+        auth()->id()
+    )
+    ->update([
+        'last_read_message_id' => $lastMessageId,
+    ]);
+
+    return response()->json([
+        'success' => true,
+        'updated' => $updated,
+        'last_message_id' => $lastMessageId,
+        'user_id' => auth()->id(),
+        'community_id' => $communityId,
+    ]);
+}
+
 
 public function create(Request $request)
 {

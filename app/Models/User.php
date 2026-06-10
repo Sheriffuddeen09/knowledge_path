@@ -23,6 +23,18 @@ class User extends Authenticatable
             return $this->hasMany(Passkey::class);
         }
 
+    public function communities()
+    {
+        return $this->belongsToMany(
+            Community::class,
+            'community_members' // your pivot table name
+        )->withPivot([
+            'role',
+            'membership_status',
+            'last_read_message_id',
+        ]);
+    }
+    
     public function chats()
         {
             return $this->belongsToMany(Chat::class, 'chat_user')

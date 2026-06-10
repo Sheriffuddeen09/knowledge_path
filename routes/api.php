@@ -69,7 +69,12 @@ Route::middleware('auth:sanctum')->group(function () {
             CommunityController::class,
             'forward'
         ]);
-    ///pin
+    
+    Route::post(
+    '/communities/{community}/mark-read',
+    [CommunityController::class, 'markAsRead']
+    );
+
     Route::put(
     '/community/messages/pin',
     [CommunityController::class, 'pin']
