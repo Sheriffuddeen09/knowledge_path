@@ -24,16 +24,21 @@ class User extends Authenticatable
         }
 
     public function communities()
-    {
-        return $this->belongsToMany(
-            Community::class,
-            'community_members' // your pivot table name
-        )->withPivot([
-            'role',
-            'membership_status',
-            'last_read_message_id',
-        ]);
-    }
+{
+    return $this->belongsToMany(
+        Community::class,
+        'community_members'
+    )
+    ->withPivot([
+        'role',
+        'can_message',
+        'muted',
+        'joined_at',
+        'membership_status',
+        'last_read_message_id',
+    ])
+    ->withTimestamps();
+}
     
     public function chats()
         {

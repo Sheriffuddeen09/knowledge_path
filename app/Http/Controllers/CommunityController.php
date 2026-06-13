@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 use App\Models\Community;
+use App\Models\User;
 use App\Models\Chat;
 use App\Models\CommunityMember;
 use Illuminate\Http\Request;
@@ -128,11 +129,18 @@ public function index()
     $userId = auth()->id();
 
     $communities = Community::with([
-        'members',
+        'members' => function ($query) {
+            $query->wherePivot(
+                'membership_status',
+                'approved'
+            );
+
+        },
         'lastMessage.sender'
     ])
     ->whereHas('members', function ($q) use ($userId) {
-        $q->where('user_id', $userId);
+    $q->where('community_members.user_id', $userId)
+      ->where('community_members.membership_status', 'approved');
     })
     ->latest()
     ->get()
@@ -140,7 +148,11 @@ public function index()
 
         $member = $community
             ->members
-            ->firstWhere('id', $userId);
+            ->first(function ($member) use ($userId) {
+
+                return $member->id == $userId
+                    && $member->pivot->membership_status === 'approved';
+            });
 
         $community->my_role =
             $member?->pivot?->role;
@@ -152,30 +164,28 @@ public function index()
             $member?->pivot?->last_read_message_id ?? 0;
 
         $community->unread_count =
-        CommunityMessage::where('community_id', $community->id)
-            ->where('id', '>', $lastReadMessageId)
-            ->where('sender_id', '!=', $userId)
-            ->when(true, function ($q) use ($userId) {
-                return $q->where('sender_id', '!=', $userId);
-            })
+            CommunityMessage::where(
+                'community_id',
+                $community->id
+            )
+            ->where(
+                'id',
+                '>',
+                $lastReadMessageId
+            )
+            ->where(
+                'sender_id',
+                '!=',
+                $userId
+            )
             ->count();
-
-            \Log::info([
-                'community_id' => $community->id,
-                'user_id' => $userId,
-                'pivot_last_read' => $member?->pivot?->last_read_message_id,
-            ]);
-
         return $community;
-
-        
     });
 
     return response()->json([
-        'communities' => $communities
+        'communities' => $communities,
     ]);
 }
-
 
 
 public function markAsRead($communityId)
@@ -472,11 +482,6 @@ public function sendCommunityVoice(Request $request)
     $community = Community::findOrFail(
         $request->community_id
     );
-
-    // =====================================
-    // CHECK MEMBER
-    // =====================================
-
     $member = CommunityMember::where([
         'community_id' => $community->id,
         'user_id' => auth()->id(),
@@ -1081,5 +1086,347 @@ public function sendPending(Request $request)
 
     return $community->id;
 }
+
+    public function explore()
+{
+    $userId = auth()->id();
+
+    $communities = Community::whereDoesntHave(
+        'members',
+        function ($query) use ($userId) {
+
+            $query->where(
+                'user_id',
+                $userId
+            )
+            ->where(
+                'membership_status',
+                'approved'
+            );
+
+        }
+    )
+    ->withCount([
+        'members as followers_count' => function ($query) {
+
+            $query->where(
+                'membership_status',
+                'approved'
+            );
+
+        }
+    ])
+    ->get();
+
+    return response()->json([
+        'communities' => $communities,
+    ]);
+}
+
+
+public function follow(Community $community)
+{
+    $user = auth()->user();
+
+    $community->members()->syncWithoutDetaching([
+        $user->id => [
+            'membership_status' => 'approved',
+            'joined_at' => now(),
+        ]
+    ]);
+
+    return response()->json([
+        'message' => 'Community followed successfully.',
+    ]);
+}
+
+
+public function unfollow($id)
+{
+    $member = CommunityMember::where(
+        'community_id',
+        $id
+    )
+    ->where(
+        'user_id',
+        auth()->id()
+    )
+    ->where(
+        'membership_status',
+        'approved'
+    )
+    ->first();
+
+    if (!$member) {
+        return response()->json([
+            'success' => false,
+            'message' => 'You are not a member of this channel.',
+        ], 404);
+    }
+
+    $member->update([
+        'membership_status' => 'left',
+        'last_read_message_id' => null,
+    ]);
+
+    return response()->json([
+        'success' => true,
+        'community_id' => $id,
+        'message' => 'Channel left successfully.',
+    ]);
+}
+
+
+
+public function hideCommunity($communityId)
+{
+    DB::table('community_members')
+        ->where(
+            'community_id',
+            $communityId
+        )
+        ->where(
+            'user_id',
+            auth()->id()
+        )
+        ->update([
+            'hidden_until' => now()
+                ->addDays(30),
+        ]);
+
+    return response()->json([
+        'success' => true,
+    ]);
+}
     
+
+public function removeMember(
+    Request $request,
+    Community $community
+)
+{
+    CommunityMember::where(
+        'community_id',
+        $community->id
+    )
+    ->where(
+        'user_id',
+        $request->user_id
+    )
+    ->update([
+        'membership_status' => 'removed',
+    ]);
+
+    return response()->json([
+        'success' => true,
+    ]);
+}
+
+
+
+public function availableMembers($communityId)
+{
+    $userId = auth()->id();
+
+    $communityMemberIds = DB::table('community_members')
+        ->where('community_id', $communityId)
+        ->whereIn('membership_status', ['approved'])
+        ->pluck('user_id');
+
+    $chatUserIds = Chat::where(function ($query) use ($userId) {
+
+        $query->where('teacher_id', $userId)
+            ->orWhere('student_id', $userId)
+            ->orWhere('user_one_id', $userId)
+            ->orWhere('user_two_id', $userId);
+
+    })
+    ->get()
+    ->flatMap(function ($chat) use ($userId) {
+
+        $ids = [];
+
+        if (
+            $chat->user_one_id &&
+            $chat->user_two_id
+        ) {
+
+            $ids[] =
+                $chat->user_one_id == $userId
+                    ? $chat->user_two_id
+                    : $chat->user_one_id;
+        }
+
+        if (
+            $chat->teacher_id &&
+            $chat->teacher_id != $userId
+        ) {
+
+            $ids[] = $chat->teacher_id;
+        }
+
+        if (
+            $chat->student_id &&
+            $chat->student_id != $userId
+        ) {
+
+            $ids[] = $chat->student_id;
+        }
+
+        return $ids;
+
+    })
+    ->unique()
+    ->values();
+
+    $users = User::whereIn(
+            'id',
+            $chatUserIds
+        )
+        ->whereNotIn(
+            'id',
+            $communityMemberIds
+        )
+        ->get([
+            'id',
+            'first_name',
+            'last_name',
+            'profile_photo',
+        ]);
+
+    return response()->json([
+        'users' => $users,
+    ]);
+}
+
+
+public function addMember(
+    Request $request,
+    Community $community
+) {
+    $request->validate([
+        'user_id' => [
+            'required',
+            'exists:users,id',
+        ],
+    ]);
+
+    $userId = $request->user_id;
+
+    Log::info('Add member request received', [
+        'community_id' => $community->id,
+        'user_id' => $userId,
+    ]);
+
+    $existingMember = CommunityMember::where(
+        'community_id',
+        $community->id
+    )
+    ->where(
+        'user_id',
+        $userId
+    )
+    ->first();
+
+    Log::info('Existing member lookup', [
+        'found' => (bool) $existingMember,
+        'membership_status' => $existingMember?->membership_status,
+        'member_id' => $existingMember?->id,
+    ]);
+
+    if (
+        $existingMember &&
+        $existingMember->membership_status === 'approved'
+    ) {
+
+        Log::info('User already approved member', [
+            'community_id' => $community->id,
+            'user_id' => $userId,
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'User is already a member.',
+        ], 422);
+    }
+
+    if ($existingMember) {
+
+        Log::info('Updating existing member', [
+            'before_status' => $existingMember->membership_status,
+        ]);
+
+        $existingMember->membership_status = 'approved';
+        $existingMember->joined_at = now();
+
+        Log::info('Dirty attributes', [
+            'dirty' => $existingMember->getDirty(),
+        ]);
+
+        $result = $existingMember->save();
+
+        Log::info('Save result', [
+            'saved' => $result,
+        ]);
+
+        $existingMember->refresh();
+
+        Log::info('After save', [
+            'membership_status' => $existingMember->membership_status,
+            'joined_at' => $existingMember->joined_at,
+        ]);
+
+        $existingMember->refresh();
+
+        Log::info('Existing member updated', [
+            'after_status' => $existingMember->membership_status,
+            'joined_at' => $existingMember->joined_at,
+        ]);
+
+    } else {
+
+        Log::info('Creating new member');
+
+        $memberRecord = CommunityMember::create([
+            'community_id' => $community->id,
+            'user_id' => $userId,
+            'role' => 'member',
+            'membership_status' => 'approved',
+            'joined_at' => now(),
+            'can_message' => true,
+            'muted' => false,
+        ]);
+
+        Log::info('New member created', [
+            'community_member_id' => $memberRecord->id,
+        ]);
+    }
+
+    Log::info('Final database state', [
+        'community_member' => CommunityMember::where(
+            'community_id',
+            $community->id
+        )
+        ->where(
+            'user_id',
+            $userId
+        )
+        ->first()
+        ?->toArray(),
+    ]);
+
+    $member = User::select(
+        'id',
+        'first_name',
+        'last_name',
+        'profile_photo'
+    )->find($userId);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Member added successfully.',
+        'member' => $member,
+    ]);
+}
+
 }

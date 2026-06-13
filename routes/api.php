@@ -64,6 +64,45 @@ use App\Http\Controllers\CommunityController;
 //
 Route::middleware('auth:sanctum')->group(function () {
 
+    Route::post(
+    '/communities/{community}/add-member',
+    [CommunityController::class, 'addMember',]
+    );
+
+    Route::post(
+    '/communities/{community}/remove-member',
+    [CommunityController::class, 'removeMember']
+    );
+
+    Route::get(
+    '/communities/{community}/available-members',
+    [CommunityController::class, 'availableMembers']
+    );
+
+    Route::get(
+        '/communities/explore',
+        [CommunityController::class, 'explore']
+    );
+
+    Route::post(
+        '/communities/{community}/hide',
+        [CommunityController::class, 'hideCommunity']
+    );
+
+    Route::post(
+        '/communities/{community}/follow',
+        [CommunityController::class, 'follow']
+    );
+
+    Route::post(
+        '/communities/{id}/unfollow',
+        [CommunityController::class, 'unfollow']
+    );
+
+    Route::post(
+    '/communities/{community}/add-member',
+    [CommunityController::class, 'addMember']
+    );
 
     Route::post('/community/messages/forward', [
             CommunityController::class,

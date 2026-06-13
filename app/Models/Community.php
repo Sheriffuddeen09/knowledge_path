@@ -18,20 +18,21 @@ class Community extends Model
     ];
 
     public function members()
-        {
-            return $this->belongsToMany(
-                User::class,
-                'community_members'
-            )
-            ->withPivot([
-                'role',
-                'membership_status',
-                'can_message',
-                'muted',
-                'joined_at',
-                'last_read_message_id',
-            ]);
-        }
+    {
+        return $this->belongsToMany(
+            User::class,
+            'community_members'
+        )
+        ->withPivot([
+            'role',
+            'can_message',
+            'muted',
+            'joined_at',
+            'membership_status',
+            'last_read_message_id',
+        ])
+        ->withTimestamps();
+    }
 
         public function lastMessage()
             {

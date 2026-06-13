@@ -12,5 +12,12 @@ class CommunityMember extends Model
         'community_id',
         'user_id',
         'role',
+        'membership_status',
+        'joined_at',
+        'can_message',
+        'muted',
+        'last_read_message_id',
+        'hidden_until',
+        'status',
     ];
 }
