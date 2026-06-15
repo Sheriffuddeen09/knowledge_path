@@ -6,11 +6,12 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
+        // 🔥 Drop table if it already exists
+        Schema::dropIfExists('community_reports');
+
+        // 🔥 Recreate table
         Schema::create('community_reports', function (Blueprint $table) {
 
             $table->id();
@@ -19,19 +20,23 @@ return new class extends Migration
                 ->constrained()
                 ->cascadeOnDelete();
 
-            $table->foreignId('user_id')
-                ->constrained()
+            $table->foreignId('reporter_id')
+                ->constrained('users')
                 ->cascadeOnDelete();
 
-            $table->text('reason');
+            $table->foreignId('reported_user_id')
+                ->constrained('users')
+                ->cascadeOnDelete();
+
+            $table->string('reason');
+
+            $table->text('details')
+                ->nullable();
 
             $table->timestamps();
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('community_reports');

@@ -57,18 +57,12 @@ public function store(Request $request)
         ]
     );
 
-    // =========================
-    // 📧 EMAIL NOTIFICATIONS
-    // =========================
+    
     Mail::to($report->reportedUser->email)
         ->send(new UserReportedMail($report));
 
     Mail::to($report->reporter->email)
         ->send(new ReporterConfirmationMail($report));
-
-    // =========================
-    // 🔔 SYSTEM NOTIFICATION
-    // =========================
     Notification::create([
         'user_id' => $request->reported_user_id,
         'type' => 'chat_reported',
@@ -98,5 +92,24 @@ public function chatReport()
     ->get();
 }
 
+
+public function getChatReport($id)
+{
+    $report = ChatReport::with([
+        'chat:id,name,image',
+        'reporter:id,first_name,last_name,email',
+        'reportedUser:id,first_name,last_name,email',
+    ])->find($id);
+
+    if (!$report) {
+        return response()->json([
+            'message' => 'Report not found'
+        ], 404);
+    }
+
+    return response()->json([
+        'report' => $report
+    ]);
+}
 
 }

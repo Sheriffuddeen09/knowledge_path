@@ -61,10 +61,23 @@ use App\Http\Controllers\Api\PasskeyController;
 use App\Http\Controllers\Api\BiodataController;
 use App\Http\Controllers\EncryptionController;
 use App\Http\Controllers\CommunityController;
-///clear
+///CommunityReport
 Route::middleware('auth:sanctum')->group(function () {
 
+    Route::get(
+    '/community/report/view/{id}',
+    [CommunityController::class, 'show']
+    );
 
+    Route::post(
+    '/community/report',
+    [CommunityController::class, 'store']
+    );
+
+    Route::get(
+        '/community/report',
+        [CommunityController::class, 'communityReport']
+    );
     Route::delete(
     '/communities/{community}/clear',
     [
@@ -460,7 +473,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
 
-    // Reports /chat/reports
+    // chat/report/
     Route::get('/comment/report/{commentId}', [CommentReportController::class, 'getCommentReport']);
     Route::get('/post/report/{postId}', [PostReportController::class, 'getPostReport']);
     Route::get('/chat/report/{chatId}', [ChatReportController::class, 'getChatReport']);
@@ -803,7 +816,7 @@ Route::get('/download-file', function (Request $request) {
     Route::post('/messages/{message}/seen', [ChatController::class, 'markSeen']);
     Route::post('/messages/typing', [ChatController::class, 'typing']);
     Route::post('/chat/report', [ChatReportController::class, 'store']);
-    Route::get('/chat/reports', [ChatReportController::class, 'chatReport']);
+    Route::get('/chat/report/', [ChatReportController::class, 'chatReport']);
     Route::delete('/messages/{message}', [ChatController::class, 'destroy']);
     Route::delete('/messages/{message}/forward', [ChatController::class, 'forward']);
     Route::post('/messages/forward-multiple', [ChatController::class, 'forwardMultiple']);

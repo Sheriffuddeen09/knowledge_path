@@ -25,7 +25,10 @@ class ChatReport extends Model
     }
 
     public function chat()
-    {
-        return $this->belongsTo(Chat::class);
-    }
+        {
+            return $this->belongsTo(
+                Chat::class,
+                'chat_id'
+            );
+        }
 }

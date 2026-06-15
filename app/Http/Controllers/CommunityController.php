@@ -16,7 +16,11 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-
+use App\Models\CommunityReport;
+use App\Models\Notification;
+use App\Mail\UserReportedMail;
+use App\Mail\ReporterConfirmationMail;
+use Illuminate\Support\Facades\Mail;
 
 class CommunityController extends Controller
 
@@ -1530,7 +1534,7 @@ public function deleteCommunity(Community $community)
         'community_id' => $community->id,
         'sender_id' => $userId,
         'type' => 'text',
-        'message' => "{$user->first_name} {$user->last_name} removed this community from their list",
+        //'message' => "{$user->first_name} {$user->last_name} removed this community from their list",
         'is_system' => true,
     ]);
 
@@ -1553,12 +1557,10 @@ public function adminDeleteCommunity(Community $community)
         ], 403);
     }
 
-    // 🔥 ONLY HIDE FOR ADMIN
     $member->update([
         'hidden_for_admin' => true,
     ]);
 
-    // 🔥 SYSTEM MESSAGE (VISIBLE TO OTHERS)
     CommunityMessage::create([
         'community_id' => $community->id,
         'sender_id' => $userId,
@@ -1589,7 +1591,6 @@ public function joinCommunityByInvite($token)
         ->where('user_id', $userId)
         ->first();
 
-    // Already a member
     if (
         $existing &&
         $existing->membership_status === 'approved'
@@ -1599,7 +1600,6 @@ public function joinCommunityByInvite($token)
         ], 409);
     }
 
-    // Rejoin if previously left/removed/rejected
     if (
         $existing &&
         in_array(
@@ -1621,7 +1621,6 @@ public function joinCommunityByInvite($token)
         ]);
     }
 
-    // New member (auto-approve)
     CommunityMember::create([
         'community_id' => $community->id,
         'user_id' => $userId,
@@ -1675,6 +1674,102 @@ public function generateCommunityInviteLink(
             config('app.frontend_url') .
             '/invite/community/' .
             $community->invite_token,
+    ]);
+}
+
+public function store(Request $request)
+{
+    $request->validate([
+        'community_id' => 'required|exists:communities,id',
+        'reported_user_id' => 'required|exists:users,id',
+        'reason' => 'required|string',
+        'details' => 'nullable|string',
+    ]);
+
+    $authId = auth()->id();
+
+    if ($request->reported_user_id == $authId) {
+        return response()->json([
+            'message' => 'You cannot report yourself.'
+        ], 422);
+    }
+
+    $isMember = DB::table('community_members')
+        ->where('community_id', $request->community_id)
+        ->where('user_id', $authId)
+        ->where('membership_status', 'approved')
+        ->exists();
+
+    if (!$isMember) {
+        return response()->json([
+            'message' => 'You are not allowed to report this community.'
+        ], 403);
+    }
+
+    $report = CommunityReport::updateOrCreate(
+        [
+            'community_id' => $request->community_id,
+            'reporter_id' => $authId,
+            'reported_user_id' => $request->reported_user_id,
+        ],
+        [
+            'reason' => $request->reason,
+            'details' => $request->details,
+        ]
+    );
+
+    Mail::to($report->reportedUser->email)
+        ->send(new UserReportedMail($report));
+
+    Mail::to($report->reporter->email)
+        ->send(new ReporterConfirmationMail($report));
+
+    Notification::create([
+        'user_id' => $request->reported_user_id,
+        'type' => 'community_reported',
+        'data' => json_encode([
+            'community_id' => $request->community_id,
+            'reporter_id' => $authId,
+            'reporter_name' => auth()->user()->first_name . ' ' .
+                               auth()->user()->last_name,
+        ]),
+        'redirect_url' =>
+            "/community/report/{$request->community_id}",
+        'read' => false,
+    ]);
+
+    return response()->json([
+        'message' => 'Community report submitted successfully.'
+    ]);
+}
+
+public function communityReport()
+{
+    return CommunityReport::with([
+        'community',
+        'reporter:id,first_name,last_name,email',
+        'reportedUser:id,first_name,last_name,email',
+    ])
+    ->latest()
+    ->get();
+}
+
+public function show($id)
+{
+    $report = CommunityReport::with([
+        'community:id,community_name,image',
+        'reporter:id,first_name,last_name,email',
+        'reportedUser:id,first_name,last_name,email',
+    ])->find($id);
+
+    if (!$report) {
+        return response()->json([
+            'message' => 'Report not found',
+        ], 404);
+    }
+
+    return response()->json([
+        'report' => $report,
     ]);
 }
 
