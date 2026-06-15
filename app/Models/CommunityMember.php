@@ -19,5 +19,6 @@ class CommunityMember extends Model
         'last_read_message_id',
         'hidden_until',
         'status',
+        'hidden_for_admin',
     ];
 }

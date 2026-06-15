@@ -61,8 +61,48 @@ use App\Http\Controllers\Api\PasskeyController;
 use App\Http\Controllers\Api\BiodataController;
 use App\Http\Controllers\EncryptionController;
 use App\Http\Controllers\CommunityController;
-//
+///clear
 Route::middleware('auth:sanctum')->group(function () {
+
+
+    Route::delete(
+    '/communities/{community}/clear',
+    [
+        CommunityController::class,
+        'clearCommunity',
+    ]
+    );
+
+    Route::post(
+        '/communities/{community}/delete',
+        [
+            CommunityController::class,
+            'deleteCommunity',
+        ]
+    );
+
+    Route::get(
+        '/communities/{community}/invite-link',
+        [CommunityController::class, 'generateCommunityInviteLink']
+    );
+
+    Route::post(
+        '/invite/communities/{token}',
+        [CommunityController::class, 'joinCommunityByInvite']
+    );
+
+    Route::post(
+        '/communities/{community}/admin-delete',
+        [CommunityController::class, 'adminDeleteCommunity']
+    );
+
+    Route::post(
+    '/communities/{community}/update',
+    [
+        CommunityController::class,
+        'update',
+    ]
+    );
 
     Route::post(
     '/communities/{community}/add-member',

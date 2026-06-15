@@ -15,6 +15,7 @@ use App\Models\CommunityMessageApproval;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 
 class CommunityController extends Controller
@@ -130,55 +131,36 @@ public function index()
 
     $communities = Community::with([
         'members' => function ($query) {
-            $query->wherePivot(
-                'membership_status',
-                'approved'
-            );
-
+            $query->wherePivot('membership_status', 'approved');
         },
         'lastMessage.sender'
     ])
     ->whereHas('members', function ($q) use ($userId) {
     $q->where('community_members.user_id', $userId)
-      ->where('community_members.membership_status', 'approved');
+      ->where('community_members.membership_status', 'approved')
+      ->whereNull('community_members.hidden_until')
+      ->where('community_members.hidden_for_admin', 0);
     })
     ->latest()
     ->get()
     ->map(function ($community) use ($userId) {
 
-        $member = $community
-            ->members
-            ->first(function ($member) use ($userId) {
+        $member = $community->members->firstWhere('id', $userId);
 
-                return $member->id == $userId
-                    && $member->pivot->membership_status === 'approved';
-            });
+        $community->my_role = $member?->pivot?->role;
+        $community->membership_status = $member?->pivot?->membership_status;
 
-        $community->my_role =
-            $member?->pivot?->role;
+        $lastReadMessageId = $member?->pivot?->last_read_message_id ?? 0;
 
-        $community->membership_status =
-            $member?->pivot?->membership_status;
+        $community->deleted_message = $community->is_deleted
+            ? 'This channel has been deleted by the administrator.'
+            : null;
 
-        $lastReadMessageId =
-            $member?->pivot?->last_read_message_id ?? 0;
-
-        $community->unread_count =
-            CommunityMessage::where(
-                'community_id',
-                $community->id
-            )
-            ->where(
-                'id',
-                '>',
-                $lastReadMessageId
-            )
-            ->where(
-                'sender_id',
-                '!=',
-                $userId
-            )
+        $community->unread_count = CommunityMessage::where('community_id', $community->id)
+            ->where('id', '>', $lastReadMessageId)
+            ->where('sender_id', '!=', $userId)
             ->count();
+
         return $community;
     });
 
@@ -398,6 +380,14 @@ public function sendCommunityMessage(Request $request)
                 'Only admins can send messages'
         ], 403);
     }
+
+    if ($community->is_deleted) {
+    return response()->json([
+        'message' =>
+            'This channel has been deleted.',
+    ], 403);
+    }
+
     $mode = $community->disappearing_mode;
     $expiresAt = match ($mode) {
         '24h' => now()->addHours(24),
@@ -1313,11 +1303,6 @@ public function addMember(
 
     $userId = $request->user_id;
 
-    Log::info('Add member request received', [
-        'community_id' => $community->id,
-        'user_id' => $userId,
-    ]);
-
     $existingMember = CommunityMember::where(
         'community_id',
         $community->id
@@ -1328,21 +1313,10 @@ public function addMember(
     )
     ->first();
 
-    Log::info('Existing member lookup', [
-        'found' => (bool) $existingMember,
-        'membership_status' => $existingMember?->membership_status,
-        'member_id' => $existingMember?->id,
-    ]);
-
     if (
         $existingMember &&
         $existingMember->membership_status === 'approved'
     ) {
-
-        Log::info('User already approved member', [
-            'community_id' => $community->id,
-            'user_id' => $userId,
-        ]);
 
         return response()->json([
             'success' => false,
@@ -1352,40 +1326,19 @@ public function addMember(
 
     if ($existingMember) {
 
-        Log::info('Updating existing member', [
-            'before_status' => $existingMember->membership_status,
-        ]);
-
         $existingMember->membership_status = 'approved';
         $existingMember->joined_at = now();
 
-        Log::info('Dirty attributes', [
-            'dirty' => $existingMember->getDirty(),
-        ]);
 
         $result = $existingMember->save();
 
-        Log::info('Save result', [
-            'saved' => $result,
-        ]);
 
         $existingMember->refresh();
 
-        Log::info('After save', [
-            'membership_status' => $existingMember->membership_status,
-            'joined_at' => $existingMember->joined_at,
-        ]);
-
         $existingMember->refresh();
 
-        Log::info('Existing member updated', [
-            'after_status' => $existingMember->membership_status,
-            'joined_at' => $existingMember->joined_at,
-        ]);
 
     } else {
-
-        Log::info('Creating new member');
 
         $memberRecord = CommunityMember::create([
             'community_id' => $community->id,
@@ -1397,23 +1350,7 @@ public function addMember(
             'muted' => false,
         ]);
 
-        Log::info('New member created', [
-            'community_member_id' => $memberRecord->id,
-        ]);
     }
-
-    Log::info('Final database state', [
-        'community_member' => CommunityMember::where(
-            'community_id',
-            $community->id
-        )
-        ->where(
-            'user_id',
-            $userId
-        )
-        ->first()
-        ?->toArray(),
-    ]);
 
     $member = User::select(
         'id',
@@ -1426,6 +1363,318 @@ public function addMember(
         'success' => true,
         'message' => 'Member added successfully.',
         'member' => $member,
+    ]);
+}
+
+public function update(
+    Request $request,
+    Community $community
+) {
+    $request->validate([
+        'community_name' => 'required|string|max:255',
+        'community_description' => 'nullable|string',
+        'community_image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:20480',
+        'only_admin_can_message' => 'nullable|boolean',
+    ]);
+
+    // Optional: only owner/admin can edit
+    $member = CommunityMember::where(
+        'community_id',
+        $community->id
+    )
+    ->where(
+        'user_id',
+        auth()->id()
+    )
+    ->first();
+
+    if (
+        !$member ||
+        !in_array(
+            $member->role,
+            ['owner', 'admin']
+        )
+    ) {
+
+        return response()->json([
+            'message' => 'Unauthorized',
+        ], 403);
+
+    }
+
+    $imagePath =
+        $community->community_image;
+
+    if (
+        $request->hasFile(
+            'community_image'
+        )
+    ) {
+
+        // delete old image
+        if (
+            $community->community_image &&
+            Storage::disk('public')->exists(
+                $community->community_image
+            )
+        ) {
+
+            Storage::disk('public')->delete(
+                $community->community_image
+            );
+
+        }
+
+        $imagePath = $request
+            ->file(
+                'community_image'
+            )
+            ->store(
+                'community_images',
+                'public'
+            );
+
+    }
+
+    $community->update([
+
+        'community_name' =>
+            $request->community_name,
+
+        'community_description' =>
+            $request->community_description,
+
+        'community_image' =>
+            $imagePath,
+
+        'only_admin_can_message' =>
+            $request->only_admin_can_message ?? false,
+
+    ]);
+
+    return response()->json([
+
+        'success' => true,
+
+        'message' =>
+            'Channel updated successfully.',
+
+        'community' =>
+            $community->load('members'),
+
+    ]);
+
+}
+
+
+public function clearCommunity(
+    Community $community
+) {
+    $userId = auth()->id();
+
+    $member = CommunityMember::where(
+        'community_id',
+        $community->id
+    )
+    ->where(
+        'user_id',
+        $userId
+    )
+    ->first();
+
+    if (
+        !$member ||
+        !in_array(
+            $member->role,
+            ['owner', 'admin']
+        )
+    ) {
+        return response()->json([
+            'message' => 'Unauthorized.',
+        ], 403);
+    }
+
+    CommunityMessage::where(
+        'community_id',
+        $community->id
+    )->delete();
+
+    return response()->json([
+        'message' =>
+            'Community messages cleared successfully.',
+    ]);
+}
+
+public function deleteCommunity(Community $community)
+{
+    $userId = auth()->id();
+
+    $member = CommunityMember::where('community_id', $community->id)
+        ->where('user_id', $userId)
+        ->first();
+
+    if (!$member) {
+        return response()->json([
+            'message' => 'Community not found',
+        ], 404);
+    }
+
+    // Hide ONLY for this user
+    $member->update([
+        'hidden_until' => now(),
+    ]);
+
+    $user = auth()->user();
+
+    CommunityMessage::create([
+        'community_id' => $community->id,
+        'sender_id' => $userId,
+        'type' => 'text',
+        'message' => "{$user->first_name} {$user->last_name} removed this community from their list",
+        'is_system' => true,
+    ]);
+
+    return response()->json([
+        'message' => 'Community removed successfully',
+    ]);
+}
+
+public function adminDeleteCommunity(Community $community)
+{
+    $userId = auth()->id();
+
+    $member = CommunityMember::where('community_id', $community->id)
+        ->where('user_id', $userId)
+        ->first();
+
+    if (!$member || !in_array($member->role, ['owner', 'admin'])) {
+        return response()->json([
+            'message' => 'Unauthorized.',
+        ], 403);
+    }
+
+    // 🔥 ONLY HIDE FOR ADMIN
+    $member->update([
+        'hidden_for_admin' => true,
+    ]);
+
+    // 🔥 SYSTEM MESSAGE (VISIBLE TO OTHERS)
+    CommunityMessage::create([
+        'community_id' => $community->id,
+        'sender_id' => $userId,
+        'type' => 'text',
+        'message' => 'This channel has been deleted by the administrator.',
+        'is_system' => true,
+    ]);
+
+    return response()->json([
+        'message' => 'Channel deleted from your view.',
+    ]);
+}
+
+
+public function joinCommunityByInvite($token)
+{
+    $community = Community::where('invite_token', $token)->first();
+
+    if (!$community) {
+        return response()->json([
+            'message' => 'Invalid invite link'
+        ], 404);
+    }
+
+    $userId = auth()->id();
+
+    $existing = CommunityMember::where('community_id', $community->id)
+        ->where('user_id', $userId)
+        ->first();
+
+    // Already a member
+    if (
+        $existing &&
+        $existing->membership_status === 'approved'
+    ) {
+        return response()->json([
+            'message' => 'You are already a member of this community.'
+        ], 409);
+    }
+
+    // Rejoin if previously left/removed/rejected
+    if (
+        $existing &&
+        in_array(
+            $existing->membership_status,
+            ['left', 'removed', 'rejected']
+        )
+    ) {
+
+        $existing->update([
+            'membership_status' => 'approved',
+            'role' => 'member',
+            'joined_at' => now(),
+            'hidden_until' => null,
+            'hidden_for_admin' => false,
+        ]);
+
+        return response()->json([
+            'message' => 'You have rejoined the community successfully.',
+        ]);
+    }
+
+    // New member (auto-approve)
+    CommunityMember::create([
+        'community_id' => $community->id,
+        'user_id' => $userId,
+        'role' => 'member',
+        'membership_status' => 'approved',
+        'joined_at' => now(),
+        'can_message' => true,
+        'muted' => false,
+    ]);
+
+    return response()->json([
+        'message' => 'You joined the community successfully.',
+    ]);
+}
+
+
+public function generateCommunityInviteLink(
+    Community $community
+) {
+    $userId = auth()->id();
+
+    $member = CommunityMember::where(
+        'community_id',
+        $community->id
+    )
+    ->where(
+        'user_id',
+        $userId
+    )
+    ->whereIn(
+        'role',
+        ['owner', 'admin']
+    )
+    ->where(
+        'membership_status',
+        'approved'
+    )
+    ->first();
+
+    if (!$member) {
+        return response()->json([
+            'message' => 'Unauthorized.'
+        ], 403);
+    }
+
+    $community->invite_token = Str::random(40);
+    $community->save();
+
+    return response()->json([
+        'invite_link' =>
+            config('app.frontend_url') .
+            '/invite/community/' .
+            $community->invite_token,
     ]);
 }
 

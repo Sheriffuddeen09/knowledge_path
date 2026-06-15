@@ -15,6 +15,15 @@ class Community extends Model
         'owner_id',
         'only_admin_can_message',
         'disappearing_mode',
+        'is_deleted',   // ✅ THIS GOES HERE
+        'deleted_by',
+        'deleted_at',
+        'invite_token',
+    ];
+
+    protected $casts = [
+        'is_deleted' => 'boolean',
+        'deleted_at' => 'datetime',
     ];
 
     public function members()

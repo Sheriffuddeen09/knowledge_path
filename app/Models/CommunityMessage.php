@@ -34,6 +34,7 @@ class CommunityMessage extends Model
 
     'forward_source_message_id',
     'forward_source_community_id',
+    'is_system'
     ];
     public function sender()
     {
