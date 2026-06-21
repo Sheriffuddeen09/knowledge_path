@@ -35,6 +35,7 @@ public function createGroup(Request $request)
         'image' => $imagePath,
         'created_by' => auth()->id(),
         'only_admin_send' => $request->only_admin_send ?? 0,
+        'last_activity_at' => now(),
     ]);
     $chat->users()->attach(auth()->id(), [
         'role' => 'admin',

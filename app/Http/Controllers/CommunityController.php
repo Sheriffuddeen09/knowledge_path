@@ -145,7 +145,7 @@ public function index()
       ->whereNull('community_members.hidden_until')
       ->where('community_members.hidden_for_admin', 0);
     })
-    ->latest()
+    ->orderByDesc('last_activity_at')
     ->get()
     ->map(function ($community) use ($userId) {
 
@@ -228,6 +228,7 @@ public function create(Request $request)
         'community_description' => $request->community_description,
         'community_image' => $imagePath,
         'only_admin_can_message' => $request->only_admin_can_message ?? true,
+        'last_activity_at' => now(),
     ]);
 
     // ✅ OWNER
@@ -443,6 +444,10 @@ public function sendCommunityMessage(Request $request)
     $message = CommunityMessage::create(
         $data
     );
+
+    $community->update([
+    'last_activity_at' => now(),
+    ]);
     $message->load([
         'sender',
         'community',

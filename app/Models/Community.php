@@ -19,6 +19,7 @@ class Community extends Model
         'deleted_by',
         'deleted_at',
         'invite_token',
+        'last_activity_at'
     ];
 
     protected $casts = [

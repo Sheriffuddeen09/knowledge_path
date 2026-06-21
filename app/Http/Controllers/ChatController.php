@@ -321,7 +321,7 @@ public function index()
 
     })
 
-    ->orderByDesc('messages_max_created_at')
+    ->orderByDesc('last_activity_at')
 
     ->with([
         'teacher',
@@ -627,55 +627,40 @@ public function send(Request $request)
     ] : null;
 
     if ($request->hasFile('files')) {
-
         $files = $request->file('files');
-
-        // ✅ FIRST: get from frontend
         $groupId = $request->input('group_id');
-
         if (!$groupId) {
             $onlyMedia = collect($types)->every(fn($t) => in_array($t, ['image', 'video']));
-
             if ($onlyMedia && count($files) > 1) {
                 $groupId = uniqid('grp_');
             }
         }
         foreach ($files as $index => $file) {
-
             $storedName = $generateFileName($file);
             $type = $types[$index] ?? 'file';
-
             $start = $starts[$index] ?? 0;
             $end   = $ends[$index] ?? 0;
-
             $path = null;
-            
-
             if ($type === 'video' && $end > $start) {
                 $tempPath = $file->getRealPath();
                 $outputName = 'trimmed_' . $storedName;
                 $outputFullPath = storage_path('app/public/chat_files/' . $outputName);
-
                 if (!file_exists(dirname($outputFullPath))) {
                     mkdir(dirname($outputFullPath), 0777, true);
                 }
                 $command = "ffmpeg -ss $start -i \"$tempPath\" -to $end -c:v libx264 -c:a aac \"$outputFullPath\" 2>&1";
                 exec($command, $output, $returnCode);
                 if ($returnCode !== 0) {
-                    // ❌ fallback if ffmpeg fails
                     $path = $file->storeAs('chat_files', $storedName, 'public');
                 } else {
                     $path = 'chat_files/' . $outputName;
                 }
             } else {
-                // 📁 NORMAL FILE / IMAGE
                 $path = $file->storeAs('chat_files', $storedName, 'public');
             }
-
             $originalName = $file->getClientOriginalName();
             $cleanName = preg_replace('/[^A-Za-z0-9_\-\.]/', '_', $originalName);
 
-            
             $messages[] = Message::create([
                 'chat_id'     => $chat->id,
                 'sender_id'   => auth()->id(),
@@ -698,14 +683,11 @@ public function send(Request $request)
         $type = $request->type ?? 'file';
         $start = $request->trim_start[0] ?? 0;
         $end   = $request->trim_end[0] ?? 0;
-
         $path = null;
-
         if ($type === 'video' && $end > $start) {
             $tempPath = $file->getRealPath();
             $outputName = 'trimmed_' . $storedName;
             $outputFullPath = storage_path('app/public/chat_files/' . $outputName);
-
             if (!file_exists(dirname($outputFullPath))) {
                 mkdir(dirname($outputFullPath), 0777, true);
             }
@@ -716,7 +698,6 @@ public function send(Request $request)
             } else {
                 $path = 'chat_files/' . $outputName;
             }
-
         } else {
             $path = $file->storeAs('chat_files', $storedName, 'public');
         }
@@ -775,6 +756,12 @@ public function send(Request $request)
         $message->load(['sender']);
         broadcast(new NewMessage($message))->toOthers();
     }
+
+    Chat::where('id', $chat->id)->update([
+    'last_activity_at' => now()
+    ]);
+
+
     $grouped = collect($messages)
     ->groupBy('group_id')
     ->map(function ($group) {
@@ -821,7 +808,6 @@ return response()->json([
 
 
 
-// sendvoice note function block 
    public function sendVoice(Request $request)
 {
     $request->validate([
@@ -831,10 +817,6 @@ return response()->json([
 
     ]);
         $chat = Chat::findOrFail($request->chat_id);
-
-        // ===============================
-        // ENSURE CHAT KEY EXISTS (SAFE)
-        // ===============================
         if (!$chat->chat_key_user1 || !$chat->chat_key_user2) {
 
             $chatKey = base64_encode(random_bytes(32)); // 256-bit key
@@ -844,10 +826,6 @@ return response()->json([
 
             $chat->save();
         }
-
-        // ===============================
-        // DECRYPT SAFELY
-        // ===============================
         try {
             $chatKey = decrypt($chat->chat_key_user1);
         } catch (\Exception $e) {
@@ -914,6 +892,10 @@ return response()->json([
     $message->load('sender');
 
     broadcast(new NewMessage($message))->toOthers();
+
+    Chat::where('id', $chat->id)->update([
+    'last_activity_at' => now()
+    ]);
 
     return response()->json([
         'message' => $message,
