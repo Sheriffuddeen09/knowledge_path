@@ -61,6 +61,27 @@ use App\Http\Controllers\Api\PasskeyController;
 use App\Http\Controllers\Api\BiodataController;
 use App\Http\Controllers\EncryptionController;
 use App\Http\Controllers\CommunityController;
+
+ use App\Http\Controllers\MeetingController;
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    Route::post(
+    '/meeting/send',
+    [MeetingController::class, 'sendMeetingInvite']
+    );
+
+    Route::post(
+        '/meeting/create',
+        [MeetingController::class, 'create']
+    );
+
+    Route::get(
+        '/meeting/{roomId}',
+        [MeetingController::class, 'show']
+    );
+
+});
 ///CommunityReport
 Route::middleware('auth:sanctum')->group(function () {
 

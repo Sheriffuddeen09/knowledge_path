@@ -182,6 +182,16 @@ public function messages(Chat $chat)
 
             'forward_source_community_id' =>
                 $msg->forward_source_community_id,
+            'meeting_call_type' =>
+                $msg->meeting_call_type,
+            'meeting_expires_at' =>
+                $msg->meeting_expires_at,
+            'meeting_room_id' =>
+                $msg->meeting_room_id,
+            'meeting_link' =>
+                $msg->meeting_link,
+
+                // 
         ];
         if ($msg->group_id) {
             if (!isset($groupMap[$msg->group_id])) {

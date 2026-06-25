@@ -156,6 +156,12 @@ public function index()
 
         $lastReadMessageId = $member?->pivot?->last_read_message_id ?? 0;
 
+        // ✅ ADD THIS
+        $community->members_count = DB::table('community_members')
+            ->where('community_id', $community->id)
+            ->where('membership_status', 'approved')
+            ->count();
+
         $community->deleted_message = $community->is_deleted
             ? 'This channel has been deleted by the administrator.'
             : null;
@@ -166,7 +172,7 @@ public function index()
             ->count();
 
         return $community;
-    });
+        });
 
     return response()->json([
         'communities' => $communities,

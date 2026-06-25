@@ -31,6 +31,10 @@ class Message extends Model
 
         'forward_source_message_id',
         'forward_source_community_id',
+        'meeting_room_id',
+        'meeting_call_type',
+        'meeting_expires_at',
+        'meeting_link',
     ];
 
     protected $casts = [
@@ -130,5 +134,16 @@ class Message extends Model
             $q->whereNull('expires_at')
               ->orWhere('expires_at', '>', now());
         });
+    }
+
+    public function getMeetingLinkAttribute()
+    {
+        if (!$this->meeting_room_id) {
+            return null;
+        }
+
+        return config('app.frontend_url')
+            . '/meeting/'
+            . $this->meeting_room_id;
     }
 }

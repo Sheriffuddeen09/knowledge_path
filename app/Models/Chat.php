@@ -18,6 +18,9 @@ class Chat extends Model {
         'created_by',
         'only_admin_send',
         'disappearing_mode',
+        'meeting_room_id',
+        'meeting_call_type',
+        'meeting_expires_at',
     ];
 
     protected $appends = ['image_url'];
