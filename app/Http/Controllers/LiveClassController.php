@@ -140,7 +140,7 @@ public function sendRequest(Request $request)
             [
                 'teacher_id' => $requestModel->teacher_id,
                 'student_id' => $requestModel->user_id,
-                'type' => 'student_teacher',
+                'type' => 'private',
             ]
         );
 

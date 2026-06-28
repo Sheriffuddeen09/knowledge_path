@@ -1477,5 +1477,88 @@ public function removeTwoStep()
         ]);
     }
 
+    public function getPrivateChat(User $user)
+{
+    $authId = auth()->id();
+
+    $chat = Chat::where('type', 'private')
+        ->where(function ($q) use ($authId, $user) {
+            $q->where('user_one_id', $authId)
+              ->where('user_two_id', $user->id);
+        })
+        ->orWhere(function ($q) use ($authId, $user) {
+            $q->where('user_one_id', $user->id)
+              ->where('user_two_id', $authId);
+        })
+        ->with([
+            'userOne',
+            'userTwo',
+            'messages.sender',
+        ])
+        ->first();
+
+    if (!$chat) {
+        return response()->json([
+            'message' => 'Chat not found'
+        ], 404);
+    }
+
+    // Build the other user
+    $chat->other = $chat->user_one_id == $authId
+        ? $chat->userTwo
+        : $chat->userOne;
+
+    return response()->json([
+        'chat' => $chat,
+        'messages' => $chat->messages,
+    ]);
+}
+
+
+public function getPrivateChatId(User $user)
+{
+    $authId = auth()->id();
+
+    logger()->info([
+        'auth_id' => $authId,
+        'target_user' => $user->id,
+    ]);
+
+    $chat = Chat::with([
+        'userOne',
+        'userTwo',
+        'messages.sender',
+    ])
+    ->where('type', 'private')
+    ->where(function ($query) use ($authId, $user) {
+        $query->where(function ($q) use ($authId, $user) {
+            $q->where('user_one_id', $authId)
+              ->where('user_two_id', $user->id);
+        })->orWhere(function ($q) use ($authId, $user) {
+            $q->where('user_one_id', $user->id)
+              ->where('user_two_id', $authId);
+        });
+    })
+    ->first();
+
+    logger()->info([
+        'chat' => $chat?->id,
+    ]);
+
+    if (!$chat) {
+        return response()->json([
+            'message' => 'Chat not found',
+        ], 404);
+    }
+
+    $chat->other = $chat->user_one_id == $authId
+        ? $chat->userTwo
+        : $chat->userOne;
+
+    return response()->json([
+        'chat' => $chat,
+        'messages' => $chat->messages,
+    ]);
+}
 
 }

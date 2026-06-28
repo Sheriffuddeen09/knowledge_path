@@ -288,6 +288,9 @@ Route::middleware('auth:sanctum')->group(function () {
         [ChatController::class, 'getEncryption']
     );
 
+    Route::get('/chat/profile/{user}', [ChatController::class, 'getPrivateChatId']);
+    Route::get('/chat/user/{user}', [ChatController::class, 'getPrivateChat']);
+
     Route::post(
         '/chats/{chat}/auto-verify',
         [ChatController::class, 'autoVerify']

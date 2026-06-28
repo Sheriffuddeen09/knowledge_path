@@ -144,7 +144,7 @@ public function sendRequest(Request $request)
     Chat::firstOrCreate([
         'user_one_id' => $one,
         'user_two_id' => $two,
-        'type' => 'admin_admin',
+        'type' => 'private',
     ]);
     }
 
@@ -336,41 +336,60 @@ public function showAccepted($id, Request $request)
         })
         ->with([
             'user:id,first_name,last_name',
-            'admin:id,first_name,last_name'
+            'admin:id,first_name,last_name',
         ])
         ->get();
 
-    $acceptedAdmins = $acceptedRelations->map(function ($relation) use ($id, $authId, $isOwner) {
+    $acceptedAdmins = $acceptedRelations
+        ->map(function ($relation) use ($id, $authId, $isOwner) {
 
-        $admin = $relation->user_id == $id
-            ? $relation->admin
-            : $relation->user;
+            // Person that belongs to profile owner
+            $admin = $relation->user_id == $id
+                ? $relation->admin
+                : $relation->user;
 
-        // ✅ OWNER ALWAYS ACCEPTED
-        if ($isOwner) {
-            $admin->status = 'accepted';
+            if (!$admin) {
+                return null;
+            }
+
+            // Owner viewing own profile
+            if ($isOwner) {
+                $admin->status = 'accepted';
+                return $admin;
+            }
+
+            // Logged-in user himself
+            if ($admin->id == $authId) {
+                $admin->status = 'self';
+                return $admin;
+            }
+
+            // Check relation between visitor and THIS admin
+            $visitorRelation = AdminFriendRequest::where(function ($q) use ($authId, $admin) {
+                    $q->where('user_id', $authId)
+                      ->where('admin_id', $admin->id);
+                })
+                ->orWhere(function ($q) use ($authId, $admin) {
+                    $q->where('user_id', $admin->id)
+                      ->where('admin_id', $authId);
+                })
+                ->first();
+
+            $admin->status = $visitorRelation
+                ? $visitorRelation->status
+                : 'none';
+
             return $admin;
-        }
-
-        // ✅ CORRECT visitor relation lookup
-        $visitorRelation = AdminFriendRequest::where(function ($q) use ($authId, $id) {
-        $q->where('user_id', $authId)
-          ->where('admin_id', $id);
-        })->orWhere(function ($q) use ($authId, $id) {
-            $q->where('user_id', $id)
-            ->where('admin_id', $authId);
-        })->first();
-
-        $admin->status = $visitorRelation?->status ?? 'none';
-
-        return $admin;
-    })->values();
+        })
+        ->filter()
+        ->values();
 
     return response()->json([
         'acceptedAdmins' => $acceptedAdmins,
         'isOwner' => $isOwner,
     ]);
 }
+
 
 public function showAcceptedIndex(Request $request)
 {

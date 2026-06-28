@@ -160,7 +160,7 @@ public function sendRequest(Request $request)
     Chat::firstOrCreate([
         'user_one_id' => $one,
         'user_two_id' => $two,
-        'type' => 'student_student',
+        'type' => 'private',
     ]);
     }
 
@@ -351,41 +351,60 @@ public function showAccepted($id, Request $request)
         })
         ->with([
             'user:id,first_name,last_name',
-            'student:id,first_name,last_name'
+            'student:id,first_name,last_name',
         ])
         ->get();
 
-    $acceptedStudents = $acceptedRelations->map(function ($relation) use ($id, $authId, $isOwner) {
+    $acceptedStudents = $acceptedRelations
+        ->map(function ($relation) use ($id, $authId, $isOwner) {
 
-        $student = $relation->user_id == $id
-            ? $relation->student
-            : $relation->user;
+            // Person that belongs to profile owner
+            $student = $relation->user_id == $id
+                ? $relation->student
+                : $relation->user;
 
-        // ✅ OWNER ALWAYS ACCEPTED
-        if ($isOwner) {
-            $student->status = 'accepted';
+            if (!$student) {
+                return null;
+            }
+
+            // Owner viewing own profile
+            if ($isOwner) {
+                $student->status = 'accepted';
+                return $student;
+            }
+
+            // Logged-in user himself
+            if ($student->id == $authId) {
+                $student->status = 'self';
+                return $student;
+            }
+
+            // Check relation between visitor and THIS student
+            $visitorRelation = StudentFriendRequest::where(function ($q) use ($authId, $student) {
+                    $q->where('user_id', $authId)
+                      ->where('student_id', $student->id);
+                })
+                ->orWhere(function ($q) use ($authId, $student) {
+                    $q->where('user_id', $student->id)
+                      ->where('student_id', $authId);
+                })
+                ->first();
+
+            $student->status = $visitorRelation
+                ? $visitorRelation->status
+                : 'none';
+
             return $student;
-        }
-
-        // ✅ CORRECT visitor relation lookup
-        $visitorRelation = StudentFriendRequest::where(function ($q) use ($authId, $id) {
-        $q->where('user_id', $authId)
-          ->where('student_id', $id);
-        })->orWhere(function ($q) use ($authId, $id) {
-            $q->where('user_id', $id)
-            ->where('student_id', $authId);
-        })->first();
-
-        $student->status = $visitorRelation?->status ?? 'none';
-
-        return $student;
-    })->values();
+        })
+        ->filter()
+        ->values();
 
     return response()->json([
         'acceptedStudents' => $acceptedStudents,
         'isOwner' => $isOwner,
     ]);
 }
+
 
 
 public function acceptedIndex(Request $request) 
@@ -430,4 +449,6 @@ public function acceptedIndex(Request $request)
     ]);
 }
 
+
+// showAccepted
 }
