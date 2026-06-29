@@ -26,7 +26,8 @@ public function createGroup(Request $request)
     $imagePath = null;
 
     if ($request->hasFile('image')) {
-        $imagePath = $request->file('image')->store('group_images', 'public');
+        $imagePath = $request->file('image')
+            ->store('group_images', 'public');
     }
 
     $chat = Chat::create([
@@ -37,20 +38,35 @@ public function createGroup(Request $request)
         'only_admin_send' => $request->only_admin_send ?? 0,
         'last_activity_at' => now(),
     ]);
+
+    // Creator
     $chat->users()->attach(auth()->id(), [
         'role' => 'admin',
-        'status' => 'approved', // 🔥 FIX
-        'joined_at' => now(), // ✅
+        'status' => 'approved',
+        'joined_at' => now(),
     ]);
+
+    // Members
     foreach ($request->users as $userId) {
         $chat->users()->attach($userId, [
             'role' => 'member',
-            'status' => 'approved', 
-            'joined_at' => now(), // ✅
+            'status' => 'approved',
+            'joined_at' => now(),
         ]);
     }
 
-    return response()->json($chat);
+    // Reload with users + count
+    $chat = Chat::with([
+    'users' => function ($q) {
+        $q->select('users.id', 'first_name', 'last_name');
+    }
+    ])
+    ->withCount('users')
+    ->find($chat->id);
+
+    return response()->json([
+        'chat' => $chat,
+    ]);
 }
 
 

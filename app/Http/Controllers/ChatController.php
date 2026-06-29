@@ -1481,21 +1481,39 @@ public function removeTwoStep()
 {
     $authId = auth()->id();
 
-    $chat = Chat::where('type', 'private')
-        ->where(function ($q) use ($authId, $user) {
-            $q->where('user_one_id', $authId)
+    $chat = Chat::with([
+        'teacher',
+        'student',
+        'userOne',
+        'userTwo',
+        'messages.sender',
+    ])
+    ->where(function ($query) use ($authId, $user) {
+
+        // Normal private chat
+        $query->where(function ($q) use ($authId, $user) {
+            $q->where('type', 'private')
+              ->where('user_one_id', $authId)
               ->where('user_two_id', $user->id);
         })
         ->orWhere(function ($q) use ($authId, $user) {
-            $q->where('user_one_id', $user->id)
+            $q->where('type', 'private')
+              ->where('user_one_id', $user->id)
               ->where('user_two_id', $authId);
         })
-        ->with([
-            'userOne',
-            'userTwo',
-            'messages.sender',
-        ])
-        ->first();
+
+        // Teacher -> Student chat
+        ->orWhere(function ($q) use ($authId, $user) {
+            $q->where('teacher_id', $authId)
+              ->where('student_id', $user->id);
+        })
+        ->orWhere(function ($q) use ($authId, $user) {
+            $q->where('teacher_id', $user->id)
+              ->where('student_id', $authId);
+        });
+
+    })
+    ->first();
 
     if (!$chat) {
         return response()->json([
@@ -1503,62 +1521,20 @@ public function removeTwoStep()
         ], 404);
     }
 
-    // Build the other user
-    $chat->other = $chat->user_one_id == $authId
-        ? $chat->userTwo
-        : $chat->userOne;
-
-    return response()->json([
-        'chat' => $chat,
-        'messages' => $chat->messages,
-    ]);
-}
-
-
-public function getPrivateChatId(User $user)
-{
-    $authId = auth()->id();
-
-    logger()->info([
-        'auth_id' => $authId,
-        'target_user' => $user->id,
-    ]);
-
-    $chat = Chat::with([
-        'userOne',
-        'userTwo',
-        'messages.sender',
-    ])
-    ->where('type', 'private')
-    ->where(function ($query) use ($authId, $user) {
-        $query->where(function ($q) use ($authId, $user) {
-            $q->where('user_one_id', $authId)
-              ->where('user_two_id', $user->id);
-        })->orWhere(function ($q) use ($authId, $user) {
-            $q->where('user_one_id', $user->id)
-              ->where('user_two_id', $authId);
-        });
-    })
-    ->first();
-
-    logger()->info([
-        'chat' => $chat?->id,
-    ]);
-
-    if (!$chat) {
-        return response()->json([
-            'message' => 'Chat not found',
-        ], 404);
+    // Determine the other participant
+    if ($chat->teacher_id || $chat->student_id) {
+        $chat->other = $chat->teacher_id == $authId
+            ? $chat->student
+            : $chat->teacher;
+    } else {
+        $chat->other = $chat->user_one_id == $authId
+            ? $chat->userTwo
+            : $chat->userOne;
     }
 
-    $chat->other = $chat->user_one_id == $authId
-        ? $chat->userTwo
-        : $chat->userOne;
-
     return response()->json([
         'chat' => $chat,
         'messages' => $chat->messages,
     ]);
 }
-
 }

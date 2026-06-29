@@ -36,6 +36,15 @@ class CommunityMessage extends Model
     'forward_source_community_id',
     'is_system'
     ];
+
+    public function poll()
+    {
+        return $this->belongsTo(
+            CommunityPoll::class,
+            'poll_id'
+        );
+    }
+    
     public function sender()
     {
         return $this->belongsTo(User::class);

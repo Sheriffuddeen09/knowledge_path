@@ -64,6 +64,17 @@ use App\Http\Controllers\CommunityController;
 
  use App\Http\Controllers\MeetingController;
 
+ use App\Http\Controllers\CommunityPollController;
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    Route::post(
+        '/community/poll/create',
+        [CommunityPollController::class,'create']
+    );
+
+});
+
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post(

@@ -29,10 +29,12 @@ class CommunityController extends Controller
 
      public function messages($id)
 {
-    $community = Community::with([
-        'messages.sender',
-        'messages.repliedMessage.sender',
-        'messages.approvals'
+   $community = Community::with([
+    'messages.sender',
+    'messages.repliedMessage.sender',
+    'messages.approvals',
+    'messages.poll',
+    'messages.poll.options.voteUsers',
     ])->findOrFail($id);
 
     $lastReadId = DB::table(
@@ -53,72 +55,113 @@ class CommunityController extends Controller
     $firstUnreadMessageId = null;
 
     $messages = $community
-        ->messages
-        ->sortBy('id')
-        ->map(function ($msg)
-        use (
-            &$firstUnreadMessageId,
-            $lastReadId
+    ->messages
+    ->sortBy('id')
+    ->map(function ($msg)
+    use (
+        &$firstUnreadMessageId,
+        $lastReadId
+    ) {
+
+        // Unread logic
+        if (
+            $lastReadId &&
+            !$firstUnreadMessageId &&
+            $msg->id > $lastReadId
         ) {
-            if (
-                $lastReadId &&
-                !$firstUnreadMessageId &&
-                $msg->id > $lastReadId
-            ) {
+            $firstUnreadMessageId = $msg->id;
+        }
 
-                $firstUnreadMessageId =
-                    $msg->id;
-            }
-            if ($msg->file) {
+        // File
+        if ($msg->file) {
 
-                $msg->files = [[
+            $msg->files = [[
+                'file_url' => asset(
+                    'storage/' . $msg->file
+                ),
+                'file_name' => basename(
+                    $msg->file
+                ),
+                'type' => $msg->type,
+            ]];
 
-                    'file_url' => asset(
-                        'storage/' .
-                        $msg->file
-                    ),
+        } else {
 
-                    'file_name' => basename(
-                        $msg->file
-                    ),
+            $msg->files = [];
 
-                    'type' =>
-                        $msg->type,
-                ]];
+        }
 
-            } else {
+        // Reply
+        if ($msg->repliedMessage) {
 
-                $msg->files = [];
-            }
-            if (
-                $msg->repliedMessage
-            ) {
+            $msg->replied_message = [
 
-                $msg->replied_message = [
+                'id' => $msg->repliedMessage->id,
 
-                    'id' =>
-                        $msg
-                        ->repliedMessage
-                        ->id,
+                'message' => $msg->repliedMessage->message,
 
-                    'message' =>
-                        $msg
-                        ->repliedMessage
-                        ->message,
+                'sender' => $msg->repliedMessage->sender,
 
-                    'sender' =>
-                        $msg
-                        ->repliedMessage
-                        ->sender,
-                ];
-            }
-            $msg->approval_count =
-                $msg
-                ->approvals
-                ->count();
-            return $msg;
-        })
-        ->values();
+            ];
+
+        }
+
+        if (
+            $msg->type === 'poll' &&
+            $msg->poll
+        ) {
+
+            $totalVotes = $msg->poll
+                ->options
+                ->sum('votes');
+
+           $msg->poll_data = [
+                'id' => $msg->poll->id,
+                'question' => $msg->poll->question,
+                'multiple_choice' => $msg->poll->multiple_choice,
+                'expires_at' => $msg->poll->expires_at,
+                'total_votes' => $totalVotes,
+                'options' => $msg->poll
+                ->options
+                ->map(function ($option) use ($totalVotes) {
+
+                    return [
+
+                        'id' => $option->id,
+
+                        'option' => $option->option,
+
+                        'votes' => $option->votes,
+
+                        // Has the logged-in user voted for this option?
+                        'user_voted' => $option
+                            ->voteUsers
+                            ->contains(
+                                'user_id',
+                                auth()->id()
+                            ),
+
+                        'percentage' => $totalVotes > 0
+                            ? round(
+                                ($option->votes / $totalVotes) * 100
+                            )
+                            : 0,
+
+                    ];
+
+                })
+                    ->values(),
+            ];
+        }
+
+        $msg->approval_count =
+            $msg->approvals->count();
+
+        return $msg;
+
+    })
+    ->values();
+
 
         return response()->json([
         'messages' =>

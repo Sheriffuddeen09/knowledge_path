@@ -28,12 +28,18 @@ return new class extends Migration
                     'image',
                     'voice',
                     'video',
-                    'file'
+                    'file',
+                    'poll'
                 ])->default('text');
-
+                
                 $table->longText('message')->nullable();
 
                 $table->string('file')->nullable();
+                
+                $table->foreignId('poll_id')
+                ->nullable()
+                ->constrained('community_polls')
+                ->nullOnDelete();
 
                 $table->boolean('edited')
                     ->default(false);
