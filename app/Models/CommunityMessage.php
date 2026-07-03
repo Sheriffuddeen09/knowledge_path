@@ -25,7 +25,7 @@ class CommunityMessage extends Model
     'approval_status',
     'admin_response',
     'is_pinned',
-    
+    'poll_id',
     'is_forwarded',
     'forwarded_from',
     'forward_source',

@@ -33,7 +33,10 @@ class CommunityController extends Controller
     'messages.sender',
     'messages.repliedMessage.sender',
     'messages.approvals',
+
     'messages.poll',
+    'messages.poll.sender',
+    'messages.poll.options',
     'messages.poll.options.voteUsers',
     ])->findOrFail($id);
 
@@ -107,51 +110,63 @@ class CommunityController extends Controller
         }
 
         if (
-            $msg->type === 'poll' &&
-            $msg->poll
-        ) {
+    $msg->type === 'poll' &&
+    $msg->poll
+) {
 
-            $totalVotes = $msg->poll
-                ->options
-                ->sum('votes');
+    $totalVotes = $msg->poll
+        ->options
+        ->sum('votes');
 
-           $msg->poll_data = [
-                'id' => $msg->poll->id,
-                'question' => $msg->poll->question,
-                'multiple_choice' => $msg->poll->multiple_choice,
-                'expires_at' => $msg->poll->expires_at,
-                'total_votes' => $totalVotes,
-                'options' => $msg->poll
-                ->options
-                ->map(function ($option) use ($totalVotes) {
+    $poll = [
 
-                    return [
+        'id' => $msg->poll->id,
 
-                        'id' => $option->id,
+        'question' => $msg->poll->question,
 
-                        'option' => $option->option,
+        'multiple_choice' => $msg->poll->multiple_choice,
 
-                        'votes' => $option->votes,
+        'expires_at' => $msg->poll->expires_at,
 
-                        // Has the logged-in user voted for this option?
-                        'user_voted' => $option
-                            ->voteUsers
-                            ->contains(
-                                'user_id',
-                                auth()->id()
-                            ),
+        'total_votes' => $totalVotes,
 
-                        'percentage' => $totalVotes > 0
-                            ? round(
-                                ($option->votes / $totalVotes) * 100
-                            )
-                            : 0,
+        'options' => $msg->poll
+            ->options
+            ->map(function ($option) use ($totalVotes) {
 
-                    ];
+                return [
 
-                })
-                    ->values(),
+                    'id' => $option->id,
+
+                    'option' => $option->option,
+
+                    'votes' => $option->votes,
+
+                    'user_voted' => $option
+                        ->voteUsers
+                        ->contains(
+                            'user_id',
+                            auth()->id()
+                        ),
+
+                    'percentage' => $totalVotes > 0
+                        ? round(
+                            ($option->votes / $totalVotes) * 100
+                        )
+                        : 0,
+
+                ];
+
+            })
+            ->values(),
+
             ];
+
+            $msg->setRelation(
+                'poll',
+                collect($poll)
+            );
+
         }
 
         $msg->approval_count =

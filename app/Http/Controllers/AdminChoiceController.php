@@ -35,7 +35,7 @@ class AdminChoiceController extends Controller
     return response()->json([
         'message' => 'Choice saved successfully.',
         'redirect' => $request->choice === 'arabic_teacher'
-            ? '/admin/teacher-form'
+            ? '/admin/dashboard'
             : '/admin/dashboard'
     ], 200);
 }

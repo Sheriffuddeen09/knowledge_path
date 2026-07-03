@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Hash;
 use App\Models\User;
-use App\Models\StudentBadge;
+use App\Models\UserBadge;
 use App\Models\OtpVerification;
 use Carbon\Carbon;
 use App\Mail\OtpMail;
@@ -127,25 +127,23 @@ class RegisterController extends Controller
         'dob' => $request->dob,
         'phone' => $request->phone,
         'phone_country_code' => $request->phone_country_code,
-        'location' => $request->location,
         'email' => $request->email,
         'gender' => $request->gender,
         'role' => $request->role,
         'password' => Hash::make($request->password),
         'email_verified_at' => now(),
         'privacy' => $request->privacy,
+        'location' =>  $request->location,
     ]);
 
     $otpRecord->delete();
 
     // Give starter badges ONLY to students
-    if ($user->role === 'student') {
-        StudentBadge::create([
-            'student_id' => $user->id,
-            'badges' => 30,
-            'source' => 'registration',
-        ]);
-    }
+    UserBadge::create([
+        'user_id' => $user->id,
+        'badges' => 30,
+        'source' => 'registration',
+    ]);
 
    
     $targetRole = $user->role === 'student' ? 'admin' : 'student';

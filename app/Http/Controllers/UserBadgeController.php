@@ -2,23 +2,23 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\StudentBadge;
+use App\Models\UserBadge;
 use Illuminate\Http\Request;
 
-class StudentBadgeController extends Controller
+class UserBadgeController extends Controller
 {
     public function badges(Request $request)
     {
-        $studentId = $request->user()->id;
+        $userId = $request->user()->id;
 
         return response()->json([
-            'total' => StudentBadge::where('student_id', $studentId)->sum('badges'),
+            'total' => UserBadge::where('user_id', $userId)->sum('badges'),
 
-            'assignment' => StudentBadge::where('student_id', $studentId)
+            'assignment' => UserBadge::where('user_id', $userId)
                 ->where('source', 'assignment')
                 ->sum('badges'),
 
-            'exam' => StudentBadge::where('student_id', $studentId)
+            'exam' => UserBadge::where('user_id', $userId)
                 ->where('source', 'exam')
                 ->sum('badges'),
         ]);
@@ -27,16 +27,16 @@ class StudentBadgeController extends Controller
     
     public function watchAd(Request $request)
 {
-    $student = $request->user();
+    $user = $request->user();
 
     // add 5 badges
-    StudentBadge::create([
-        'student_id' => $student->id,
+    UserBadge::create([
+        'user_id' => $user->id,
         'badges' => 5,
         'source' => 'ads'
     ]);
 
-    $total = StudentBadge::where('student_id', $student->id)->sum('badges');
+    $total = UserBadge::where('user_id', $user->id)->sum('badges');
 
     return response()->json(['total' => $total]);
 }

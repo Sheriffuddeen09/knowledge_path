@@ -9,7 +9,7 @@ use App\Mail\StudentRequestedLiveClass;
 use App\Mail\LiveClassAccepted;
 use App\Mail\LiveClassDeclined;
 use App\Models\Chat;
-use App\Models\StudentBadge;
+use App\Models\UserBadge;
 
 
 
@@ -36,13 +36,13 @@ public function sendRequest(Request $request)
     }
 
     // Check badges
-    $total = StudentBadge::where('student_id', $user->id)->sum('badges');
+    $total = UserBadge::where('student_id', $user->id)->sum('badges');
     if ($total < 20) {
         return response()->json(['message' => 'Not enough badges'], 400);
     }
 
     // ✅ Subtract 20 now
-    StudentBadge::create([
+    UserBadge::create([
         'student_id' => $user->id,
         'badges' => -20,
         'source' => 'unlock'
@@ -63,7 +63,7 @@ public function sendRequest(Request $request)
             'status' => true,
             'message' => 'Request sent successfully',
             'request' => $existing,
-            'total' => StudentBadge::where('student_id', $user->id)->sum('badges'),
+            'total' => UserBadge::where('student_id', $user->id)->sum('badges'),
         ]);
     }
 
@@ -80,7 +80,7 @@ public function sendRequest(Request $request)
         'status' => true,
         'message' => 'Request sent successfully',
         'request' => $requestModel,
-        'total' => StudentBadge::where('student_id', $user->id)->sum('badges'),
+        'total' => UserBadge::where('student_id', $user->id)->sum('badges'),
     ]);
 }
 
@@ -152,7 +152,7 @@ public function sendRequest(Request $request)
         Mail::to($requestModel->student->email)
             ->send(new LiveClassDeclined($requestModel));
         
-         StudentBadge::create([
+         UserBadge::create([
         'student_id' => $requestModel->user_id,
         'badges' => 20,
         'source' => 'refund'

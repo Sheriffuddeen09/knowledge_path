@@ -4,19 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-
-
-class StudentBadge extends Model
+class UserBadge extends Model
 {
     protected $fillable = [
-        'student_id',
+        'user_id',
         'badges',
         'source',
         'result_id',
     ];
 
-    public function student()
+    public function user()
     {
-        return $this->belongsTo(User::class, 'student_id');
+        return $this->belongsTo(User::class);
     }
 }

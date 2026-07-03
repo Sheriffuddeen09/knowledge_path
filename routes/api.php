@@ -38,7 +38,7 @@ use App\Http\Controllers\AssignmentController;
 use App\Http\Controllers\AssignmentResultController;
 use App\Http\Controllers\ExamController;
 use App\Http\Controllers\ExamResultController;
-use App\Http\Controllers\StudentBadgeController;
+use App\Http\Controllers\UserBadgeController;
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\BlockController;
 use App\Http\Controllers\PostController;
@@ -61,16 +61,32 @@ use App\Http\Controllers\Api\PasskeyController;
 use App\Http\Controllers\Api\BiodataController;
 use App\Http\Controllers\EncryptionController;
 use App\Http\Controllers\CommunityController;
+use App\Http\Controllers\MeetingController;
+use App\Http\Controllers\CommunityPollController;
+use App\Http\Controllers\ProposalController;
 
- use App\Http\Controllers\MeetingController;
 
- use App\Http\Controllers\CommunityPollController;
-
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post(
+        '/proposals',
+        [ProposalController::class,'store']
+    );
+});
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post(
         '/community/poll/create',
         [CommunityPollController::class,'create']
+    );
+
+     Route::post(
+        '/community/poll/vote',
+        [CommunityPollController::class, 'vote']
+    );
+
+    Route::get(
+        '/community/poll/{poll}',
+        [CommunityPollController::class, 'show']
     );
 
 });
@@ -653,8 +669,8 @@ Route::middleware('auth:sanctum')->group(function () {
 //download check-phone
 
 Route::middleware('auth:sanctum')->get(
-    '/student/badges',
-    [StudentBadgeController::class, 'badges']
+    '/user/badges',
+    [UserBadgeController::class, 'badges']
 );
 
 

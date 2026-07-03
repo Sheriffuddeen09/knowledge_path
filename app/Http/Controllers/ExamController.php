@@ -15,7 +15,7 @@ use App\Models\Notification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
-use App\Models\StudentBadge;
+use App\Models\UserBadge;
 
 
 
@@ -188,7 +188,7 @@ public function submit(Request $request, Exam $exam)
 
     // ✅ SAVE BADGES
     if ($grade['badges'] > 0) {
-        StudentBadge::create([
+        UserBadge::create([
             'student_id' => $studentId,
             'badges' => $grade['badges'],
             'source' => 'exam',

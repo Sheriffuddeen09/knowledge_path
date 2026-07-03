@@ -18,6 +18,11 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    public function badges()
+        {
+            return $this->hasMany(UserBadge::class);
+        }
+
     public function passkeys()
         {
             return $this->hasMany(Passkey::class);
@@ -52,6 +57,10 @@ class User extends Authenticatable
                     ->withTimestamps();
     }
 
+    public function proposals()
+    {
+        return $this->hasMany(Proposal::class, 'student_id');
+    }
 
     public function downloads() {
         return $this->hasMany(VideoDownload::class);
