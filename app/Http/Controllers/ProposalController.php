@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 use App\Models\Proposal;    
 use Illuminate\Http\Request;
+use Carbon\Carbon;
 
 class ProposalController extends Controller
 {
@@ -29,35 +30,76 @@ class ProposalController extends Controller
         'from_time' => 'required|date_format:H:i',
         'to_time' => 'required|date_format:H:i|after:from_time',
         'description' => 'required|string',
+        'expires_in' => 'required|in:20_minutes,7_days,14_days,30_days',
     ]);
 
-    $validated['student_id'] = $user->id;
+            switch ($request->expires_in) {
 
-    $proposal = Proposal::create($validated);
+            case '20_minutes':
+                $expiresAt = now()->addMinutes(20);
+                break;
 
-    return response()->json([
-    'message' => 'Proposal created successfully.',
-    'proposal' => $proposal,
-], 201);
+            case '7_days':
+                $expiresAt = now()->addDays(7);
+                break;
+
+            case '14_days':
+                $expiresAt = now()->addDays(14);
+                break;
+
+            case '30_days':
+                $expiresAt = now()->addDays(30);
+                break;
+        }
+
+        $validated['student_id'] = auth()->id();
+        $validated['expires_at'] = $expiresAt;
+
+        $proposal = Proposal::create($validated);
+        
+            return response()->json([
+            'message' => 'Proposal created successfully.',
+            'proposal' => $proposal,
+        ], 201);
+        }
+
+
+
+private function deleteExpiredProposals()
+{
+    Proposal::whereNotNull('expires_at')
+        ->where('expires_at', '<=', now())
+        ->delete();
+}
+
+   public function index()
+   {
+    $this->deleteExpiredProposals();
+
+    $teacher = auth()->user();
+
+    if ($teacher->role !== 'admin') {
+        return response()->json([
+            'message' => 'Only teachers can view proposals.'
+        ], 403);
+    }
+
+    $proposals = Proposal::with([
+        'student:id,first_name,last_name,role,gender,address,location'
+    ])
+    ->whereDoesntHave('requests', function ($query) use ($teacher) {
+        $query->where('teacher_id', $teacher->id)
+              ->whereIn('status', ['pending', 'accepted', 'declined']);
+    })
+    ->where(function ($query) {
+    $query->whereNull('expires_at')
+          ->orWhere('expires_at', '>', now());
+    })
+    ->latest()
+    ->get();
+
+    return response()->json($proposals);
 }
 
 
-    public function index()
-    {
-        $user = auth()->user();
-
-        if ($user->role !== 'admin') {
-            return response()->json([
-                'message' => 'Only teachers can view proposals.'
-            ], 403);
-        }
-
-        $proposals = Proposal::with([
-            'student:id,first_name,last_name,role,gender,address,location'
-        ])
-        ->latest()
-        ->get();
-
-        return response()->json($proposals);
-    }
 }

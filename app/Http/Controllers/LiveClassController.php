@@ -36,16 +36,16 @@ public function sendRequest(Request $request)
     }
 
     // Check badges
-    $total = UserBadge::where('student_id', $user->id)->sum('badges');
+    $total = UserBadge::where('user_id', $user->id)->sum('badges');
     if ($total < 20) {
         return response()->json(['message' => 'Not enough badges'], 400);
     }
 
     // ✅ Subtract 20 now
     UserBadge::create([
-        'student_id' => $user->id,
+        'user_id' => $user->id,
         'badges' => -20,
-        'source' => 'unlock'
+        'source' => 'registration'
     ]);
 
     // ✅ Resend
@@ -63,7 +63,7 @@ public function sendRequest(Request $request)
             'status' => true,
             'message' => 'Request sent successfully',
             'request' => $existing,
-            'total' => UserBadge::where('student_id', $user->id)->sum('badges'),
+            'total' => UserBadge::where('user_id', $user->id)->sum('badges'),
         ]);
     }
 
@@ -80,7 +80,7 @@ public function sendRequest(Request $request)
         'status' => true,
         'message' => 'Request sent successfully',
         'request' => $requestModel,
-        'total' => UserBadge::where('student_id', $user->id)->sum('badges'),
+        'total' => UserBadge::where('user_id', $user->id)->sum('badges'),
     ]);
 }
 

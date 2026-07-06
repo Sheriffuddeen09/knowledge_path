@@ -18,6 +18,22 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    public function teacherRequests()
+    {
+    return $this->hasMany(
+        TeacherRequest::class,
+        'teacher_id'
+    );
+    }
+
+    public function studentRequests()
+        {
+            return $this->hasMany(
+                TeacherRequest::class,
+                'student_id'
+            );
+        }
+
     public function badges()
         {
             return $this->hasMany(UserBadge::class);

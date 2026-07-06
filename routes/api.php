@@ -64,12 +64,71 @@ use App\Http\Controllers\CommunityController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\CommunityPollController;
 use App\Http\Controllers\ProposalController;
+use App\Http\Controllers\TeacherRequestController;
 
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post(
         '/proposals',
         [ProposalController::class,'store']
+    );
+
+    Route::get(
+        '/proposals-get',
+        [ProposalController::class,'index']
+    );
+
+    Route::post(
+        '/teacher-request/{proposal}',
+        [TeacherRequestController::class,'send']
+    );
+
+    Route::post('/student/request/{requestId}/message', 
+    [TeacherRequestController::class, 'messageRequest']);
+
+
+    Route::middleware('auth:sanctum')->group(function () {
+
+        Route::get(
+            '/student/teacher-requests',
+            [TeacherRequestController::class,'received']
+        );
+
+        Route::patch(
+            '/teacher-request/{id}/accept',
+            [TeacherRequestController::class,'accept']
+        );
+
+        Route::patch(
+            '/teacher-request/{id}/decline',
+            [TeacherRequestController::class,'decline']
+        );
+
+        Route::post(
+            '/teacher-request/{id}/message',
+            [TeacherRequestController::class,'message']
+        );
+    
+        Route::delete(
+            '/student/teacher-request/{id}',
+            [TeacherRequestController::class, 'removeCancelledRequest']
+        );
+
+    });
+
+     Route::get(
+        '/teacher-request-history',
+        [TeacherRequestController::class,'history']
+    );
+
+    Route::patch(
+        '/teacher-request/{id}/cancel',
+        [TeacherRequestController::class,'cancelRequest']
+    );
+
+    Route::delete(
+        '/teacher-request/{id}',
+        [TeacherRequestController::class,'deleteHistory']
     );
 });
 Route::middleware('auth:sanctum')->group(function () {

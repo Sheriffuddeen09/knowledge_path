@@ -22,10 +22,18 @@ use Illuminate\Database\Eloquent\Model;
             'status',
             'from_time',
             'to_time',
+            'expires_at',
         ];
 
         public function student()
         {
             return $this->belongsTo(User::class, 'student_id');
+        }
+
+        public function requests()
+        {
+            return $this->hasMany(
+                TeacherRequest::class
+            );
         }
     }

@@ -47,5 +47,8 @@ class TeacherForm extends Model
                 ? asset('storage/' . $this->logo)
                 : null;
         }
-
+    public function requests()
+    {
+        return $this->hasMany(TeacherRequest::class);
+    }
 }
