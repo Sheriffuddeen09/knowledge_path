@@ -30,7 +30,7 @@ class ProposalController extends Controller
         'from_time' => 'required|date_format:H:i',
         'to_time' => 'required|date_format:H:i|after:from_time',
         'description' => 'required|string',
-        'expires_in' => 'required|in:20_minutes,7_days,14_days,30_days',
+        'expires_in' => 'required|in:20_minutes,7_days,14_days,30_days,60_days',
     ]);
 
             switch ($request->expires_in) {
@@ -50,6 +50,10 @@ class ProposalController extends Controller
             case '30_days':
                 $expiresAt = now()->addDays(30);
                 break;
+
+            case '60_days':
+            $expiresAt = now()->addDays(60);
+            break;
         }
 
         $validated['student_id'] = auth()->id();
@@ -73,7 +77,7 @@ private function deleteExpiredProposals()
 }
 
    public function index()
-   {
+{
     $this->deleteExpiredProposals();
 
     $teacher = auth()->user();
@@ -87,13 +91,18 @@ private function deleteExpiredProposals()
     $proposals = Proposal::with([
         'student:id,first_name,last_name,role,gender,address,location'
     ])
+    ->where('student_deleted', false) // Hide deleted proposals
     ->whereDoesntHave('requests', function ($query) use ($teacher) {
         $query->where('teacher_id', $teacher->id)
-              ->whereIn('status', ['pending', 'accepted', 'declined']);
+              ->whereIn('status', [
+                  'pending',
+                  'accepted',
+                  'declined'
+              ]);
     })
     ->where(function ($query) {
-    $query->whereNull('expires_at')
-          ->orWhere('expires_at', '>', now());
+        $query->whereNull('expires_at')
+              ->orWhere('expires_at', '>', now());
     })
     ->latest()
     ->get();
@@ -102,4 +111,119 @@ private function deleteExpiredProposals()
 }
 
 
+public function myProposals()
+{
+    $student = auth()->user();
+
+    $proposals = Proposal::where('student_id', $student->id)
+        ->where('student_deleted', false)
+        ->latest()
+        ->get();
+
+    return response()->json($proposals);
+}
+
+
+
+public function edit($id)
+{
+    $proposal = Proposal::where(
+        'student_id',
+        auth()->id()
+    )->findOrFail($id);
+
+    return response()->json($proposal);
+}
+
+
+public function update(Request $request,$id)
+{
+    $proposal = Proposal::where(
+        'student_id',
+        auth()->id()
+    )->findOrFail($id);
+
+    if($proposal->expires_at <= now()){
+
+        return response()->json([
+            'message'=>'Proposal has expired.'
+        ],422);
+
+    }
+
+    $validated = $request->validate([
+        'title'=>'required|string|max:255',
+        'subject'=>'nullable|string|max:255',
+        'price'=>'required|numeric',
+        'currency'=>'required',
+        'teacher_type'=>'required',
+        'teaching_mode'=>'required',
+        'preferred_location'=>'nullable',
+        'qualification'=>'nullable',
+        'teaching_hours'=>'required',
+        'from_time'=>'required',
+        'to_time'=>'required',
+        'description'=>'required',
+        'expires_in'=>'required|in:20_minutes,7_days,14_days,30_days,60_days',
+
+    ]);
+
+    switch ($request->expires_in) {
+        case '20_minutes':
+            $expiresAt = now()->addMinutes(20);
+            break;
+        case '7_days':
+            $expiresAt = now()->addDays(7);
+            break;
+        case '14_days':
+            $expiresAt = now()->addDays(14);
+            break;
+        case '30_days':
+            $expiresAt = now()->addDays(30);
+            break;
+
+        case '60_days':
+            $expiresAt = now()->addDays(60);
+            break;
+    }
+
+    $validated['expires_at'] = $expiresAt;
+    $proposal->update($validated);
+
+    return response()->json([
+
+        'message'=>'Proposal updated.',
+
+        'proposal'=>$proposal
+
+    ]);
+}
+
+public function destroy($id)
+{
+    $student = auth()->user();
+
+    $proposal = Proposal::where(
+        'student_id',
+        $student->id
+    )->findOrFail($id);
+
+    // Cannot delete expired proposal
+    if (
+        $proposal->expires_at &&
+        now()->greaterThanOrEqualTo($proposal->expires_at)
+    ) {
+        return response()->json([
+            'message' => 'Proposal has already expired.'
+        ],422);
+    }
+
+    $proposal->update([
+        'student_deleted' => true
+    ]);
+
+    return response()->json([
+        'message' => 'Proposal deleted successfully.'
+    ]);
+}
 }

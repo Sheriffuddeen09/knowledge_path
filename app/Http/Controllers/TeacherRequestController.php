@@ -311,39 +311,27 @@ public function history()
     $teacher = auth()->user();
 
     if ($teacher->role != "admin") {
-
         return response()->json([
             "message" => "Only teachers."
-        ],403);
-
+        ], 403);
     }
 
     $history = TeacherRequest::with([
-
         'student:id,first_name,last_name,image',
-
-        'proposal:id,title,subject,price,currency,teacher_type,preferred_location,teaching_hours,from_time,to_time,description'
-
+        'proposal:id,title,subject,price,currency,teacher_type,preferred_location,teaching_hours,from_time,to_time,description,student_deleted,expires_at'
     ])
-    ->where(
-        'teacher_id',
-        $teacher->id
-    )
-    ->where(
-        'teacher_deleted',
-        false
-    )
+    ->where('teacher_id', $teacher->id)
+    ->where('teacher_deleted', false)
     ->whereHas('proposal', function ($q) {
-    $q->whereNull('expires_at')
-      ->orWhere('expires_at', '>', now());
+        $q->whereNull('expires_at')
+          ->orWhere('expires_at', '>', now());
     })
     ->latest()
     ->get();
 
-    return response()->json(
-        $history
-    );
+    return response()->json($history);
 }
+
 
 public function cancelRequest($id)
 {
@@ -410,6 +398,7 @@ public function deleteHistory($id)
 
     ]);
 }
+
 
 
 }

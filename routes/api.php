@@ -68,6 +68,11 @@ use App\Http\Controllers\TeacherRequestController;
 
 
 Route::middleware('auth:sanctum')->group(function () {
+
+    Route::get('/student/proposals', [ProposalController::class, 'myProposals']);
+    Route::get('/student/proposals/{id}', [ProposalController::class, 'edit']);
+    Route::put('/student/proposals/{id}', [ProposalController::class, 'update']);
+    Route::delete('/student/proposals/{id}', [ProposalController::class, 'destroy']);
     Route::post(
         '/proposals',
         [ProposalController::class,'store']

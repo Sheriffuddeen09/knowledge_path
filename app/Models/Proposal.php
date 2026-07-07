@@ -23,6 +23,7 @@ use Illuminate\Database\Eloquent\Model;
             'from_time',
             'to_time',
             'expires_at',
+            'student_deleted'
         ];
 
         public function student()
