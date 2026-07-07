@@ -58,7 +58,7 @@ class ProposalController extends Controller
 
         $validated['student_id'] = auth()->id();
         $validated['expires_at'] = $expiresAt;
-
+        //  'is_read' => false,
         $proposal = Proposal::create($validated);
         
             return response()->json([
@@ -224,6 +224,64 @@ public function destroy($id)
 
     return response()->json([
         'message' => 'Proposal deleted successfully.'
+    ]);
+}
+
+public function proposalNotification()
+{
+    $teacher = auth()->user();
+
+    if ($teacher->role !== 'admin') {
+        return response()->json([
+            'pending_proposals' => 0
+        ]);
+    }
+
+    $count = Proposal::where('student_deleted', false)
+        ->where('is_read', false)
+        ->where(function ($query) {
+            $query->whereNull('expires_at')
+                  ->orWhere('expires_at', '>', now());
+        })
+        ->whereDoesntHave('requests', function ($query) use ($teacher) {
+            $query->where('teacher_id', $teacher->id)
+                  ->whereIn('status', [
+                      'pending',
+                      'accepted',
+                      'declined'
+                  ]);
+        })
+        ->count();
+
+    return response()->json([
+        'pending_proposals' => $count
+    ]);
+}
+
+public function markProposalsAsRead()
+{
+    $teacher = auth()->user();
+
+    Proposal::where('student_deleted', false)
+        ->where('is_read', false)
+        ->where(function ($query) {
+            $query->whereNull('expires_at')
+                  ->orWhere('expires_at', '>', now());
+        })
+        ->whereDoesntHave('requests', function ($query) use ($teacher) {
+            $query->where('teacher_id', $teacher->id)
+                  ->whereIn('status', [
+                      'pending',
+                      'accepted',
+                      'declined'
+                  ]);
+        })
+        ->update([
+            'is_read' => true
+        ]);
+
+    return response()->json([
+        'success' => true
     ]);
 }
 }

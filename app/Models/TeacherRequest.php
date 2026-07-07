@@ -42,4 +42,5 @@ class TeacherRequest extends Model
     {
         return $this->belongsTo(CourseTitle::class, 'coursetitle_id');
     }
+
 }

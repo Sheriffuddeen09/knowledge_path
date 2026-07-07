@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Mail;
 use App\Mail\TeacherRequestAccepted;
 use App\Mail\TeacherProposalRequestMail;
 use App\Models\Coursetitle;
+use App\Mail\StudentCancelledRequestMail;
 
 class TeacherRequestController extends Controller
 {
@@ -117,7 +118,8 @@ class TeacherRequestController extends Controller
             'student_id' => $proposal->student_id,
             'teacher_id' => $teacher->id,
             'teacher_form_id' => $teacherForm->id,
-            'status' => 'pending'
+            'status' => 'pending',
+            'is_read' => false,
         ]);
 
         Mail::to($proposal->student->email)
@@ -227,29 +229,27 @@ public function accept($id)
 
 
     public function decline($id)
-{
-    $student = auth()->user();
+        {
+            $student = auth()->user();
 
-    $request = TeacherRequest::where(
-        'student_id',
-        $student->id
-    )
-    ->findOrFail($id);
+            $request = TeacherRequest::with([
+                'teacher',
+                'student'
+            ])
+            ->where('student_id', $student->id)
+            ->findOrFail($id);
 
-    $request->update([
+            $request->update([
+                'status' => 'declined'
+            ]);
 
-        'status'=>'declined'
+            Mail::to($request->teacher->email)
+                ->send(new StudentCancelledRequestMail($request));
 
-    ]);
-
-    return response()->json([
-
-        'message'=>'Teacher request declined.'
-
-    ]);
-}
-
-
+            return response()->json([
+                'message' => 'Teacher request declined.'
+            ]);
+        }
 
 public function messageRequest($requestId)
 {
@@ -400,5 +400,32 @@ public function deleteHistory($id)
 }
 
 
+public function requestNotification()
+{
+    $student = auth()->user();
+
+    $count = TeacherRequest::where('student_id', $student->id)
+        ->where('status', 'pending')
+        ->where('is_read', false)
+        ->count();
+
+    return response()->json([
+        'pending_requests' => $count,
+    ]);
+}
+
+public function markRequestAsRead()
+{
+    TeacherRequest::where('student_id', auth()->id())
+        ->where('status', 'pending')
+        ->where('is_read', false)
+        ->update([
+            'is_read' => true
+        ]);
+
+    return response()->json([
+        'success' => true
+    ]);
+}
 
 }

@@ -10,6 +10,7 @@ use App\Mail\LiveClassAccepted;
 use App\Mail\LiveClassDeclined;
 use App\Models\Chat;
 use App\Models\UserBadge;
+use Illuminate\Support\Facades\Log;
 
 
 
@@ -90,16 +91,41 @@ public function sendRequest(Request $request)
 {
     $teacher = $request->user();
 
-    $requests = $teacher->liveRequestsReceived()
+    Log::info('Authenticated Teacher', [
+        'teacher_id' => $teacher?->id,
+        'teacher' => $teacher,
+    ]);
+
+    // Check relationship before filters
+    $allRequests = $teacher->liveRequestsReceived()->get();
+
+    Log::info('All Live Requests', [
+        'count' => $allRequests->count(),
+        'requests' => $allRequests->toArray(),
+    ]);
+
+    // Build the query
+    $query = $teacher->liveRequestsReceived()
         ->with('student')
-        ->where(function($q) {
-            $q->where('status', 'pending') // Always show pending requests
-              ->orWhere(function($q2) {
-                  $q2->whereIn('status', ['accepted','declined'])
-                     ->where('cleared_by_teacher', false); // Show accepted/declined not cleared
+        ->where(function ($q) {
+            $q->where('status', 'pending')
+              ->orWhere(function ($q2) {
+                  $q2->whereIn('status', ['accepted', 'declined'])
+                     ->where('cleared_by_teacher', false);
               });
-        })
-        ->get();
+        });
+
+    Log::info('Generated SQL', [
+        'sql' => $query->toSql(),
+        'bindings' => $query->getBindings(),
+    ]);
+
+    $requests = $query->get();
+
+    Log::info('Filtered Requests', [
+        'count' => $requests->count(),
+        'requests' => $requests->toArray(),
+    ]);
 
     return response()->json([
         'status' => true,
@@ -107,8 +133,6 @@ public function sendRequest(Request $request)
         'pending_requests' => $requests->where('status', 'pending')->count(),
     ]);
 }
-
-
 
 
 
