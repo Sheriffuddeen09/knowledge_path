@@ -32,17 +32,20 @@ class ProfileController extends Controller
     $visibility = $user->visibility ?? [];
 
     return response()->json([
-        'id'         => $user->id,
-        'first_name' => $user->first_name,
-        'last_name'  => $user->last_name,
-        'role'       => $user->role,
-        'email'      => ($visibility['email'] ?? false) ? $user->email : null,
-        'phone'      => ($visibility['phone'] ?? false) ? $user->phone : null,
-        'gender'     => ($visibility['gender'] ?? false) ? $user->gender : null,
-        'dob'        => ($visibility['dob'] ?? false) ? $user->dob : null,
-        'location'   => ($visibility['location'] ?? false) ? $user->location : null,
-        'visibility' => $visibility
-    ]);
+    'id'           => $user->id,
+    'first_name'   => $user->first_name,
+    'last_name'    => $user->last_name,
+    'role'         => $user->role,
+    'admin_choice' => $user->admin_choice,
+
+    'email'        => ($visibility['email'] ?? false) ? $user->email : null,
+    'phone'        => ($visibility['phone'] ?? false) ? $user->phone : null,
+    'gender'       => ($visibility['gender'] ?? false) ? $user->gender : null,
+    'dob'          => ($visibility['dob'] ?? false) ? $user->dob : null,
+    'location'     => ($visibility['location'] ?? false) ? $user->location : null,
+
+    'visibility'   => $visibility,
+]);
 }
 
     /**

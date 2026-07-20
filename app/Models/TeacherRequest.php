@@ -43,4 +43,9 @@ class TeacherRequest extends Model
         return $this->belongsTo(CourseTitle::class, 'coursetitle_id');
     }
 
+    public function teacherReview()
+    {
+        return $this->hasOne(TeacherReview::class, 'teacher_request_id');
+    }
+
 }

@@ -9,9 +9,15 @@ use App\Models\TeacherForm;
 use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use App\Rules\MaxWords;
- use Illuminate\Validation\Rule;
- use Illuminate\Support\Facades\Auth;
- use App\Models\Notification;
+use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Auth;
+use App\Models\Notification;
+use App\Models\Chat;
+use Illuminate\Support\Facades\Log;
+use App\Models\TeacherRequest;
+use App\Models\LiveClassRequest;
+use App\Models\TeacherReview;
+
 
 class TeacherFormController extends Controller
 {
@@ -87,53 +93,86 @@ class TeacherFormController extends Controller
     ]);
 }
 
-
-
 public function allTeachers()
 {
-    $teachers = \App\Models\User::where('teacher_profile_completed', 1)->get();
+    $user = auth()->user();
 
-    $teachers = $teachers->map(function ($user) {
+    $chatUserIds = Chat::where('type', 'private')
+        ->where(function ($query) use ($user) {
+            $query->where('user_one_id', $user->id)
+                  ->orWhere('user_two_id', $user->id);
+        })
+        ->get()
+        ->map(function ($chat) use ($user) {
+            return $chat->user_one_id == $user->id
+                ? $chat->user_two_id
+                : $chat->user_one_id;
+        
+        })
+        ->filter()
+        ->unique();
 
-    $info = json_decode($user->teacher_info, true) ?? [];
+    $teachers = User::where('teacher_profile_completed', 1)
+        ->where('id', '!=', $user->id)
+        ->whereNotIn('id', $chatUserIds)
+        ->get();
 
-    // Fetch the actual course title
-    $courseTitle = null;
-    if (!empty($info['coursetitle_id'])) {
-        $courseTitle = \App\Models\Coursetitle::find($info['coursetitle_id'])?->name ?? null;
-    }
+    $teachers = $teachers->map(function ($teacher) {
 
-    // If course is "Other", set display title to "Other" and keep specialization as entered
-    $displayTitle = $courseTitle;
-    if (strtolower($courseTitle ?? '') === 'other') {
-        $displayTitle = 'Other';
-    }
+        $info = json_decode($teacher->teacher_info, true) ?? [];
 
-    return [
-        'id' => $user->id,
-        'first_name' => $user->first_name,
-        'last_name' => $user->last_name,
-        'location' => $user->location,
-        'gender' => $user->gender,
-        'logo' => isset($info['logo']) ? asset('storage/' . $info['logo']) : null,
-        'cv' => isset($info['cv']) ? asset('storage/' . $info['cv']) : null,
+        $courseTitle = null;
 
-        'coursetitle_id' => $info['coursetitle_id'] ?? null,
-        'coursetitle_name' => $displayTitle,
-        'specialization' => strtolower($courseTitle ?? '') === 'other' ? ($info['specialization'] ?? []) : [],
+        if (!empty($info['coursetitle_id'])) {
+            $courseTitle = Coursetitle::find($info['coursetitle_id'])?->name;
+        }
 
-        'course_payment' => $info['course_payment'] ?? null,
-        'currency' => $info['currency'] ?? null,
-        'experience' => $info['experience'] ?? [],
-        'qualification' => $info['qualification'] ?? [],
-        'compliment' => $info['compliment'] ?? [],
-    ];
-});
+        $reviewCount = TeacherReview::where('teacher_id', $teacher->id)->count();
 
+        $averageRating = round(
+            TeacherReview::where('teacher_id', $teacher->id)
+                ->avg('rating') ?? 0,
+            1
+        );
+        $displayTitle = strtolower($courseTitle ?? '') === 'other'
+            ? 'Other'
+            : $courseTitle;
+
+        return [
+            'id' => $teacher->id,
+            'first_name' => $teacher->first_name,
+            'last_name' => $teacher->last_name,
+            'location' => $teacher->location,
+            'gender' => $teacher->gender,
+
+            'logo' => isset($info['logo'])
+                ? asset('storage/'.$info['logo'])
+                : null,
+
+            'cv' => isset($info['cv'])
+                ? asset('storage/'.$info['cv'])
+                : null,
+
+            'coursetitle_id' => $info['coursetitle_id'] ?? null,
+            'coursetitle_name' => $displayTitle,
+
+            'specialization' => strtolower($courseTitle ?? '') === 'other'
+                ? ($info['specialization'] ?? [])
+                : [],
+
+            'course_payment' => $info['course_payment'] ?? null,
+            'currency' => $info['currency'] ?? null,
+            'experience' => $info['experience'] ?? [],
+            'qualification' => $info['qualification'] ?? [],
+            'compliment' => $info['compliment'] ?? [],
+            'average_rating' => $averageRating,
+            'review_count' => $reviewCount,
+        ];
+    });
 
     return response()->json([
         'status' => true,
-        'teachers' => $teachers
+        'teachers' => $teachers,
     ]);
 }
 
@@ -246,7 +285,6 @@ public function update(Request $request)
    
 }
 
-
 public function myTeacherProfile($id)
 {
     $user = User::where('id', $id)
@@ -256,6 +294,7 @@ public function myTeacherProfile($id)
     $info = json_decode($user->teacher_info, true) ?? [];
 
     $courseTitle = null;
+
     if (!empty($info['coursetitle_id'])) {
         $courseTitle = \App\Models\Coursetitle::find($info['coursetitle_id'])?->name;
     }
@@ -264,33 +303,85 @@ public function myTeacherProfile($id)
         ? 'Other'
         : $courseTitle;
 
+    $reviews = TeacherReview::with([
+        'student:id,first_name,last_name'
+    ])
+    ->where('teacher_id', $user->id)
+    ->latest()
+    ->get();
+
     return response()->json([
+
         'status' => true,
+
         'teacher' => [
+
             'id' => $user->id,
             'first_name' => $user->first_name,
             'last_name' => $user->last_name,
             'location' => $user->location,
             'gender' => $user->gender,
 
-            // ❌ private info excluded
-            // 'email' => ❌
-            // 'phone' => ❌
+            'logo' => isset($info['logo'])
+                ? asset('storage/'.$info['logo'])
+                : null,
 
-            'logo' => isset($info['logo']) ? asset('storage/'.$info['logo']) : null,
-            'cv' => isset($info['cv']) ? asset('storage/'.$info['cv']) : null,
+            'cv' => isset($info['cv'])
+                ? asset('storage/'.$info['cv'])
+                : null,
 
             'coursetitle_name' => $displayTitle,
+
             'specialization' => $info['specialization'] ?? [],
+
             'course_payment' => $info['course_payment'] ?? null,
+
             'currency' => $info['currency'] ?? null,
+
             'experience' => $info['experience'] ?? [],
+
             'qualification' => $info['qualification'] ?? [],
+
             'compliment' => $info['compliment'] ?? [],
-        ]
+
+            // Review summary
+            'average_rating' => round(
+                $reviews->avg('rating') ?? 0,
+                1
+            ),
+
+            'review_count' => $reviews->count(),
+        ],
+
+        // Reviews
+        'reviews' => $reviews->map(function ($review) {
+
+            return [
+
+                'id' => $review->id,
+
+                'student_id' => $review->student->id,
+
+                'first_name' => $review->student->first_name,
+
+                'last_name' => $review->student->last_name,
+
+                'avatar' => strtoupper(
+                    substr($review->student->first_name, 0, 1)
+                ),
+
+                'rating' => $review->rating,
+
+                'review' => $review->review,
+
+                'created_at' => $review->created_at->diffForHumans(),
+
+            ];
+
+        }),
+
     ]);
 }
-
 
 
 public function singleTeachers()
@@ -343,4 +434,301 @@ public function singleTeachers()
 }
 
 
+public function submitReview(Request $request)
+{
+    $request->validate([
+        'teacher_id' => 'required|exists:users,id',
+        'rating' => 'required|integer|min:1|max:5',
+        'review' => 'nullable|string|max:1000',
+    ]);
+
+    $teacherRequest = TeacherRequest::where('teacher_id', $request->teacher_id)
+        ->where('student_id', auth()->id())
+        ->where('status', 'accepted')
+        ->latest()
+        ->first();
+
+    $liveRequest = LiveClassRequest::where('teacher_id', $request->teacher_id)
+        ->where('user_id', auth()->id())
+        ->where('status', 'accepted')
+        ->latest()
+        ->first();
+
+    if (!$teacherRequest && !$liveRequest) {
+        return response()->json([
+            'status' => false,
+            'message' => 'You can only review teachers whose request has been accepted.'
+        ], 403);
+    }
+
+    TeacherReview::updateOrCreate(
+        [
+            'teacher_request_id' => $teacherRequest?->id,
+            'live_class_request_id' => $liveRequest?->id,
+            'student_id' => auth()->id(),
+        ],
+        [
+            'teacher_id' => $request->teacher_id,
+            'rating' => $request->rating,
+            'review' => $request->review,
+        ]
+    );
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Review submitted successfully.',
+    ]);
 }
+
+
+public function teacherReviewHome(Request $request)
+{
+    $request->validate([
+        'teacher_id' => 'required|exists:users,id',
+    ]);
+
+    $teacher = User::findOrFail($request->teacher_id);
+
+    $reviews = TeacherReview::with([
+        'student:id,first_name,last_name'
+    ])
+    ->where('teacher_id', $teacher->id)
+    ->latest()
+    ->get();
+
+    return response()->json([
+        'status' => true,
+
+        'teacher' => [
+            'id' => $teacher->id,
+            'name' => $teacher->first_name.' '.$teacher->last_name,
+        ],
+
+        'average_rating' => round($reviews->avg('rating') ?? 0, 1),
+
+        'review_count' => $reviews->count(),
+
+        'reviews' => $reviews->map(function ($review) {
+
+            return [
+
+                'id' => $review->id,
+
+                'student_id' => $review->student->id,
+
+                'first_name' => $review->student->first_name,
+
+                'last_name' => $review->student->last_name,
+
+                'avatar' => strtoupper(substr($review->student->first_name,0,1)),
+
+                'rating' => $review->rating,
+
+                'review' => $review->review,
+
+                'created_at' => $review->created_at->diffForHumans(),
+
+            ];
+
+        }),
+
+    ]);
+}
+
+public function teacherReviews($teacher_id)
+{
+    $teacher = User::findOrFail($teacher_id);
+
+    $reviews = TeacherReview::with('student:id,first_name,last_name')
+        ->where('teacher_id', $teacher->id)
+        ->latest()
+        ->get();
+
+    return response()->json([
+        'status' => true,
+        'teacher' => [
+            'id' => $teacher->id,
+            'name' => $teacher->first_name . ' ' . $teacher->last_name,
+        ],
+        'average_rating' => round($reviews->avg('rating') ?? 0, 1),
+        'review_count' => $reviews->count(),
+        'reviews' => $reviews->map(function ($review) {
+            return [
+                'id' => $review->id,
+                'student_id' => $review->student->id,
+                'first_name' => $review->student->first_name,
+                'last_name' => $review->student->last_name,
+                'avatar' => strtoupper(substr($review->student->first_name, 0, 1)),
+                'rating' => $review->rating,
+                'review' => $review->review,
+                'created_at' => $review->created_at->diffForHumans(),
+            ];
+        }),
+    ]);
+}
+
+public function reviewNotification()
+{
+    $teacher = auth()->user();
+
+    if ($teacher->role !== 'admin') {
+        return response()->json([
+            'pending_reviews' => 0
+        ]);
+    }
+
+    $count = TeacherReview::where('teacher_id', $teacher->id)
+        ->where('is_read', false)
+        ->count();
+
+    return response()->json([
+        'pending_reviews' => $count
+    ]);
+}
+
+
+public function acceptedTeachers(Request $request)
+{
+    $student = $request->user();
+
+    $teachers = collect();
+
+    $teacherRequests = TeacherRequest::with([
+        'teacher',
+        'teacherForm.courseTitle',
+    ])
+    ->where('student_id', $student->id)
+    ->where('status', 'accepted')
+    ->get();
+
+    foreach ($teacherRequests as $requestItem) {
+
+        $teacherForm = $requestItem->teacherForm;
+
+        $courseTitle = $teacherForm?->courseTitle?->name;
+
+        $review = TeacherReview::where('teacher_request_id', $requestItem->id)
+            ->where('student_id', $student->id)
+            ->first();
+
+        $teachers->push([
+
+            'type' => 'teacher_request',
+
+            'request_id' => $requestItem->id,
+
+            'teacher_id' => $requestItem->teacher->id,
+
+            'first_name' => $requestItem->teacher->first_name,
+
+            'last_name' => $requestItem->teacher->last_name,
+
+            'gender' => $requestItem->teacher->gender,
+
+            'location' => $requestItem->teacher->location,
+
+            'logo' => $teacherForm?->logo
+                ? asset('storage/'.$teacherForm->logo)
+                : null,
+
+            'coursetitle_name' => strtolower($courseTitle ?? '') === 'other'
+                ? 'Other'
+                : $courseTitle,
+
+            'specialization' => strtolower($courseTitle ?? '') === 'other'
+                ? ($teacherForm?->specialization ?? [])
+                : [],
+
+            'qualification' => $teacherForm?->qualification,
+
+            'experience' => $teacherForm?->experience,
+
+            'course_payment' => $teacherForm?->course_payment,
+
+            'currency' => $teacherForm?->currency,
+
+            'compliment' => $teacherForm?->compliment,
+
+            'already_reviewed' => $review !== null,
+
+            'review' => $review,
+        ]);
+    }
+
+    $liveRequests = LiveClassRequest::with('teacher')
+        ->where('user_id', $student->id)
+        ->where('status', 'accepted')
+        ->get();
+
+    foreach ($liveRequests as $requestItem) {
+
+        // Skip duplicate teacher
+        if ($teachers->contains('teacher_id', $requestItem->teacher_id)) {
+            continue;
+        }
+
+        $info = json_decode($requestItem->teacher->teacher_info, true) ?? [];
+
+        $courseTitle = null;
+
+        if (!empty($info['coursetitle_id'])) {
+            $courseTitle = Coursetitle::find($info['coursetitle_id'])?->name;
+        }
+
+        $displayTitle = strtolower($courseTitle ?? '') === 'other'
+            ? 'Other'
+            : $courseTitle;
+
+        $review = TeacherReview::where('live_class_request_id', $requestItem->id)
+            ->where('student_id', $student->id)
+            ->first();
+
+        $teachers->push([
+
+            'type' => 'live_class_request',
+
+            'request_id' => $requestItem->id,
+
+            'teacher_id' => $requestItem->teacher->id,
+
+            'first_name' => $requestItem->teacher->first_name,
+
+            'last_name' => $requestItem->teacher->last_name,
+
+            'gender' => $requestItem->teacher->gender,
+
+            'location' => $requestItem->teacher->location,
+
+            'logo' => !empty($info['logo'])
+                ? asset('storage/'.$info['logo'])
+                : null,
+
+            'coursetitle_name' => $displayTitle,
+
+            'specialization' => strtolower($courseTitle ?? '') === 'other'
+                ? ($info['specialization'] ?? [])
+                : [],
+
+            'qualification' => $info['qualification'] ?? null,
+
+            'experience' => $info['experience'] ?? null,
+
+            'course_payment' => $info['course_payment'] ?? null,
+
+            'currency' => $info['currency'] ?? null,
+
+            'compliment' => $info['compliment'] ?? null,
+
+            'already_reviewed' => $review !== null,
+
+            'review' => $review,
+        ]);
+    }
+
+    return response()->json([
+        'status' => true,
+        'teachers' => $teachers->values(),
+    ]);
+}
+}
+

@@ -18,6 +18,16 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    public function teacherReviews()
+    {
+        return $this->hasMany(TeacherReview::class, 'teacher_id');
+    }
+
+    public function studentReviews()
+    {
+        return $this->hasMany(TeacherReview::class, 'student_id');
+    }
+
     public function teacherRequests()
     {
     return $this->hasMany(
@@ -183,7 +193,6 @@ class User extends Authenticatable
         'role',
         'password',
         'email_verified_at',
-        'admin_choice',
         'teacher_profile_completed',
         'teacher_info',
         'last_seen_at',

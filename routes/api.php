@@ -66,14 +66,16 @@ use App\Http\Controllers\CommunityPollController;
 use App\Http\Controllers\ProposalController;
 use App\Http\Controllers\TeacherRequestController;
 
-
+// /teacher'
 Route::middleware('auth:sanctum')->group(function () {
 
-    Route::post('/student/requests/read', [TeacherRequestController::class, 'markRequestAsRead']);
+    Route::middleware('auth:sanctum')->get(
+        '/student/accepted-teachers',
+        [TeacherFormController::class, 'acceptedTeachers']
+    );
     Route::get('/notifications/proposals', [TeacherRequestController::class, 'requestNotification']);
     Route::get('/student/proposals', [ProposalController::class, 'myProposals']);
     Route::get('/proposals/notifications', [ProposalController::class, 'proposalNotification']);
-    Route::post('/proposals/read', [ProposalController::class, 'markProposalsAsRead']);
     Route::get('/student/proposals/{id}', [ProposalController::class, 'edit']);
     Route::put('/student/proposals/{id}', [ProposalController::class, 'update']);
     Route::delete('/student/proposals/{id}', [ProposalController::class, 'destroy']);
@@ -1150,6 +1152,18 @@ Route::middleware('auth:sanctum')->group(function () {
                 [TeacherFormController::class, 'store']
             );
 
+        
+    });
+
+    Route::get('/teacher/reviews/{teacher_id}', [TeacherFormController::class, 'teacherReviews']);
+    Route::middleware('auth:sanctum')->get(
+    '/teacher/reviews',
+    [TeacherFormController::class, 'teacherReviewHome']
+);
+    Route::get('/teacher/reviews/notifications', [TeacherFormController::class, 'reviewNotification']);
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/teacher/review', [TeacherFormController::class, 'submitReview']);
     });
 
     Route::get('/teacher', [TeacherFormController::class, 'allTeachers'])

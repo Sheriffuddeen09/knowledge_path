@@ -11,7 +11,7 @@ use App\Mail\LiveClassDeclined;
 use App\Models\Chat;
 use App\Models\UserBadge;
 use Illuminate\Support\Facades\Log;
-
+use App\Models\TeacherReview;
 
 
 class LiveClassController extends Controller
@@ -177,9 +177,9 @@ public function sendRequest(Request $request)
             ->send(new LiveClassDeclined($requestModel));
         
          UserBadge::create([
-        'student_id' => $requestModel->user_id,
+        'user_id' => $requestModel->user_id,
         'badges' => 20,
-        'source' => 'refund'
+        'source' => 'registration'
     ]);
     }
 
@@ -192,15 +192,25 @@ public function sendRequest(Request $request)
 }
 
 
-    // Get requests sent by the student
-    public function myRequests(Request $request)
+
+public function myRequests(Request $request)
 {
     $user = $request->user();
 
     $requests = $user->liveRequestsSent()
         ->with('teacher')
         ->where('cleared_by_student', false)
+        ->latest()
         ->get();
+
+    $requests->each(function ($liveRequest) {
+
+        $liveRequest->has_review = TeacherReview::where(
+            'teacher_request_id',
+            $liveRequest->teacher_request_id
+        )->exists();
+
+    });
 
     return response()->json([
         'status' => true,

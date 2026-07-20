@@ -257,31 +257,4 @@ public function proposalNotification()
         'pending_proposals' => $count
     ]);
 }
-
-public function markProposalsAsRead()
-{
-    $teacher = auth()->user();
-
-    Proposal::where('student_deleted', false)
-        ->where('is_read', false)
-        ->where(function ($query) {
-            $query->whereNull('expires_at')
-                  ->orWhere('expires_at', '>', now());
-        })
-        ->whereDoesntHave('requests', function ($query) use ($teacher) {
-            $query->where('teacher_id', $teacher->id)
-                  ->whereIn('status', [
-                      'pending',
-                      'accepted',
-                      'declined'
-                  ]);
-        })
-        ->update([
-            'is_read' => true
-        ]);
-
-    return response()->json([
-        'success' => true
-    ]);
-}
 }
