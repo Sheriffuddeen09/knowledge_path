@@ -191,7 +191,7 @@ public function submit(Request $request, Assignment $assignment)
     // ✅ SAVE BADGES
     if ($grade['badges'] > 0) {
         UserBadge::create([
-            'student_id' => $studentId,
+            'user_id' => $studentId,
             'badges' => $grade['badges'],
             'source' => 'assignment',
         ]);

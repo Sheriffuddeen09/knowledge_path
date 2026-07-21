@@ -65,8 +65,47 @@ use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\CommunityPollController;
 use App\Http\Controllers\ProposalController;
 use App\Http\Controllers\TeacherRequestController;
+use App\Http\Controllers\JobProfileController;
+use App\Http\Controllers\JobCategoryController;
 
-// /teacher'
+
+Route::middleware('auth:sanctum')->group(function(){
+ Route::get('/job-categories',[JobCategoryController::class,'index']);
+ Route::get('/jobs',[JobController::class,'index']);
+ Route::get('/jobs/{job}',[JobController::class,'show']);
+ Route::post('/jobs',[JobController::class,'store']);
+});
+
+
+use App\Http\Controllers\JobProfileApprovalController;
+Route::middleware([
+ 'auth:sanctum',
+ 'admin'
+])->group(function () {
+ Route::get(
+ '/admin/job-profiles',
+ [JobProfileApprovalController::class,'index']
+ );
+ Route::get(
+ '/admin/job-profiles/{id}',
+ [JobProfileApprovalController::class,'show']
+ );
+ Route::post(
+ '/admin/job-profiles/{id}/approve',
+ [JobProfileApprovalController::class,'approve']
+ );
+ Route::post(
+ '/admin/job-profiles/{id}/decline',
+ [JobProfileApprovalController::class,'decline']
+ );
+});
+
+Route::middleware('auth:sanctum')->group(function(){
+ Route::get('/job-profile',[JobProfileController::class,'show']);
+ Route::post('/job-profile',[JobProfileController::class,'store']);
+});
+
+
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware('auth:sanctum')->get(

@@ -18,6 +18,10 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    public function jobProfile()
+    {
+    return $this->hasOne(JobProfile::class);
+    }
     public function teacherReviews()
     {
         return $this->hasMany(TeacherReview::class, 'teacher_id');
