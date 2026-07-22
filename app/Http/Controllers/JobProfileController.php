@@ -24,13 +24,22 @@ class JobProfileController extends Controller
  'company_type'=>'nullable|in:individual,organisation',
  'organisation_size'=>'nullable|string|max:255',
  'company_location'=>'nullable|string|max:255',
+ 'company_address'=>'nullable|string|max:255',
+ 'location'=>'nullable|string|max:255',
+ 'address'=>'nullable|string|max:255',
  'full_name'=>'nullable|string|max:255',
  'cv'=>'nullable|file|mimes:pdf,doc,docx',
  'qualifications'=>'nullable|string',
  'portfolio'=>'nullable|string',
- 'skills'=>'nullable|string',
+ 'skills' => 'nullable|array',
+ 'skills.*' => 'string|max:100',
  'certification'=>'nullable|string'
  ]);
+
+ if ($request->filled('skills')) {
+    $data['skills'] = json_encode($request->skills);
+    }
+    
  if($request->hasFile('company_logo')){
  $data['company_logo']=$request
  ->file('company_logo')
@@ -66,6 +75,7 @@ public function update(Request $request, $id)
  'company_type' => 'nullable|in:individual,organisation',
  'organisation_size' => 'nullable|string|max:255',
  'company_location' => 'nullable|string|max:255',
+ 'company_address' => 'nullable|string|max:255',
  // Finder
  'full_name' => 'nullable|string|max:255',
  'cv' => 'nullable|mimes:pdf,doc,docx|max:5120',
@@ -74,6 +84,8 @@ public function update(Request $request, $id)
  'certification' => 'nullable|string',
  'skills' => 'nullable|array',
  'skills.*' => 'string|max:100',
+ 'location' => 'nullable|string|max:255',
+ 'address' => 'nullable|string|max:255',
  ]);
  /*
  |--------------------------------------------------------------------------

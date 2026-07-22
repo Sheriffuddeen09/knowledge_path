@@ -66,6 +66,7 @@ use App\Http\Controllers\CommunityPollController;
 use App\Http\Controllers\ProposalController;
 use App\Http\Controllers\TeacherRequestController;
 use App\Http\Controllers\JobProfileController;
+use App\Http\Controllers\JobProfileApprovalController;
 use App\Http\Controllers\JobCategoryController;
 
 
@@ -77,7 +78,6 @@ Route::middleware('auth:sanctum')->group(function(){
 });
 
 
-use App\Http\Controllers\JobProfileApprovalController;
 Route::middleware([
  'auth:sanctum',
  'admin'

@@ -18,15 +18,19 @@ return new class extends Migration
             // Job Creator
             $table->string('company_name')->nullable();
             $table->string('company_logo')->nullable();
+            $table->string('company_address')->nullable();
+
 
             $table->enum('company_type', [
                 'individual',
                 'organisation'
-            ])->nullable();
+            ])->nullable();;
 
             $table->string('organisation_size')->nullable();
 
             $table->string('company_location')->nullable();
+            $table->string('location')->nullable();
+            $table->string('address')->nullable();
 
             // Job Finder
             $table->string('full_name')->nullable();
@@ -36,13 +40,13 @@ return new class extends Migration
             $table->text('skills')->nullable();
             $table->text('certification')->nullable();
 
-$table->enum('status', [
-    'pending',
-    'approved',
-    'declined'
-])->default('pending');
+            $table->enum('status', [
+                'pending',
+                'approved',
+                'declined'
+            ])->default('pending');
 
-$table->text('decline_reason')->nullable();
+            $table->text('decline_reason')->nullable();
 
             $table->timestamps();
         });

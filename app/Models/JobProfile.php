@@ -14,6 +14,9 @@ class JobProfile extends Model
  'company_type',
  'organisation_size',
  'company_location',
+ 'company_address',
+ 'location',
+ 'address',
  'full_name',
  'cv',
  'qualifications',
@@ -23,6 +26,12 @@ class JobProfile extends Model
  'status',
  'decline_reason'
 ];
+
+protected $casts = [
+    'skills' => 'array',
+];
+
+
  public function user()
  {
  return $this->belongsTo(User::class);
