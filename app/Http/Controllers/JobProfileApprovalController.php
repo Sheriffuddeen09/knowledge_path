@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\JobProfile;
 use Illuminate\Http\Request;
@@ -17,6 +17,16 @@ class JobProfileApprovalController extends Controller
  ->latest()
  ->get();
  }
+
+ public function pending()
+{
+    return JobProfile::with("user")
+        ->where("status", "pending")
+        ->latest()
+        ->get();
+}
+
+
  public function show($id)
  {
  return JobProfile::with('user')
@@ -44,7 +54,7 @@ Mail::to($profile->user->email)
  public function decline(Request $request, $id)
  {
  $request->validate([
- 'reason' => 'required|string'
+ 'reason' => 'nullable|string'
  ]);
  $profile = JobProfile::findOrFail($id);
  $profile->update([

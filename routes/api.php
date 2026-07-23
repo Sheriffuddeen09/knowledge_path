@@ -68,7 +68,12 @@ use App\Http\Controllers\TeacherRequestController;
 use App\Http\Controllers\JobProfileController;
 use App\Http\Controllers\JobProfileApprovalController;
 use App\Http\Controllers\JobCategoryController;
+use App\Http\Controllers\SupportController;
 
+Route::post(
+    '/support/contact',
+    [SupportController::class,'store']
+);
 
 Route::middleware('auth:sanctum')->group(function(){
  Route::get('/job-categories',[JobCategoryController::class,'index']);
@@ -79,12 +84,15 @@ Route::middleware('auth:sanctum')->group(function(){
 
 
 Route::middleware([
- 'auth:sanctum',
- 'admin'
+ 'auth:sanctum'
 ])->group(function () {
  Route::get(
  '/admin/job-profiles',
  [JobProfileApprovalController::class,'index']
+ );
+ Route::get(
+ '/admin/job-pending',
+ [JobProfileApprovalController::class,'pending']
  );
  Route::get(
  '/admin/job-profiles/{id}',
