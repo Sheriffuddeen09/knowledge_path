@@ -32,6 +32,23 @@ class User extends Authenticatable
         return $this->hasMany(TeacherReview::class, 'student_id');
     }
 
+
+        public function jobs()
+        {
+            return $this->hasMany(
+                Job::class
+            );
+        }
+
+
+        public function jobApplications()
+        {
+            return $this->hasMany(
+                JobApplication::class,
+                'job_finder_id'
+            );
+        }
+
     public function teacherRequests()
     {
     return $this->hasMany(
