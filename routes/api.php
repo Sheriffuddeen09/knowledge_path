@@ -168,26 +168,16 @@ Route::middleware([
  [JobProfileApprovalController::class,'index']
  );
  Route::get(
- '/admin/job-pending',
- [JobProfileApprovalController::class,'pending']
- );
- Route::get(
  '/admin/job-profiles/{id}',
  [JobProfileApprovalController::class,'show']
  );
- Route::post(
- '/admin/job-profiles/{id}/approve',
- [JobProfileApprovalController::class,'approve']
- );
- Route::post(
- '/admin/job-profiles/{id}/decline',
- [JobProfileApprovalController::class,'decline']
- );
+
 });
 
 Route::middleware('auth:sanctum')->group(function(){
  Route::get('/job-profile',[JobProfileController::class,'show']);
  Route::post('/job-profile',[JobProfileController::class,'store']);
+ Route::put('/job-profile/{id}',[JobProfileController::class,'update']);
 });
 
 
