@@ -21,7 +21,7 @@ use App\Models\Notification;
 use App\Mail\UserReportedMail;
 use App\Mail\ReporterConfirmationMail;
 use Illuminate\Support\Facades\Mail;
-
+use App\Mail\CommunityMessageNotification;
 class CommunityController extends Controller
 
 {
@@ -318,6 +318,7 @@ public function create(Request $request)
         }
     }
 
+
     return response()->json([
         'message' => 'Community created',
         'community' => $community->load('members')
@@ -509,14 +510,102 @@ public function sendCommunityMessage(Request $request)
         $data
     );
 
-    $community->update([
+$community->update([
     'last_activity_at' => now(),
+]);
+
+
+$message->load([
+    'sender',
+    'community',
+    'repliedMessage.sender'
+]);
+
+
+$members = CommunityMember::where('community_id', $community->id)
+    ->where('user_id', '!=', auth()->id())
+    ->with('user')
+    ->get();
+
+
+
+Log::info('Community email members', [
+    'community_id' => $community->id,
+    'count' => $members->count()
+]);
+
+
+
+foreach($members as $member){
+
+    Log::info('Checking community member', [
+        'member_id' => $member->id,
+        'user_id' => $member->user_id,
     ]);
-    $message->load([
-        'sender',
-        'community',
-        'repliedMessage.sender'
+
+
+    $user = $member->user;
+
+
+    if(!$user){
+
+        Log::warning('No user relationship found', [
+            'member_id'=>$member->id
+        ]);
+
+        continue;
+    }
+
+
+
+    if(!$user->email){
+
+        Log::warning('User has no email', [
+            'user_id'=>$user->id
+        ]);
+
+        continue;
+    }
+
+
+
+    $minutes = $user->last_seen_at
+    ? abs(now()->diffInMinutes($user->last_seen_at))
+    : 60;
+
+
+
+    Log::info('Community user status', [
+        'email'=>$user->email,
+        'offline_minutes'=>$minutes
     ]);
+
+
+
+    if($minutes > 5){
+
+
+        Log::info('Sending community email', [
+            'email'=>$user->email
+        ]);
+
+
+        Mail::to($user->email)
+            ->send(
+                new CommunityMessageNotification(
+                    $message,
+                    $community
+                )
+            );
+
+
+        Log::info('Community email sent', [
+            'email'=>$user->email
+        ]);
+
+    }
+
+}
     broadcast(
         new NewCommunityMessage($message)
     )->toOthers();

@@ -71,7 +71,31 @@ use App\Http\Controllers\JobCategoryController;
 use App\Http\Controllers\SupportController;
 use App\Http\Controllers\JobApplicationController;
 use App\Http\Controllers\JobController;
+use App\Http\Controllers\AdvertisementController;
 
+
+Route::middleware("auth:sanctum")->group(function () {
+Route::post(
+"/advertisement/create",
+[AdvertisementController::class, "store"]
+);
+Route::get(
+"/advertisement/my-advertisements",
+[AdvertisementController::class, "myAdvertisement"]
+);
+Route::post(
+"/advertisement/approve/{id}",
+[AdvertisementController::class, "approve"]
+);
+Route::post(
+"/advertisement/decline/{id}",
+[AdvertisementController::class, "decline"]
+);
+Route::post(
+"/advertisement/unlock-visibility/{id}",
+[AdvertisementController::class, "unlockVisibility"]
+);
+});
 
 Route::middleware("auth:sanctum")->group(function(){
 
@@ -153,10 +177,15 @@ Route::post(
 );
 
 Route::middleware('auth:sanctum')->group(function(){
+
  Route::get('/job-categories',[JobCategoryController::class,'index']);
+
  Route::get('/jobs',[JobController::class,'index']);
+
  Route::get('/jobs/{job}',[JobController::class,'show']);
+
  Route::post('/jobs',[JobController::class,'store']);
+
 });
 
 
@@ -170,9 +199,7 @@ Route::middleware([
  Route::get(
  '/admin/job-profiles/{id}',
  [JobProfileApprovalController::class,'show']
- );
-
-});
+ );});
 
 Route::middleware('auth:sanctum')->group(function(){
  Route::get('/job-profile',[JobProfileController::class,'show']);

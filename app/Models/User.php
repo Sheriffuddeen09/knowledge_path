@@ -70,6 +70,18 @@ class User extends Authenticatable
             return $this->hasMany(UserBadge::class);
         }
 
+    public function receiver()
+        {
+            return $this->belongsTo(
+                User::class,
+                'receiver_id'
+            );
+        }
+
+        public function advertisements()
+            {
+            return $this->hasMany(Advertisement::class);
+            }
     public function passkeys()
         {
             return $this->hasMany(Passkey::class);

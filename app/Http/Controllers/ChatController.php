@@ -26,6 +26,8 @@ use App\Models\MessageFile;
 use Illuminate\Support\Facades\Hash;
 use App\Services\MessageCryptoService;
 use Illuminate\Support\Str;
+use App\Mail\NewMessageNotification;
+use Illuminate\Support\Facades\Mail;
 
 class ChatController extends Controller
 {
@@ -582,6 +584,8 @@ public function send(Request $request)
     }
     $receiverId = null;
 
+    $receiver = User::find($receiverId);
+
     if ($chat->teacher_id && $chat->student_id) {
         $receiverId = $chat->teacher_id == auth()->id()
             ? $chat->student_id
@@ -763,14 +767,29 @@ public function send(Request $request)
                 'hidden_at' => null,
             ]);
 
-        $message->load(['sender']);
-        broadcast(new NewMessage($message))->toOthers();
+            $message->load([
+            'sender',
+            'receiver'
+        ]);
+
+
+        if($message->receiver && $message->receiver->email){
+
+            Mail::to($message->receiver->email)
+                ->send(
+                    new NewMessageNotification($message)
+                );
+
+        }
+
+    broadcast(new NewMessage($message))->toOthers();
     }
 
     Chat::where('id', $chat->id)->update([
     'last_activity_at' => now()
     ]);
 
+    
 
     $grouped = collect($messages)
     ->groupBy('group_id')
@@ -899,7 +918,20 @@ return response()->json([
             
     ]);
 
-    $message->load('sender');
+      $message->load([
+            'sender',
+            'receiver'
+        ]);
+
+
+        if($message->receiver && $message->receiver->email){
+
+            Mail::to($message->receiver->email)
+                ->send(
+                    new NewMessageNotification($message)
+                );
+
+        }
 
     broadcast(new NewMessage($message))->toOthers();
 

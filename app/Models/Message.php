@@ -52,6 +52,14 @@ class Message extends Model
     return $this->belongsTo(CommunityMessage::class, 'forwarded_from');
     }
 
+    public function receiver()
+        {
+            return $this->belongsTo(
+                User::class,
+                'receiver_id'
+            );
+        }
+
     public function getForwardSourceNameAttribute()
     {
         return $this->forwardedFrom?->community?->community_name

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CommunityMember extends Model
 {
@@ -21,4 +22,16 @@ class CommunityMember extends Model
         'status',
         'hidden_for_admin',
     ];
+
+
+      public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+
+    public function community(): BelongsTo
+    {
+        return $this->belongsTo(Community::class, 'community_id');
+    }
 }
