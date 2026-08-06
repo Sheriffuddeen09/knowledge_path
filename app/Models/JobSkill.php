@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-class JobCategory extends Model
+class JobSkill extends Model
 {
     use HasFactory;
 
@@ -14,12 +14,18 @@ class JobCategory extends Model
         'slug',
         'icon',
         'description',
-        'is_active',
-        'sort_order',
+        'is_active'
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
     ];
 
     public function jobPosts()
     {
-        return $this->hasMany(JobPost::class);
+        return $this->belongsToMany(
+            JobPost::class,
+            'job_post_skill'
+        );
     }
 }

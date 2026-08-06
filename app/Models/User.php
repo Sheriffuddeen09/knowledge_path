@@ -33,20 +33,25 @@ class User extends Authenticatable
     }
 
 
-        public function jobs()
+        public function jobPosts()
         {
-            return $this->hasMany(
-                Job::class
-            );
+            return $this->hasMany(JobPost::class);
         }
 
 
         public function jobApplications()
+            {
+                return $this->hasMany(JobApplication::class);
+            }
+
+            public function receivedApplications()
+            {
+                return $this->hasMany(JobApplication::class,'job_owner_id');
+            }
+
+        public function jobPostViews()
         {
-            return $this->hasMany(
-                JobApplication::class,
-                'job_finder_id'
-            );
+            return $this->hasMany(JobPostView::class);
         }
 
     public function teacherRequests()

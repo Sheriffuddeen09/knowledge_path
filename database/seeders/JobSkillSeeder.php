@@ -1,17 +1,18 @@
 <?php
+
 namespace Database\Seeders;
+
 use Illuminate\Database\Seeder;
-use App\Models\JobCategory;
+use App\Models\JobSkill;
 use Illuminate\Support\Str;
 
-
-class JobCategorySeeder extends Seeder
+class JobSkillSeeder extends Seeder
 {
- public function run(): void
- {
- $categories = [
- // Technology
- 'Software Development',
+    public function run(): void
+    {
+        $skills = [
+
+            'Software Development',
  'Website Development',
  'WordPress',
  'Laravel',
@@ -102,21 +103,22 @@ class JobCategorySeeder extends Seeder
  'Manufacturing',
  'Printing',
  'Others'
- ];
- 
- foreach ($categories as $index => $category) {
 
-            JobCategory::updateOrCreate(
-                ['slug' => Str::slug($category)],
+        ];
+
+        foreach ($skills as $skill) {
+
+            JobSkill::updateOrCreate(
                 [
-                    'name' => $category,
-                    'slug' => Str::slug($category),
-                    'sort_order' => $index + 1,
-                    'is_active' => true,
+                    'slug' => Str::slug($skill)
+                ],
+                [
+                    'name' => $skill,
+                    'slug' => Str::slug($skill),
+                    'is_active' => true
                 ]
             );
 
         }
     }
-
 }

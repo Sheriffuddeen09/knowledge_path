@@ -72,6 +72,113 @@ use App\Http\Controllers\SupportController;
 use App\Http\Controllers\JobApplicationController;
 use App\Http\Controllers\JobController;
 use App\Http\Controllers\AdvertisementController;
+use App\Http\Controllers\JobPostController;
+
+
+
+Route::middleware('auth:sanctum')->group(function(){
+
+
+    // Job Finder Apply
+    Route::post(
+        '/jobs/{jobId}/apply',
+        [JobApplicationController::class,'apply']
+    );
+
+
+    // Finder Dashboard
+    Route::get(
+        '/my-applications',
+        [JobApplicationController::class,'myApplications']
+    );
+
+
+
+    // Job Poster Applicants
+    Route::get(
+        '/jobs/{jobId}/applicants',
+        [JobApplicationController::class,'jobApplicants']
+    );
+
+
+
+    // Applicant Profile
+    Route::get(
+        '/applications/{id}/applicant',
+        [JobApplicationController::class,'showApplicant']
+    );
+
+
+
+    // Accept
+    Route::put(
+        '/applications/{id}/accept',
+        [JobApplicationController::class,'accept']
+    );
+
+
+
+    // Reject
+    Route::put(
+        '/applications/{id}/reject',
+        [JobApplicationController::class,'reject']
+    );
+
+
+
+    // Withdraw
+    Route::put(
+        '/applications/{id}/withdraw',
+        [JobApplicationController::class,'withdraw']
+    );
+
+
+});
+
+Route::middleware('auth:sanctum')->group(function(){
+
+
+    Route::get('/job-skills',[JobPostController::class,'skill']);
+
+    Route::get('/job-categories', [JobCategoryController::class, 'index']);
+
+ 
+    Route::post('/jobs',
+        [JobPostController::class,'store']
+    );
+
+    Route::get('/jobs',
+    [JobPostController::class,'index']
+    );
+
+     Route::get(
+        '/admin/jobs',
+        [JobPostController::class,'pendingJobs']
+    );
+
+    Route::put(
+        '/admin/jobs/{id}/approve',
+        [JobPostController::class,'approve']
+    );
+
+    Route::put(
+        '/admin/jobs/{id}/decline',
+        [JobPostController::class,'decline']
+    );
+
+    Route::get('/jobs/{id}',
+        [JobPostController::class,'show']
+    );
+
+
+    Route::delete('/jobs/{id}',
+        [JobPostController::class,'destroy']
+    );
+
+});
+
+
+// Public Jobs
 
 
 Route::middleware("auth:sanctum")->group(function () {
@@ -95,42 +202,6 @@ Route::post(
 "/advertisement/unlock-visibility/{id}",
 [AdvertisementController::class, "unlockVisibility"]
 );
-});
-
-Route::middleware("auth:sanctum")->group(function(){
-
-
-Route::post(
-"/jobs",
-[JobController::class,"store"]
-);
-
-
-Route::put(
-"/jobs/{id}",
-[JobController::class,"update"]
-);
-
-
-Route::delete(
-"/jobs/{id}",
-[JobController::class,"destroy"]
-);
-
-
-Route::get(
-"/jobs/{id}",
-[JobController::class,"show"]
-);
-
-Route::get(
-
-'/jobs',
-[JobController::class,'index']
-
-);
-
-
 });
 
 
@@ -176,30 +247,6 @@ Route::post(
     [SupportController::class,'store']
 );
 
-Route::middleware('auth:sanctum')->group(function(){
-
- Route::get('/job-categories',[JobCategoryController::class,'index']);
-
- Route::get('/jobs',[JobController::class,'index']);
-
- Route::get('/jobs/{job}',[JobController::class,'show']);
-
- Route::post('/jobs',[JobController::class,'store']);
-
-});
-
-
-Route::middleware([
- 'auth:sanctum'
-])->group(function () {
- Route::get(
- '/admin/job-profiles',
- [JobProfileApprovalController::class,'index']
- );
- Route::get(
- '/admin/job-profiles/{id}',
- [JobProfileApprovalController::class,'show']
- );});
 
 Route::middleware('auth:sanctum')->group(function(){
  Route::get('/job-profile',[JobProfileController::class,'show']);
