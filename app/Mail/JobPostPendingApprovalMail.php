@@ -247,7 +247,7 @@ Responsibilities
 
 <a
 
-href="https://yourdomain.com/admin/jobs"
+href="http://localhost:3000//admin/jobs"
 
 style="background:#2563eb;color:#fff;padding:15px 35px;text-decoration:none;border-radius:8px;">
 

@@ -12,7 +12,8 @@ use App\Models\JobSkill;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\JobPostPendingApprovalMail;
 use Carbon\Carbon;
-
+use App\Mail\JobApprovedMail;
+use App\Mail\JobDeclinedMail;
 
 class JobPostController extends Controller
 {
@@ -20,11 +21,12 @@ class JobPostController extends Controller
 public function index(Request $request)
 {
     $query = JobPost::with([
-        'category',
-        'user:id,name,email'
+    'category',
+    'user:id,first_name,last_name,email',
+    'user.jobProfile'
     ])
-    ->where('status', 'accepted')
-    ->whereDate('expire_date', '>=', now());
+    ->where('status','accepted')
+    ->whereDate('expire_date','>=',now());
 
 
     if ($request->filled('search')) {
@@ -140,31 +142,34 @@ public function index(Request $request)
 
 public function show($id)
 {
+
     $job = JobPost::with([
 
         'category',
 
         'user:id,name,email',
 
-        'applications.user:id,name,email'
+        'user.jobProfile'
 
     ])
-    ->where('status', 'accepted')
+    ->where('status','accepted')
     ->findOrFail($id);
+
+
 
     $job->increment('views');
 
-    $job->refresh();
+
 
     return response()->json([
 
-        'success' => true,
+        'success'=>true,
 
-        'job' => $job
+        'job'=>$job
 
     ]);
-}
 
+}
 
  public function store(Request $request)
 {
@@ -268,7 +273,7 @@ public function pendingJobs(Request $request)
 {
     $jobs = JobPost::with([
 
-        'user:id,name,email',
+        'user:id,first_name,last_name,email',
 
         'category'
 
@@ -289,94 +294,121 @@ public function pendingJobs(Request $request)
 }
 
 
-    use Illuminate\Support\Facades\Auth;
 
-public function approve($id)
-{
-    $job = JobPost::with([
-        'user',
-        'category'
-    ])->findOrFail($id);
 
-    if ($job->status !== 'pending') {
+    public function approve($id)
+    {
+        $job = JobPost::with([
+            'user',
+            'category'
+        ])->findOrFail($id);
+
+
+        if ($job->status !== 'pending') {
+
+            return response()->json([
+
+                'message' => 'This job has already been processed.'
+
+            ],422);
+
+        }
+
+
+        $job->update([
+
+            'status' => 'accepted',
+
+            'approved_by' => Auth::id(),
+
+            'approved_at' => now(),
+
+        ]);
+
+
+        // Send approval email
+        Mail::to($job->user->email)
+            ->send(new JobApprovedMail($job->fresh([
+                'user',
+                'category'
+            ])));
+
+
 
         return response()->json([
 
-            'message' => 'This job has already been processed.'
+            'success' => true,
 
-        ],422);
+            'message' => 'Job approved successfully.',
 
+            'job' => $job->fresh([
+                'user',
+                'category'
+            ])
+
+        ]);
     }
 
-    $job->update([
 
-        'status' => 'accepted',
 
-        'approved_by' => Auth::id(),
 
-        'approved_at' => now(),
 
-    ]);
+    public function decline(Request $request, $id)
+    {
 
-    return response()->json([
-
-        'success' => true,
-
-        'message' => 'Job approved successfully.',
-
-        'job' => $job->fresh([
+        $job = JobPost::with([
             'user',
             'category'
-        ])
-
-    ]);
-}
+        ])->findOrFail($id);
 
 
-public function decline(Request $request, $id)
-{
-    $job = JobPost::with([
-        'user',
-        'category'
-    ])->findOrFail($id);
 
-    if ($job->status !== 'pending') {
+        if ($job->status !== 'pending') {
+
+            return response()->json([
+
+                'message' => 'This job has already been processed.'
+
+            ],422);
+
+        }
+
+
+
+        $job->update([
+
+            'status' => 'declined',
+
+            'approved_by' => Auth::id(),
+
+            'approved_at' => now(),
+
+        ]);
+
+
+
+        // Send decline email
+        Mail::to($job->user->email)
+            ->send(new JobDeclinedMail($job->fresh([
+                'user',
+                'category'
+            ])));
+
+
 
         return response()->json([
 
-            'message' => 'This job has already been processed.'
+            'success' => true,
 
-        ],422);
+            'message' => 'Job declined successfully.',
 
+            'job' => $job->fresh([
+                'user',
+                'category'
+            ])
+
+        ]);
     }
-
-    $job->update([
-
-        'status' => 'declined',
-
-        'approved_by' => Auth::id(),
-
-        'approved_at' => now(),
-
-    ]);
-
-    return response()->json([
-
-        'success' => true,
-
-        'message' => 'Job declined successfully.',
-
-        'job' => $job->fresh([
-            'user',
-            'category'
-        ])
-
-    ]);
-}
-
-
-
-
 
 
     /**
