@@ -14,6 +14,7 @@ use App\Mail\JobPostPendingApprovalMail;
 use Carbon\Carbon;
 use App\Mail\JobApprovedMail;
 use App\Mail\JobDeclinedMail;
+use App\Models\JobApplication;
 
 class JobPostController extends Controller
 {
@@ -140,136 +141,202 @@ public function index(Request $request)
 }
 
 
+public function apply(Request $request, $jobId)
+{
+    $user = auth()->user();
 
-    public function show($id)
-    {
-
-        $job = JobPost::with([
-            'category',
-            'user.jobProfile'
-        ])
-        ->withCount('applications')
-        ->where('id', $id)
+    $job = JobPost::where('id', $jobId)
         ->where('status', 'accepted')
         ->whereDate('expire_date', '>=', now())
         ->firstOrFail();
-        $job->increment('views');
 
-        $job->refresh();
-
-        $relatedJobs = JobPost::with([
-
-            'category',
-
-            'user.jobProfile'
-
-        ])
-
-        ->where('status', 'accepted')
-
-        ->whereDate('expire_date', '>=', now())
-
-        ->where('job_category_id', $job->job_category_id)
-
-        ->where('id', '!=', $job->id)
-
-        ->latest()
-
-        ->take(6)
-
-        ->get();
-
-        $previousJob = JobPost::where('status', 'accepted')
-
-            ->where('id', '<', $job->id)
-
-            ->orderByDesc('id')
-
-            ->first();
-
-        $nextJob = JobPost::where('status', 'accepted')
-
-            ->where('id', '>', $job->id)
-
-            ->orderBy('id')
-
-            ->first();
-
-
+    if ($job->user_id === $user->id) {
 
         return response()->json([
-
-            'success' => true,
-
-            'job' => [
-
-                'id' => $job->id,
-
-                'title' => $job->title,
-
-                'description' => $job->description,
-
-                'about_us' => $job->about_us,
-
-                'what_you_do' => $job->what_you_do,
-
-                'location' => $job->location,
-
-                'job_type' => $job->job_type,
-
-                'currency' => $job->currency,
-
-                'payment' => $job->payment,
-
-                'payment_required' => $job->payment_required,
-
-                'employee_needed' => $job->employee_needed,
-
-                'additional_compensation' => $job->additional_compensation,
-
-                'qualification' => $job->qualification,
-
-                'experience' => $job->experience,
-
-                'year_experience' => $job->year_experience,
-
-                'approved_at' => $job->approved_at,
-
-                'expire_date' => $job->expire_date,
-
-                'views' => $job->views,
-
-                'created_at' => $job->created_at,
-
-                'application_count' => $job->applications()->count(),
-
-                'category' => $job->category,
-
-                'user' => [
-
-                    'id' => $job->user->id,
-
-                    'first_name' => $job->user->first_name,
-
-                    'last_name' => $job->user->last_name,
-
-                    'email' => $job->user->email,
-
-                    'job_profile' => $job->user->jobProfile
-
-                ]
-
-            ],
-
-            'related_jobs' => $relatedJobs,
-
-            'previous_job' => $previousJob,
-
-            'next_job' => $nextJob
-
-        ]);
+            'message' => 'You cannot apply for your own job.'
+        ], 403);
 
     }
+
+    $alreadyApplied = JobApplication::where(
+        'job_post_id',
+        $job->id
+    )
+    ->where(
+        'user_id',
+        $user->id
+    )
+    ->exists();
+
+
+    if ($alreadyApplied) {
+
+        return response()->json([
+            'message' => 'You have already applied for this job.'
+        ], 422);
+
+    }
+
+    $rules = [
+
+        'cv' => [
+            'nullable',
+            'file',
+            'mimes:pdf,doc,docx',
+            'max:5120'
+        ],
+
+        'additional_text' => [
+            'nullable',
+            'string',
+            'max:5000'
+        ],
+
+    ];
+
+    if ($job->enable_qualification) {
+
+        $rules['qualification'] = [
+            'nullable',
+            'string',
+            'max:255'
+        ];
+
+    } else {
+
+        $rules['qualification'] = [
+            'nullable',
+            'string',
+            'max:255'
+        ];
+
+    }
+
+    if ($job->enable_experience) {
+
+        $rules['experience'] = [
+            'required',
+            'string',
+            'max:2000'
+        ];
+
+    } else {
+
+        $rules['experience'] = [
+            'nullable',
+            'string',
+            'max:2000'
+        ];
+
+    }
+
+    if ($job->enable_year_experience) {
+
+        $rules['year_experience'] = [
+            'required',
+            'integer',
+            'min:0',
+            'max:100'
+        ];
+
+    } else {
+
+        $rules['year_experience'] = [
+            'nullable',
+            'integer',
+            'min:0',
+            'max:100'
+        ];
+
+    }
+
+
+
+    if ($job->payment_required) {
+
+        $rules['payment'] = [
+            'required',
+            'numeric',
+            'min:0'
+        ];
+
+    } else {
+
+        $rules['payment'] = [
+            'nullable',
+            'numeric',
+            'min:0'
+        ];
+
+    }
+
+    $validated = $request->validate($rules);
+
+    \Log::info('JOB APPLICATION REQUIREMENTS', [
+    'job_id' => $job->id,
+    'enable_qualification' => $job->enable_qualification,
+    'enable_experience' => $job->enable_experience,
+    'enable_year_experience' => $job->enable_year_experience,
+    'payment_required' => $job->payment_required,
+]);
+
+\Log::info('JOB APPLICATION REQUEST', $request->all());
+
+
+    $cvPath = null;
+
+    if ($request->hasFile('cv')) {
+
+        $cvPath = $request
+            ->file('cv')
+            ->store(
+                'job_applications/cv',
+                'public'
+            );
+
+    }
+
+    $application = JobApplication::create([
+
+        'job_post_id' => $job->id,
+
+        'user_id' => $user->id,
+
+        'cv' => $cvPath,
+
+        'additional_text' =>
+            $validated['additional_text'] ?? null,
+
+        'qualification' =>
+            $validated['qualification'] ?? null,
+
+        'experience' =>
+            $validated['experience'] ?? null,
+
+        'year_experience' =>
+            $validated['year_experience'] ?? null,
+
+        'payment' =>
+            $validated['payment'] ?? null,
+
+        'status' => 'pending',
+
+    ]);
+
+
+
+    return response()->json([
+
+        'success' => true,
+
+        'message' =>
+            'Your application has been submitted successfully.',
+
+        'application' => $application
+
+    ], 201);
+}
+
 
  public function store(Request $request)
 {

@@ -79,14 +79,17 @@ use App\Http\Controllers\JobPostController;
 Route::middleware('auth:sanctum')->group(function(){
 
 
-    // Job Finder Apply
+
     Route::post(
-        '/jobs/{jobId}/apply',
-        [JobApplicationController::class,'apply']
+        '/jobs/{job}/apply',
+        [JobApplicationController::class, 'store']
     );
 
+    Route::get(
+        '/jobs/{job}/application-status',
+        [JobApplicationController::class, 'status']
+    );
 
-    // Finder Dashboard
     Route::get(
         '/my-applications',
         [JobApplicationController::class,'myApplications']

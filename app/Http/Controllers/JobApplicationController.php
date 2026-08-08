@@ -2,406 +2,170 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\JobPost;
+use App\Http\Requests\StoreJobApplicationRequest;
 use App\Models\JobApplication;
+use App\Models\JobPost;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
 class JobApplicationController extends Controller
 {
+    public function store(
+        StoreJobApplicationRequest $request,
+        JobPost $job
+    ) {
 
+        $user = $request->user();
 
-    /**
-     * Job Finder Apply For Job
-     */
-    public function apply(Request $request,$jobId)
-    {
-
-
-        $request->validate([
-
-            'cover_letter'=>'nullable|string',
-
-            'resume'=>'nullable|file|mimes:pdf,doc,docx|max:5120',
-
-            'currency'=>'nullable|string',
-
-            'expected_salary'=>'nullable|numeric'
-
-        ]);
-
-
-
-        $job = JobPost::where('status','accepted')
-            ->findOrFail($jobId);
-
-
-
-        // Check expiry
-
-        if(
-            $job->expire_date < now()->toDateString()
-        ){
+ 
+        if ($job->status !== 'accepted') {
 
             return response()->json([
-
-                'message'=>'This job has expired'
-
-            ],400);
+                'success' => false,
+                'message' => 'This job is not currently available.'
+            ], 422);
 
         }
 
-
-
-        // Prevent duplicate apply
-
-        $exists = JobApplication::where([
-
-            'job_post_id'=>$job->id,
-
-            'user_id'=>Auth::id()
-
-        ])->exists();
-
-
-
-        if($exists){
+        if (
+            $job->expire_date &&
+            $job->expire_date->isPast()
+        ) {
 
             return response()->json([
-
-                'message'=>'You already applied for this job'
-
-            ],400);
-
-        }
-
-
-
-
-        $resume = null;
-
-
-        if($request->hasFile('resume')){
-
-
-            $resume = $request
-                ->file('resume')
-                ->store('job-resumes','public');
-
+                'success' => false,
+                'message' => 'This job application has expired.'
+            ], 422);
 
         }
 
+ 
+        $alreadyApplied = JobApplication::where(
+            'job_post_id',
+            $job->id
+        )
+        ->where(
+            'user_id',
+            $user->id
+        )
+        ->exists();
 
+        if ($alreadyApplied) {
+
+            return response()->json([
+                'success' => false,
+                'message' =>
+                    'You have already applied for this job.'
+            ], 422);
+
+        }
+
+        $cvPath = null;
+
+        if ($request->hasFile('cv')) {
+
+            $cvPath = $request
+                ->file('cv')
+                ->store(
+                    'job_applications/cv',
+                    'public'
+                );
+
+        }
 
 
         $application = JobApplication::create([
 
+            'job_post_id' => $job->id,
 
-            'job_post_id'=>$job->id,
+            'user_id' => $user->id,
 
+            'cv' => $cvPath,
 
-            'user_id'=>Auth::id(),
+            'additional_text' =>
+                $request->input('additional_text'),
 
+            'qualification' =>
+                $job->enable_qualification
+                    ? $request->input('qualification')
+                    : null,
 
-            'job_owner_id'=>$job->user_id,
+            'experience' =>
+                $job->enable_experience
+                    ? $request->input('experience')
+                    : null,
 
+            'year_experience' =>
+                $job->enable_year_experience
+                    ? $request->input('year_experience')
+                    : null,
 
-            'cover_letter'=>$request->cover_letter,
+            'payment' =>
+                $job->payment_required
+                    ? $request->input('payment')
+                    : null,
 
+            'currency' => $job->currency,
 
-            'resume'=>$resume,
-
-
-            'currency'=>$request->currency ?? $job->currency,
-
-
-            'expected_salary'=>$request->expected_salary,
-
-
-            'status'=>'pending'
-
+            'status' => 'pending',
 
         ]);
-
-
-
-
-        // increase application count
-
-        $job->increment('application_count');
-
 
 
         return response()->json([
 
-            'message'=>'Application submitted successfully',
+            'success' => true,
 
-            'application'=>$application
+            'message' =>
+                'Your application has been submitted successfully.',
 
-        ],201);
+            'application' => [
 
+                'id' => $application->id,
 
+                'job_post_id' =>
+                    $application->job_post_id,
 
+                'status' =>
+                    $application->status,
+
+                'created_at' =>
+                    $application->created_at,
+
+            ],
+
+            'application_count' =>
+                JobApplication::where(
+                    'job_post_id',
+                    $job->id
+                )->count(),
+
+        ], 201);
     }
 
-
-
-
-
-
-
-    /**
-     * Job Finder Dashboard
-     */
-    public function myApplications()
-    {
-
-
-        $applications = JobApplication::with([
-
-            'job.category',
-
-            'job.user'
-
-        ])
-
-        ->where('user_id',Auth::id())
-
-        ->latest()
-
-        ->paginate(10);
-
-
-
-        return response()->json($applications);
-
-    }
-
-
-
-
-
-
-
-    /**
-     * Job Poster View Applicants
-     */
-    public function jobApplicants($jobId)
-    {
-
-
-        $job = JobPost::where('user_id',Auth::id())
-
-            ->findOrFail($jobId);
-
-
-
-        $applications = JobApplication::with([
-
-            'applicant'
-
-        ])
-
-        ->where('job_post_id',$job->id)
-
-        ->latest()
-
-        ->paginate(10);
-
-
-
-        return response()->json($applications);
-
-
-    }
-
-
-
-
-
-
-
-    /**
-     * View Applicant Profile
-     */
-    public function showApplicant($id)
-    {
-
-
-        $application = JobApplication::with([
-
-            'applicant.jobProfile'
-
-        ])
-
-        ->findOrFail($id);
-
-
-
-        return response()->json($application);
-
-
-    }
-
-
-
-
-
-
-
-    /**
-     * Accept Applicant
-     */
-    public function accept($id)
-    {
-
-
-        $application = JobApplication::whereHas('job',
-
-            function($query){
-
-                $query->where(
-                    'user_id',
-                    Auth::id()
-                );
-
-            }
-
-        )
-
-        ->findOrFail($id);
-
-
-
-
-        $application->update([
-
-            'status'=>'accepted',
-
-            'reviewed_by'=>Auth::id(),
-
-            'reviewed_at'=>now()
-
-        ]);
-
-
-
-
-        return response()->json([
-
-            'message'=>'Applicant accepted successfully',
-
-            'application'=>$application
-
-        ]);
-
-
-    }
-
-
-
-
-
-
-
-    /**
-     * Reject Applicant
-     */
-    public function reject(Request $request,$id)
-    {
-
-
-        $application = JobApplication::whereHas('job',
-
-            function($query){
-
-                $query->where(
-                    'user_id',
-                    Auth::id()
-                );
-
-            }
-
-        )
-
-        ->findOrFail($id);
-
-
-
-
-        $application->update([
-
-
-            'status'=>'rejected',
-
-
-            'remark'=>$request->remark,
-
-
-            'reviewed_by'=>Auth::id(),
-
-
-            'reviewed_at'=>now()
-
-
-        ]);
-
-
-
-
-        return response()->json([
-
-            'message'=>'Applicant rejected',
-
-            'application'=>$application
-
-        ]);
-
-    }
-
-
-
-
-
-
-
-    /**
-     * Job Finder Withdraw Application
-     */
-    public function withdraw($id)
-    {
-
+    public function status(
+        Request $request,
+        JobPost $job
+    ) {
 
         $application = JobApplication::where(
-
-            'user_id',
-
-            Auth::id()
-
+            'job_post_id',
+            $job->id
         )
-
-        ->findOrFail($id);
-
-
-
-        $application->update([
-
-            'status'=>'withdrawn'
-
-        ]);
-
-
+        ->where(
+            'user_id',
+            $request->user()->id
+        )
+        ->first();
 
         return response()->json([
 
-            'message'=>'Application withdrawn'
+            'success' => true,
+
+            'applied' => $application !== null,
+
+            'application' => $application,
 
         ]);
-
     }
-
-
-
-
 }
