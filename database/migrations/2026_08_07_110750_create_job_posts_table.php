@@ -34,7 +34,7 @@ return new class extends Migration
 
             $table->longText('what_you_do');
 
-            $table->string('location');
+            $table->text('location')->nullable();;
 
             $table->enum('job_type', [
                 'remote',

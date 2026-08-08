@@ -140,36 +140,136 @@ public function index(Request $request)
 }
 
 
-public function show($id)
-{
 
-    $job = JobPost::with([
+    public function show($id)
+    {
 
-        'category',
+        $job = JobPost::with([
+            'category',
+            'user.jobProfile'
+        ])
+        ->withCount('applications')
+        ->where('id', $id)
+        ->where('status', 'accepted')
+        ->whereDate('expire_date', '>=', now())
+        ->firstOrFail();
+        $job->increment('views');
 
-        'user:id,name,email',
+        $job->refresh();
 
-        'user.jobProfile'
+        $relatedJobs = JobPost::with([
 
-    ])
-    ->where('status','accepted')
-    ->findOrFail($id);
+            'category',
+
+            'user.jobProfile'
+
+        ])
+
+        ->where('status', 'accepted')
+
+        ->whereDate('expire_date', '>=', now())
+
+        ->where('job_category_id', $job->job_category_id)
+
+        ->where('id', '!=', $job->id)
+
+        ->latest()
+
+        ->take(6)
+
+        ->get();
+
+        $previousJob = JobPost::where('status', 'accepted')
+
+            ->where('id', '<', $job->id)
+
+            ->orderByDesc('id')
+
+            ->first();
+
+        $nextJob = JobPost::where('status', 'accepted')
+
+            ->where('id', '>', $job->id)
+
+            ->orderBy('id')
+
+            ->first();
 
 
 
-    $job->increment('views');
+        return response()->json([
 
+            'success' => true,
 
+            'job' => [
 
-    return response()->json([
+                'id' => $job->id,
 
-        'success'=>true,
+                'title' => $job->title,
 
-        'job'=>$job
+                'description' => $job->description,
 
-    ]);
+                'about_us' => $job->about_us,
 
-}
+                'what_you_do' => $job->what_you_do,
+
+                'location' => $job->location,
+
+                'job_type' => $job->job_type,
+
+                'currency' => $job->currency,
+
+                'payment' => $job->payment,
+
+                'payment_required' => $job->payment_required,
+
+                'employee_needed' => $job->employee_needed,
+
+                'additional_compensation' => $job->additional_compensation,
+
+                'qualification' => $job->qualification,
+
+                'experience' => $job->experience,
+
+                'year_experience' => $job->year_experience,
+
+                'approved_at' => $job->approved_at,
+
+                'expire_date' => $job->expire_date,
+
+                'views' => $job->views,
+
+                'created_at' => $job->created_at,
+
+                'application_count' => $job->applications()->count(),
+
+                'category' => $job->category,
+
+                'user' => [
+
+                    'id' => $job->user->id,
+
+                    'first_name' => $job->user->first_name,
+
+                    'last_name' => $job->user->last_name,
+
+                    'email' => $job->user->email,
+
+                    'job_profile' => $job->user->jobProfile
+
+                ]
+
+            ],
+
+            'related_jobs' => $relatedJobs,
+
+            'previous_job' => $previousJob,
+
+            'next_job' => $nextJob
+
+        ]);
+
+    }
 
  public function store(Request $request)
 {
@@ -230,7 +330,7 @@ public function show($id)
         'description' => 'required|string',
         'about_us' => 'required|string',
         'what_you_do' => 'required|string',
-        'location' => 'required|string',
+        'location' => 'nullable|string',
         'job_type' => 'required|in:remote,on-site,part-time',
         'currency' => 'required|string|max:10',
         'payment' => 'required|numeric',
