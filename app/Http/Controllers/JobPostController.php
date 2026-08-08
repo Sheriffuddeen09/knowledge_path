@@ -141,6 +141,157 @@ public function index(Request $request)
 }
 
 
+
+    public function show($id)
+    {
+   
+    $job = JobPost::with([
+        'category',
+        'user.jobProfile'
+    ])
+    ->withCount('applications')
+    ->where('id', $id)
+    ->where('status', 'accepted')
+    ->whereDate('expire_date', '>=', now())
+    ->firstOrFail();
+
+    $job->increment('views');
+
+    $job->refresh();
+
+
+    $relatedJobs = JobPost::with([
+        'category',
+        'user.jobProfile'
+    ])
+    ->withCount('applications')
+    ->where('status', 'accepted')
+    ->whereDate('expire_date', '>=', now())
+    ->where('job_category_id', $job->job_category_id)
+    ->where('id', '!=', $job->id)
+    ->latest()
+    ->take(6)
+    ->get();
+
+    $previousJob = JobPost::with([
+        'category',
+        'user.jobProfile'
+    ])
+    ->where('status', 'accepted')
+    ->whereDate('expire_date', '>=', now())
+    ->where('id', '<', $job->id)
+    ->orderByDesc('id')
+    ->first();
+
+    $nextJob = JobPost::with([
+        'category',
+        'user.jobProfile'
+    ])
+    ->where('status', 'accepted')
+    ->whereDate('expire_date', '>=', now())
+    ->where('id', '>', $job->id)
+    ->orderBy('id')
+    ->first();
+
+    return response()->json([
+
+        'success' => true,
+
+        'job' => [
+
+            'id' => $job->id,
+
+            'title' => $job->title,
+
+            'description' => $job->description,
+
+            'about_us' => $job->about_us,
+
+            'what_you_do' => $job->what_you_do,
+
+            'location' => $job->location,
+
+            'job_type' => $job->job_type,
+
+            'currency' => $job->currency,
+
+            'payment' => $job->payment,
+
+            'payment_required' => (bool) $job->payment_required,
+
+            'employee_needed' => $job->employee_needed,
+
+            'additional_compensation' =>
+                $job->additional_compensation,
+
+            'enable_qualification' =>
+                (bool) $job->enable_qualification,
+
+            'qualification' =>
+                $job->qualification,
+
+
+            'enable_experience' =>
+                (bool) $job->enable_experience,
+
+            'experience' =>
+                $job->experience,
+
+
+            'enable_year_experience' =>
+                (bool) $job->enable_year_experience,
+
+            'year_experience' =>
+                $job->year_experience,
+
+            'status' => $job->status,
+
+            'approved_at' => $job->approved_at,
+
+            'expire_date' => $job->expire_date,
+
+            'created_at' => $job->created_at,
+
+            'updated_at' => $job->updated_at,
+
+            'views' => $job->views,
+            'application_count' =>
+                $job->applications_count,
+
+            'category' => $job->category,
+
+            'user' => [
+
+                'id' => $job->user->id,
+
+                'first_name' =>
+                    $job->user->first_name,
+
+                'last_name' =>
+                    $job->user->last_name,
+
+                'email' =>
+                    $job->user->email,
+
+                'job_profile' =>
+                    $job->user->jobProfile
+
+            ]
+
+        ],
+
+        'related_jobs' => $relatedJobs,
+
+        'previous_job' => $previousJob,
+
+        'next_job' => $nextJob
+
+    ]);
+}
+
+
+
+
 public function apply(Request $request, $jobId)
 {
     $user = auth()->user();
@@ -272,17 +423,7 @@ public function apply(Request $request, $jobId)
 
     $validated = $request->validate($rules);
 
-    \Log::info('JOB APPLICATION REQUIREMENTS', [
-    'job_id' => $job->id,
-    'enable_qualification' => $job->enable_qualification,
-    'enable_experience' => $job->enable_experience,
-    'enable_year_experience' => $job->enable_year_experience,
-    'payment_required' => $job->payment_required,
-]);
-
-\Log::info('JOB APPLICATION REQUEST', $request->all());
-
-
+   
     $cvPath = null;
 
     if ($request->hasFile('cv')) {

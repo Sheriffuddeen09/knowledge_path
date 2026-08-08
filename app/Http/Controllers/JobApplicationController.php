@@ -7,6 +7,14 @@ use App\Models\JobApplication;
 use App\Models\JobPost;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use App\Mail\JobApplicationAcceptedMail;
+use App\Models\JobInterview;
+use App\Mail\JobApplicationDeclinedMail;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\JobWithdrawnMail;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+
 
 class JobApplicationController extends Controller
 {
@@ -168,4 +176,583 @@ class JobApplicationController extends Controller
 
         ]);
     }
+
+
+    public function myApplications(Request $request)
+{
+    $user = $request->user();
+
+    $applications = JobApplication::with([
+        'jobPost.category',
+        'jobPost.user.jobProfile',
+    ])
+    ->where('user_id', $user->id)
+    ->latest()
+    ->paginate(10);
+
+
+    $applications->getCollection()->transform(
+        function ($application) {
+
+            $job = $application->jobPost;
+
+            /*
+            |--------------------------------------------------------------------------
+            | Determine display status
+            |--------------------------------------------------------------------------
+            */
+
+            $status = $application->status;
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Job deleted
+            |--------------------------------------------------------------------------
+            */
+
+            if (!$job) {
+
+                return [
+
+                    'id' => $application->id,
+
+                    'job_post_id' =>
+                        $application->job_post_id,
+
+                    'status' => 'deleted',
+
+                    'status_label' => 'Job Deleted',
+
+                    'created_at' =>
+                        $application->created_at,
+
+                    'job' => null,
+
+                ];
+
+            }
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Job expired
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                $job->expire_date &&
+                $job->expire_date->isPast()
+            ) {
+
+                $status = 'expired';
+
+            }
+
+
+            return [
+
+                'id' => $application->id,
+
+                'job_post_id' =>
+                    $application->job_post_id,
+
+                'status' => $status,
+
+                'status_label' =>
+                    match ($status) {
+
+                        'pending' =>
+                            'Application Pending',
+
+                        'accepted' =>
+                            'Application Accepted',
+
+                        'rejected' =>
+                            'Application Rejected',
+
+                        'reviewed' =>
+                            'Application Withdrawn',
+
+                        'expired' =>
+                            'Job Expired',
+
+                        default =>
+                            ucfirst($status),
+
+                    },
+
+                'created_at' =>
+                    $application->created_at,
+
+                'updated_at' =>
+                    $application->updated_at,
+
+                'job' => [
+
+                    'id' => $job->id,
+
+                    'title' =>
+                        $job->title,
+
+                    'description' =>
+                        $job->description,
+
+                    'location' =>
+                        $job->location,
+
+                    'job_type' =>
+                        $job->job_type,
+
+                    'currency' =>
+                        $job->currency,
+
+                    'payment' =>
+                        $job->payment,
+
+                    'expire_date' =>
+                        $job->expire_date,
+
+                    'approved_at' =>
+                        $job->approved_at,
+
+                    'views' =>
+                        $job->views,
+
+                    'application_count' =>
+                        $job->applications()->count(),
+
+                    'category' => $job->category,
+
+                    'company' => [
+
+                        'user_id' =>
+                            $job->user?->id,
+
+                        'name' =>
+                            $job->user?->jobProfile?->company_name
+                            ??
+                            trim(
+                                ($job->user?->first_name ?? '') .
+                                ' ' .
+                                ($job->user?->last_name ?? '')
+                            ),
+
+                        'logo' =>
+                            $job->user?->jobProfile?->company_logo,
+
+                        'company_type' =>
+                            $job->user?->jobProfile?->company_type,
+
+                        'location' =>
+                            $job->user?->jobProfile?->company_location,
+
+                    ],
+
+                ],
+
+            ];
+
+        }
+    );
+
+
+    return response()->json([
+
+        'success' => true,
+
+        'applications' => $applications,
+
+    ]);
+}
+
+
+    public function index(Request $request)
+    {
+        $user = $request->user();
+
+        $applications = JobApplication::with([
+            'user.jobProfile',
+            'jobPost.category',
+            'interview',
+        ])
+        ->whereHas('jobPost', function ($query) use ($user) {
+
+            $query->where(
+                'user_id',
+                $user->id
+            );
+
+        })
+        ->latest()
+        ->paginate(10);
+
+        return response()->json([
+            'success' => true,
+            'applications' => $applications,
+        ]);
+    }
+
+
+    
+
+    public function accept(
+        Request $request,
+        JobApplication $application
+    ) {
+
+        $user = $request->user();
+
+        $application->load([
+            'jobPost',
+            'user',
+            'user.jobProfile',
+        ]);
+
+    
+        if (
+            !$application->job ||
+            $application->job->user_id !== $user->id
+        ) {
+
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not allowed to manage this application.',
+            ], 403);
+
+        }
+
+        $validated = $request->validate([
+
+            'interview_date' => [
+                'required',
+                'date',
+                'after_or_equal:today',
+            ],
+
+            'interview_time' => [
+                'required',
+                'date_format:H:i',
+            ],
+
+            'notes' => [
+                'nullable',
+                'string',
+                'max:5000',
+            ],
+
+        ]);
+
+
+        if ($application->status === 'accepted') {
+
+            return response()->json([
+                'success' => false,
+                'message' => 'This application has already been accepted.',
+            ], 422);
+
+        }
+
+        $token = Str::random(64);
+
+
+        $frontendUrl = config(
+            'app.frontend_url',
+            'http://localhost:3000'
+        );
+
+        $meetingLink =
+            rtrim($frontendUrl, '/') .
+            '/job-interview/' .
+            $token;
+
+
+        $application->update([
+
+            'status' => 'accepted',
+
+            'reviewed_at' => now(),
+
+        ]);
+
+
+
+        $interview = JobInterview::create([
+
+            'job_application_id' =>
+                $application->id,
+
+            'interview_token' =>
+                $token,
+
+            'interview_date' =>
+                $validated['interview_date'],
+
+            'interview_time' =>
+                $validated['interview_time'],
+
+            'meeting_link' =>
+                $meetingLink,
+
+            'status' =>
+                'scheduled',
+
+            'notes' =>
+                $validated['notes'] ?? null,
+
+        ]);
+
+
+
+        Mail::to(
+            $application->user->email
+        )->send(
+            new JobApplicationAcceptedMail(
+                $application,
+                $interview
+            )
+        );
+
+
+        return response()->json([
+
+            'success' => true,
+
+            'message' =>
+                'Application accepted and interview scheduled successfully.',
+
+            'application' => $application->load([
+                'user.jobProfile',
+                'jobPost.category',
+                'interview',
+            ]),
+
+        ]);
+    }
+
+
+
+public function decline(
+    Request $request,
+    JobApplication $application
+) {
+    $user = $request->user();
+
+    
+
+    $application->load([
+        'user',
+        'jobPost.user.jobProfile',
+    ]);
+
+    
+    
+    if ($application->status !== 'pending') {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'This application has already been processed.',
+        ], 422);
+
+    }
+
+    
+
+    $application->update([
+
+        'status' => 'rejected',
+
+        'reviewed_at' => now(),
+
+    ]);
+
+    
+
+    $application->refresh();
+
+    $application->load([
+        'user',
+        'jobPost.user.jobProfile',
+    ]);
+
+   
+
+    if ($application->user?->email) {
+
+        Mail::to($application->user->email)
+            ->send(
+                new JobApplicationDeclinedMail(
+                    $application
+                )
+            );
+
+    }
+
+
+    return response()->json([
+
+        'success' => true,
+
+        'message' =>
+            'Application declined successfully. The applicant has been notified by email.',
+
+        'application' => $application,
+
+    ]);
+}
+
+
+  
+public function withdraw(
+    Request $request,
+    JobApplication $application
+) {
+
+    $user = $request->user();
+
+   
+
+    $application->load([
+        'user',
+        'jobPost.user.jobProfile',
+    ]);
+
+   
+    if (
+        !$application->job ||
+        $application->job->user_id !== $user->id
+    ) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Unauthorized.',
+        ], 403);
+
+    }
+
+    
+    if (
+        !in_array(
+            $application->status,
+            ['pending', 'accepted']
+        )
+    ) {
+
+        return response()->json([
+            'success' => false,
+            'message' =>
+                'This application has already been processed.',
+        ], 422);
+
+    }
+
+    
+
+    $application->update([
+
+        'status' => 'reviewed',
+
+        'reviewed_at' => now(),
+
+    ]);
+
+
+    $application->refresh();
+
+    $application->load([
+        'user',
+        'jobPost.user.jobProfile',
+    ]);
+
+
+    if ($application->user?->email) {
+
+        Mail::to($application->user->email)
+            ->send(
+                new JobWithdrawnMail(
+                    $application
+                )
+            );
+
+    }
+
+    
+    return response()->json([
+
+        'success' => true,
+
+        'message' =>
+            'Application Withdraw successfully. The applicant has been notified by email.',
+
+        'application' => $application,
+
+    ]);
+}
+
+
+    
+
+    public function interview($token)
+    {
+
+        $interview = JobInterview::with([
+            'application.user.jobProfile',
+            'application.jobPost.category',
+            'application.jobPost.user.jobProfile',
+        ])
+        ->where(
+            'interview_token',
+            $token
+        )
+        ->firstOrFail();
+
+
+        return response()->json([
+
+            'success' => true,
+
+            'interview' => $interview,
+
+        ]);
+    }
+
+    public function remove(
+    Request $request,
+    JobApplication $application
+) {
+    $user = $request->user();
+
+   
+
+    if ($application->user_id !== $user->id) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Unauthorized.',
+        ], 403);
+    }
+
+   
+
+    if (!in_array($application->status, [
+        'accepted',
+        'rejected',
+        'reviewed',
+    ])) {
+
+        return response()->json([
+            'success' => false,
+            'message' =>
+                'You can only remove accepted, declined, or Withdraw applications.',
+        ], 422);
+    }
+
+
+    $application->delete();
+
+    return response()->json([
+        'success' => true,
+        'message' =>
+            'Application removed successfully.',
+    ]);
+}
 }

@@ -74,10 +74,57 @@ use App\Http\Controllers\JobController;
 use App\Http\Controllers\AdvertisementController;
 use App\Http\Controllers\JobPostController;
 
-
-
 Route::middleware('auth:sanctum')->group(function(){
 
+    Route::get(
+        '/job-poster/applications',
+        [
+            JobApplicationController::class,
+            'index'
+        ]
+    );
+
+
+    Route::post(
+        '/job-poster/applications/{application}/accept',
+        [
+            JobApplicationController::class,
+            'accept'
+        ]
+    );
+
+
+    Route::post(
+        '/job-poster/applications/{application}/decline',
+        [
+            JobApplicationController::class,
+            'decline'
+        ]
+    );
+
+
+    Route::post(
+        '/job-poster/applications/{application}/withdraw',
+        [
+            JobApplicationController::class,
+            'withdraw'
+        ]
+        );
+
+
+        Route::delete(
+            '/job-applications/{application}/remove',
+            [JobApplicationController::class, 'remove']
+        );
+
+
+        Route::get(
+            '/job-interviews/{token}',
+            [
+                JobApplicationController::class,
+                'interview'
+            ]
+        );
 
 
     Route::post(
@@ -91,8 +138,8 @@ Route::middleware('auth:sanctum')->group(function(){
     );
 
     Route::get(
-        '/my-applications',
-        [JobApplicationController::class,'myApplications']
+        '/my-job-applications',
+        [JobApplicationController::class, 'myApplications']
     );
 
 

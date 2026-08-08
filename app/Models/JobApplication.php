@@ -45,7 +45,7 @@ class JobApplication extends Model
 
     ];
 
-    public function job()
+    public function jobPost()
     {
         return $this->belongsTo(
             JobPost::class,
@@ -57,6 +57,14 @@ class JobApplication extends Model
     {
         return $this->belongsTo(
             User::class
+        );
+    }
+    
+    public function interview()
+    {
+        return $this->hasOne(
+            JobInterview::class,
+            'job_application_id'
         );
     }
 }
