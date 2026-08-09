@@ -40,13 +40,13 @@ return new class extends Migration
 
             $table->string('currency', 10)
                 ->nullable();
-
+    
             $table->enum('status', [
-                'pending',
-                'reviewed',
-                'shortlisted',
+                'pending', 
+                'reviewed',     // for withdraw
+                'shortlisted', // for deleted_by_user
                 'accepted',
-                'rejected'
+                'rejected',     // for declined
             ])->default('pending');
 
             $table->timestamp('reviewed_at')

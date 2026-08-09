@@ -30,9 +30,10 @@ class JobApplication extends Model
         'currency',
 
         'status',
-
+        
         'reviewed_at',
-
+    
+        'removed_by_poster_at',
     ];
 
     protected $casts = [
@@ -42,6 +43,10 @@ class JobApplication extends Model
         'payment' => 'decimal:2',
 
         'reviewed_at' => 'datetime',
+         
+        'removed_by_poster_at' => 'datetime',
+
+        'removed_by_applicant_at' => 'datetime',
 
     ];
 

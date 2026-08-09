@@ -16,6 +16,17 @@ class JobWithdrawnMail extends Mailable
     public function __construct(
         JobApplication $application
     ) {
+        /*
+        |--------------------------------------------------------------------------
+        | Load all relationships needed by the email
+        |--------------------------------------------------------------------------
+        */
+
+        $application->load([
+            'user',
+            'jobPost.user.jobProfile',
+        ]);
+
         $this->application = $application;
     }
 
@@ -23,16 +34,57 @@ class JobWithdrawnMail extends Mailable
     {
         $application = $this->application;
 
-        $userName =
-            $application->user->first_name . ' ' .
-            $application->user->last_name;
+        /*
+        |--------------------------------------------------------------------------
+        | Applicant
+        |--------------------------------------------------------------------------
+        */
+
+        $userName = trim(
+            ($application->user?->first_name ?? '') .
+            ' ' .
+            ($application->user?->last_name ?? '')
+        );
+
+        if (!$userName) {
+            $userName = 'Applicant';
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Job
+        |--------------------------------------------------------------------------
+        */
+
+        $job = $application->jobPost;
 
         $jobTitle =
-            $application->job->title;
+            $job?->title
+            ?? 'Job Opportunity';
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Company
+        |--------------------------------------------------------------------------
+        */
 
         $companyName =
-            $application->job->user->jobProfile->company_name
+            $job?->user?->jobProfile?->company_name
+            ?? trim(
+                ($job?->user?->first_name ?? '') .
+                ' ' .
+                ($job?->user?->last_name ?? '')
+            )
             ?? 'the employer';
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Email
+        |--------------------------------------------------------------------------
+        */
 
         return $this
             ->subject(

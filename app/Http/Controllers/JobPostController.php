@@ -21,14 +21,29 @@ class JobPostController extends Controller
 
 public function index(Request $request)
 {
-    $query = JobPost::with([
-    'category',
-    'user:id,first_name,last_name,email',
-    'user.jobProfile'
-    ])
-    ->where('status','accepted')
-    ->whereDate('expire_date','>=',now());
+    $user = $request->user();
 
+    $query = JobPost::with([
+        'category',
+        'user:id,first_name,last_name,email',
+        'user.jobProfile'
+    ])
+    ->where('status', 'accepted')
+    ->whereNull('deleted_at')
+    ->whereDate('expire_date', '>=', now())
+
+    // Hide jobs the current user has already applied for
+    ->whereDoesntHave('applications', function ($q) use ($user) {
+
+        $q->where('user_id', $user->id)
+          ->whereIn('status', [
+              'pending',
+              'accepted',
+              'reviewed',
+              'rejected',
+          ]);
+
+    });
 
     if ($request->filled('search')) {
 
@@ -46,7 +61,6 @@ public function index(Request $request)
 
     }
 
-
     if ($request->filled('category')) {
 
         $query->where(
@@ -55,7 +69,6 @@ public function index(Request $request)
         );
 
     }
-
 
     if ($request->filled('job_type')) {
 
@@ -66,13 +79,12 @@ public function index(Request $request)
 
     }
 
-
     if ($request->filled('location')) {
 
         $query->where(
             'location',
             'like',
-            '%'.$request->location.'%'
+            '%' . $request->location . '%'
         );
 
     }
@@ -86,6 +98,7 @@ public function index(Request $request)
         );
 
     }
+
 
     if ($request->filled('max_salary')) {
 
@@ -105,11 +118,13 @@ public function index(Request $request)
 
             break;
 
+
         case 'salary_low':
 
             $query->orderBy('payment');
 
             break;
+
 
         case 'oldest':
 
@@ -117,32 +132,91 @@ public function index(Request $request)
 
             break;
 
+
         case 'most_viewed':
 
             $query->orderByDesc('views');
 
             break;
 
+
         default:
 
             $query->latest();
 
+            break;
+
     }
 
+
     $jobs = $query->paginate(12);
+
 
     return response()->json([
 
         'success' => true,
 
-        'jobs' => $jobs
+        'jobs' => $jobs,
 
     ]);
 }
 
 
+public function myPostedJobs(Request $request)
+{
+    $user = $request->user();
 
-    public function show($id)
+    $jobs = JobPost::with([
+        'category',
+        'user.jobProfile',
+    ])
+    ->withCount('applications')
+    ->where('user_id', $user->id)
+    ->latest()
+    ->paginate(10);
+
+    return response()->json([
+        'success' => true,
+        'jobs' => $jobs,
+    ]);
+}
+
+
+public function destroyMyPostedJob(
+    Request $request,
+    JobPost $job
+) {
+    $user = $request->user();
+
+    if ($job->user_id !== $user->id) {
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Unauthorized.',
+        ], 403);
+    }
+
+    DB::transaction(function () use ($job) {
+
+
+        $job->applications()->update([
+            'status' => 'shortlisted',
+            'reviewed_at' => now(),
+        ]);
+
+
+        $job->delete();
+    });
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Job deleted successfully.',
+    ]);
+}
+
+
+
+public function show($id)
     {
    
     $job = JobPost::with([

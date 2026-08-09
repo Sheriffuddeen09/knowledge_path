@@ -81,35 +81,45 @@ class JobPost extends Model
 
         'is_expired'=>'boolean',
 
+        'expire_date' => 'datetime',
+    
+        'approved_at' => 'datetime',
+    
+        'deleted_at' => 'datetime',
     ];
 
     public function user()
+   
     {
         return $this->belongsTo(User::class);
     }
 
     public function category()
+   
     {
         return $this->belongsTo(JobCategory::class,'job_category_id');
     }
 
     public function applications()
+   
     {
         return $this->hasMany(JobApplication::class);
     }
 
     public function approver()
+   
     {
         return $this->belongsTo(User::class,'approved_by');
     }
 
     public function skills()
+   
     {
-            return $this->belongsToMany(
-                JobSkill::class,
-                'job_post_skill'
-            );
-        }
+        return $this->belongsToMany(
+            JobSkill::class,
+            'job_post_skill'
+        );
+    }
     public function views()
     {
         return $this->hasMany(JobPostView::class);

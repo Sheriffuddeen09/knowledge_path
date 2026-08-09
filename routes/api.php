@@ -113,8 +113,26 @@ Route::middleware('auth:sanctum')->group(function(){
 
 
         Route::delete(
-            '/job-applications/{application}/remove',
-            [JobApplicationController::class, 'remove']
+        '/job-applications/{application}/remove',
+        [JobApplicationController::class, 'removeByPoster']
+        );
+
+
+
+            Route::get(
+                '/my-posted-jobs',
+                [JobPostController::class, 'myPostedJobs']
+            );
+
+            Route::delete(
+                '/my-posted-jobs/{job}',
+                [JobPostController::class, 'destroyMyPostedJob']
+            );
+
+        // Applicant removes application from My Applications
+        Route::delete(
+            '/my-applications/{application}/remove',
+            [JobApplicationController::class, 'removeByApplicant']
         );
 
 

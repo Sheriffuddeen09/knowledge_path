@@ -9,15 +9,25 @@ class JobInterview extends Model
 {
     use HasFactory;
 
-    protected $fillable = [
-        'job_application_id',
-        'interview_token',
-        'interview_date',
-        'interview_time',
-        'meeting_link',
-        'status',
-        'notes',
-    ];
+        protected $fillable = [
+
+            'job_application_id',
+
+            'interview_token',
+
+            'interview_date',
+
+            'interview_time',
+
+            'meeting_link',
+
+            'call_link',
+
+            'status',
+
+            'notes',
+
+        ];
 
     protected $casts = [
         'interview_date' => 'date',

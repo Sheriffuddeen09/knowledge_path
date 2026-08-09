@@ -29,21 +29,72 @@ class JobApplicationAcceptedMail extends Mailable
         $application = $this->application;
         $interview = $this->interview;
 
-        $userName =
-            $application->user->first_name . ' ' .
-            $application->user->last_name;
+        /*
+        |--------------------------------------------------------------------------
+        | Load all required relationships
+        |--------------------------------------------------------------------------
+        */
+
+        $application->load([
+            'user',
+            'jobPost.user.jobProfile',
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Applicant
+        |--------------------------------------------------------------------------
+        */
+
+        $userName = trim(
+            ($application->user->first_name ?? '') . ' ' .
+            ($application->user->last_name ?? '')
+        );
+
+        if (!$userName) {
+            $userName = 'Applicant';
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Job
+        |--------------------------------------------------------------------------
+        */
 
         $jobTitle =
-            $application->job->title;
+            $application->jobPost?->title
+            ?? 'Job Position';
+
+        /*
+        |--------------------------------------------------------------------------
+        | Company
+        |--------------------------------------------------------------------------
+        */
 
         $companyName =
-            $application->job->user->jobProfile->company_name
+            $application
+                ->jobPost
+                ?->user
+                ?->jobProfile
+                ?->company_name
             ?? 'the employer';
+
+        /*
+        |--------------------------------------------------------------------------
+        | Interview date
+        |--------------------------------------------------------------------------
+        */
 
         $interviewDate =
             $interview->interview_date
                 ? $interview->interview_date->format('F d, Y')
                 : 'Not specified';
+
+        /*
+        |--------------------------------------------------------------------------
+        | Interview time
+        |--------------------------------------------------------------------------
+        */
 
         $interviewTime =
             $interview->interview_time
@@ -52,8 +103,20 @@ class JobApplicationAcceptedMail extends Mailable
                 )->format('h:i A')
                 : 'Not specified';
 
+        /*
+        |--------------------------------------------------------------------------
+        | Meeting link
+        |--------------------------------------------------------------------------
+        */
+
         $meetingLink =
             $interview->meeting_link;
+
+        /*
+        |--------------------------------------------------------------------------
+        | Email
+        |--------------------------------------------------------------------------
+        */
 
         return $this
             ->subject(
@@ -61,10 +124,22 @@ class JobApplicationAcceptedMail extends Mailable
             )
             ->html('
                 <!DOCTYPE html>
+
                 <html>
+
                 <head>
+
                     <meta charset="UTF-8">
-                    <title>Job Application Accepted</title>
+
+                    <meta
+                        name="viewport"
+                        content="width=device-width, initial-scale=1.0"
+                    >
+
+                    <title>
+                        Job Application Accepted
+                    </title>
+
                 </head>
 
                 <body
@@ -76,123 +151,220 @@ class JobApplicationAcceptedMail extends Mailable
                     "
                 >
 
-                <table
-                    width="100%"
-                    cellpadding="0"
-                    cellspacing="0"
-                    style="padding:40px 15px;"
-                >
-
-                <tr>
-                <td align="center">
-
-                <table
-                    width="600"
-                    cellpadding="0"
-                    cellspacing="0"
-                    style="
-                        max-width:600px;
-                        background:#ffffff;
-                        border-radius:20px;
-                        overflow:hidden;
-                    "
-                >
-
-                <!-- HEADER -->
-
-                <tr>
-                <td
-                    style="
-                        padding:35px;
-                        background:#2563eb;
-                        color:#ffffff;
-                        text-align:center;
-                    "
-                >
-
-                    <h1 style="margin:0;">
-                        Application Accepted
-                    </h1>
-
-                </td>
-                </tr>
-
-                <!-- BODY -->
-
-                <tr>
-                <td style="padding:35px;">
-
-                    <p>
-                        Hello
-                        <strong>' . e($userName) . '</strong>,
-                    </p>
-
-                    <p>
-                        Congratulations! Your application for
-                        <strong>' . e($jobTitle) . '</strong>
-                        has been accepted by
-                        <strong>' . e($companyName) . '</strong>.
-                    </p>
-
-                    <div
-                        style="
-                            background:#f8fafc;
-                            border-radius:15px;
-                            padding:20px;
-                            margin:25px 0;
-                        "
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        style="padding:40px 15px;"
                     >
 
-                        <p>
-                            <strong>Interview Date:</strong>
-                            ' . e($interviewDate) . '
-                        </p>
+                        <tr>
 
-                        <p>
-                            <strong>Interview Time:</strong>
-                            ' . e($interviewTime) . '
-                        </p>
+                            <td align="center">
 
-                    </div>
+                                <table
+                                    width="600"
+                                    cellpadding="0"
+                                    cellspacing="0"
+                                    style="
+                                        width:100%;
+                                        max-width:600px;
+                                        background:#ffffff;
+                                        border-radius:20px;
+                                        overflow:hidden;
+                                    "
+                                >
 
-                    <div style="text-align:center;">
+                                    <!-- HEADER -->
 
-                        <a
-                            href="' . e($meetingLink) . '"
-                            style="
-                                display:inline-block;
-                                background:#2563eb;
-                                color:#ffffff;
-                                text-decoration:none;
-                                padding:14px 25px;
-                                border-radius:10px;
-                                font-weight:bold;
-                            "
-                        >
-                            Join Interview
-                        </a>
+                                    <tr>
 
-                    </div>
+                                        <td
+                                            style="
+                                                padding:35px;
+                                                background:#2563eb;
+                                                color:#ffffff;
+                                                text-align:center;
+                                            "
+                                        >
 
-                    <p style="margin-top:30px;">
-                        Please keep this email for your interview details.
-                    </p>
+                                            <h1
+                                                style="
+                                                    margin:0;
+                                                    font-size:28px;
+                                                "
+                                            >
+                                                Application Accepted
+                                            </h1>
 
-                    <p>
-                        Good luck!
-                    </p>
+                                        </td>
 
-                </td>
-                </tr>
+                                    </tr>
 
-                </table>
 
-                </td>
-                </tr>
+                                    <!-- BODY -->
 
-                </table>
+                                    <tr>
+
+                                        <td
+                                            style="
+                                                padding:35px;
+                                                color:#334155;
+                                            "
+                                        >
+
+                                            <p
+                                                style="
+                                                    font-size:16px;
+                                                    line-height:1.6;
+                                                "
+                                            >
+
+                                                Hello
+
+                                                <strong>
+                                                    ' . e($userName) . '
+                                                </strong>,
+
+                                            </p>
+
+
+                                            <p
+                                                style="
+                                                    font-size:16px;
+                                                    line-height:1.7;
+                                                "
+                                            >
+
+                                                Congratulations!
+
+                                                Your application for
+
+                                                <strong>
+                                                    ' . e($jobTitle) . '
+                                                </strong>
+
+                                                has been accepted by
+
+                                                <strong>
+                                                    ' . e($companyName) . '
+                                                </strong>.
+
+                                            </p>
+
+
+                                            <!-- INTERVIEW DETAILS -->
+
+                                            <div
+                                                style="
+                                                    background:#f8fafc;
+                                                    border-radius:15px;
+                                                    padding:20px;
+                                                    margin:25px 0;
+                                                    border:1px solid #e2e8f0;
+                                                "
+                                            >
+
+                                                <p
+                                                    style="
+                                                        margin:0 0 12px 0;
+                                                    "
+                                                >
+
+                                                    <strong>
+                                                        Interview Date:
+                                                    </strong>
+
+                                                    ' . e($interviewDate) . '
+
+                                                </p>
+
+
+                                                <p
+                                                    style="
+                                                        margin:0;
+                                                    "
+                                                >
+
+                                                    <strong>
+                                                        Interview Time:
+                                                    </strong>
+
+                                                    ' . e($interviewTime) . '
+
+                                                </p>
+
+                                            </div>
+
+
+                                            <!-- JOIN BUTTON -->
+
+                                            <div
+                                                style="
+                                                    text-align:center;
+                                                    margin:30px 0;
+                                                "
+                                            >
+
+                                                <a
+                                                    href="' . e($meetingLink) . '"
+                                                    target="_blank"
+                                                    style="
+                                                        display:inline-block;
+                                                        background:#2563eb;
+                                                        color:#ffffff;
+                                                        text-decoration:none;
+                                                        padding:14px 25px;
+                                                        border-radius:10px;
+                                                        font-weight:bold;
+                                                    "
+                                                >
+
+                                                    Join Interview
+
+                                                </a>
+
+                                            </div>
+
+
+                                            <p
+                                                style="
+                                                    margin-top:30px;
+                                                    font-size:15px;
+                                                    line-height:1.6;
+                                                "
+                                            >
+
+                                                Please keep this email for your
+                                                interview details.
+
+                                            </p>
+
+
+                                            <p
+                                                style="
+                                                    font-size:15px;
+                                                "
+                                            >
+
+                                                Good luck!
+
+                                            </p>
+
+                                        </td>
+
+                                    </tr>
+
+                                </table>
+
+                            </td>
+
+                        </tr>
+
+                    </table>
 
                 </body>
+
                 </html>
             ');
     }
