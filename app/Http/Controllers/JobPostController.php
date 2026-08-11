@@ -552,37 +552,44 @@ public function apply(Request $request, $jobId)
     ], 201);
 }
 
-
- public function store(Request $request)
+public function store(Request $request)
 {
-    // Handle "Other" category first
+
     if ($request->job_category_id === "other") {
 
         $request->validate([
             'new_category' => 'required|string|max:255',
         ]);
 
-        $slug = Str::slug($request->new_category);
+        $slug = Str::slug(
+            $request->new_category
+        );
 
         $category = JobCategory::firstOrCreate(
             ['slug' => $slug],
             [
-                'name' => trim($request->new_category),
+                'name' => trim(
+                    $request->new_category
+                ),
+
                 'slug' => $slug,
+
                 'description' => null,
+
                 'icon' => null,
+
                 'sort_order' => 999,
+
                 'is_active' => true,
             ]
         );
 
-        // Replace "other" with the actual category ID
         $request->merge([
             'job_category_id' => $category->id,
         ]);
-        }
+    }
 
-        $request->merge([
+    $request->merge([
 
         'enable_qualification' => filter_var(
             $request->enable_qualification,
@@ -604,51 +611,133 @@ public function apply(Request $request, $jobId)
             FILTER_VALIDATE_BOOLEAN
         ),
 
-    ]);
-    // Validate request
-    $validated = $request->validate([
-        'job_category_id' => 'required|exists:job_categories,id',
-        'title' => 'required|string|max:255',
-        'description' => 'required|string',
-        'about_us' => 'required|string',
-        'what_you_do' => 'required|string',
-        'location' => 'nullable|string',
-        'job_type' => 'required|in:remote,on-site,part-time',
-        'currency' => 'required|string|max:10',
-        'payment' => 'required|numeric',
-        'employee_needed' => 'required|integer|min:1',
-        'additional_compensation' => 'nullable|string',
-        'enable_qualification' => 'nullable|boolean',
-        'qualification' => 'nullable|string',
-        'enable_experience' => 'nullable|boolean',
-        'experience' => 'nullable|string',
-        'enable_year_experience' => 'nullable|boolean',
-        'year_experience' => 'nullable|integer|min:0',
-        'payment_required' => 'nullable|boolean',
-        'expire_date' => 'required|date|after:today',
+        'apply_on_website' => filter_var(
+            $request->apply_on_website,
+            FILTER_VALIDATE_BOOLEAN
+        ),
+
     ]);
 
-   $job = JobPost::create([
-    'user_id' => auth()->id(),
+    $validated = $request->validate([
+
+        'job_category_id' =>
+            'required|exists:job_categories,id',
+
+        'title' =>
+            'required|string|max:255',
+
+        'description' =>
+            'required|string',
+
+        'about_us' =>
+            'required|string',
+
+        'what_you_do' =>
+            'required|string',
+
+        'location' =>
+            'nullable|string',
+
+        'job_type' =>
+            'required|in:remote,on-site,part-time',
+
+        'currency' =>
+            'required|string|max:10',
+
+        'payment' =>
+            'required|numeric',
+
+        'employee_needed' =>
+            'required|integer|min:1',
+
+        'additional_compensation' =>
+            'nullable|string',
+
+        'enable_qualification' =>
+            'nullable|boolean',
+
+        'qualification' =>
+            'nullable|string',
+
+        'enable_experience' =>
+            'nullable|boolean',
+
+        'experience' =>
+            'nullable|string',
+
+        'enable_year_experience' =>
+            'nullable|boolean',
+
+        'year_experience' =>
+            'nullable|integer|min:0',
+
+        'payment_required' =>
+            'nullable|boolean',
+
+            'apply_on_website' =>
+            'nullable|boolean',
+
+        'application_website' => [
+
+            'nullable',
+
+            'url',
+
+            'max:2048',
+
+            'required_if:apply_on_website,1',
+
+        ],
+
+        'expire_date' =>
+            'required|date|after:today',
+
+    ]);
+
+    if (
+        !$validated['apply_on_website']
+    ) {
+
+        $validated['application_website'] = null;
+
+    }
+
+    $job = JobPost::create([
+
+        'user_id' =>
+            auth()->id(),
+
         ...$validated,
-        'status' => 'pending',
+
+        'status' =>
+            'pending',
+
     ]);
 
     $job->load([
         'user',
-        'category'
+        'category',
     ]);
 
-    Mail::to('odukoyasheriff@gmail.com')
-        ->send(new JobPostPendingApprovalMail($job));
+    Mail::to(
+        'odukoyasheriff@gmail.com'
+    )->send(
+        new JobPostPendingApprovalMail($job)
+    );
 
     return response()->json([
-        'success' => true,
-        'message' => 'Job created successfully. Waiting for admin approval.',
-        'job' => $job->load('category'),
+
+        'success' =>
+            true,
+
+        'message' =>
+            'Job created successfully. Waiting for admin approval.',
+
+        'job' =>
+            $job->load('category'),
+
     ], 201);
 }
-
 
 
 public function pendingJobs(Request $request)

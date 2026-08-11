@@ -21,7 +21,15 @@ class StoreJobApplicationRequest extends FormRequest
                 'mimes:pdf,doc,docx',
                 'max:5120',
             ],
+            'apply_on_website' => [
+                'boolean',
+            ],
 
+            'application_website' => [
+                'nullable',
+                'url',
+                'max:2048',
+            ],
             'additional_text' => [
                 'nullable',
                 'string',

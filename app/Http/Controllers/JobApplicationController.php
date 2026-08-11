@@ -695,7 +695,6 @@ public function withdraw(
 }
 
 
-
 public function interview($token)
 {
     $interview = JobInterview::with([
@@ -706,13 +705,22 @@ public function interview($token)
     ->where('interview_token', $token)
     ->firstOrFail();
 
-    $interviewDateTime = Carbon::parse(
-        $interview->interview_date->format('Y-m-d') .
-        ' ' .
+    $interviewDate = Carbon::parse(
+        $interview->interview_date
+    )->format('Y-m-d');
+
+    $interviewTime = Carbon::parse(
         $interview->interview_time
+    )->format('H:i:s');
+
+
+    $interviewDateTime = Carbon::parse(
+        $interviewDate . ' ' . $interviewTime
     );
 
-    $isExpired = now()->greaterThan($interviewDateTime);
+    $isExpired = now()->greaterThan(
+        $interviewDateTime
+    );
 
 
     return response()->json([
@@ -730,7 +738,7 @@ public function interview($token)
             'interview_time' =>
                 $interview->interview_time,
 
-                'meeting_link' =>
+            'meeting_link' =>
                 $interview->meeting_link,
 
             'call_link' =>
@@ -748,6 +756,9 @@ public function interview($token)
             'is_expired' =>
                 $isExpired,
 
+            'interview_datetime' =>
+                $interviewDateTime->toIso8601String(),
+
             'application' =>
                 $interview->application,
 
@@ -755,7 +766,6 @@ public function interview($token)
 
     ]);
 }
-
 
     public function removeByPoster(
     Request $request,

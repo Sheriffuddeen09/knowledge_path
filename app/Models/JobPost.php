@@ -49,6 +49,10 @@ class JobPost extends Model
 
         'year_experience',
 
+        'apply_on_website',
+    
+        'application_website',
+
         'status',
 
         'approved_by',
@@ -78,6 +82,8 @@ class JobPost extends Model
         'enable_experience'=>'boolean',
 
         'enable_year_experience'=>'boolean',
+
+        'apply_on_website' => 'boolean',
 
         'is_expired'=>'boolean',
 
