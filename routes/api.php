@@ -254,6 +254,11 @@ Route::post(
 "/advertisement/create",
 [AdvertisementController::class, "store"]
 );
+ Route::get(
+    '/admin/advertisement/pending',
+    [AdvertisementController::class, 'pending']
+    );
+
 Route::get(
 "/advertisement/my-advertisements",
 [AdvertisementController::class, "myAdvertisement"]

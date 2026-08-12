@@ -64,6 +64,20 @@ $advertisement
 return response()->json([ "message"=>"Advertisement successfully submitted.", "advertisement"=>$advertisement
 ],200);
 }
+
+public function pending()
+{
+    $advertisements = Advertisement::with('user')
+        ->where('status', 'pending')
+        ->latest()
+        ->get();
+
+    return response()->json([
+        'advertisements' => $advertisements
+    ], 200);
+}
+
+
 public function approve($id)
 {
 $advertisement= Advertisement::findOrFail($id);
@@ -125,6 +139,7 @@ $advertisement->update([ "audience"=>$request->audience, "required_badges"=>$req
 return response()->json([ "message"=>"Visibility unlocked successfully.", "advertisement"=>$advertisement
 ],200);
 }
+
 public function myAdvertisement()
 {
 $advertisements= Advertisement::where(
@@ -133,4 +148,6 @@ $advertisements= Advertisement::where(
 return response()->json([ "advertisements"=>$advertisements
 ]);
 }
+
+
 }

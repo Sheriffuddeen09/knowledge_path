@@ -215,10 +215,8 @@ public function destroyMyPostedJob(
 }
 
 
-
 public function show($id)
-    {
-   
+{
     $job = JobPost::with([
         'category',
         'user.jobProfile'
@@ -247,6 +245,7 @@ public function show($id)
     ->take(6)
     ->get();
 
+
     $previousJob = JobPost::with([
         'category',
         'user.jobProfile'
@@ -257,6 +256,7 @@ public function show($id)
     ->orderByDesc('id')
     ->first();
 
+
     $nextJob = JobPost::with([
         'category',
         'user.jobProfile'
@@ -266,6 +266,7 @@ public function show($id)
     ->where('id', '>', $job->id)
     ->orderBy('id')
     ->first();
+
 
     return response()->json([
 
@@ -291,9 +292,11 @@ public function show($id)
 
             'payment' => $job->payment,
 
-            'payment_required' => (bool) $job->payment_required,
+            'payment_required' =>
+                (bool) $job->payment_required,
 
-            'employee_needed' => $job->employee_needed,
+            'employee_needed' =>
+                $job->employee_needed,
 
             'additional_compensation' =>
                 $job->additional_compensation,
@@ -304,13 +307,11 @@ public function show($id)
             'qualification' =>
                 $job->qualification,
 
-
             'enable_experience' =>
                 (bool) $job->enable_experience,
 
             'experience' =>
                 $job->experience,
-
 
             'enable_year_experience' =>
                 (bool) $job->enable_year_experience,
@@ -318,25 +319,40 @@ public function show($id)
             'year_experience' =>
                 $job->year_experience,
 
-            'status' => $job->status,
+            'apply_on_website' =>
+                (bool) $job->apply_on_website,
 
-            'approved_at' => $job->approved_at,
+            'application_website' =>
+                $job->application_website,
 
-            'expire_date' => $job->expire_date,
+            'status' =>
+                $job->status,
 
-            'created_at' => $job->created_at,
+            'approved_at' =>
+                $job->approved_at,
 
-            'updated_at' => $job->updated_at,
+            'expire_date' =>
+                $job->expire_date,
 
-            'views' => $job->views,
+            'created_at' =>
+                $job->created_at,
+
+            'updated_at' =>
+                $job->updated_at,
+
+            'views' =>
+                $job->views,
+
             'application_count' =>
                 $job->applications_count,
 
-            'category' => $job->category,
+            'category' =>
+                $job->category,
 
             'user' => [
 
-                'id' => $job->user->id,
+                'id' =>
+                    $job->user->id,
 
                 'first_name' =>
                     $job->user->first_name,
@@ -348,21 +364,23 @@ public function show($id)
                     $job->user->email,
 
                 'job_profile' =>
-                    $job->user->jobProfile
+                    $job->user->jobProfile,
 
-            ]
+            ],
 
         ],
 
-        'related_jobs' => $relatedJobs,
+        'related_jobs' =>
+            $relatedJobs,
 
-        'previous_job' => $previousJob,
+        'previous_job' =>
+            $previousJob,
 
-        'next_job' => $nextJob
+        'next_job' =>
+            $nextJob,
 
     ]);
 }
-
 
 
 
