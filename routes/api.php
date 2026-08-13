@@ -216,7 +216,7 @@ Route::middleware('auth:sanctum')->group(function(){
     );
 
     Route::get('/jobs',
-    [JobPostController::class,'index']
+        [JobPostController::class,'index']
     );
 
      Route::get(
@@ -258,6 +258,12 @@ Route::post(
     '/admin/advertisement/pending',
     [AdvertisementController::class, 'pending']
     );
+
+Route::get(
+    '/advertisement/{id}',
+    [AdvertisementController::class, 'show']
+);
+
 
 Route::get(
 "/advertisement/my-advertisements",

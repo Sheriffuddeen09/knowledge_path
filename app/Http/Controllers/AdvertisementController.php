@@ -77,6 +77,15 @@ public function pending()
     ], 200);
 }
 
+public function show($id)
+{
+    $advertisement = Advertisement::with('user')
+        ->where('id', $id)
+        ->first();
+    return response()->json([
+        'advertisement' => $advertisement
+    ], 200);
+}
 
 public function approve($id)
 {
