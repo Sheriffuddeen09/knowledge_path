@@ -97,30 +97,44 @@ class JobProfileController extends Controller
 
 
     public function update(Request $request, $id)
-{
-    Log::info('========== UPDATE START ==========');
+        {
+            
 
-    Log::info('Profile ID', [
-        'id' => $id,
-    ]);
+        Log::info('Job profile update request', [
 
-    Log::info('Authenticated User', [
-        'user_id' => auth()->id(),
-    ]);
+                'method' => $request->method(),
 
-    Log::info('Request Method', [
-        'method' => $request->method(),
-    ]);
+                'content_type' =>
+                    $request->header('Content-Type'),
 
-    Log::info('All Request Data', [
-        'data' => $request->all(),
-    ]);
+                'has_company_logo' =>
+                    $request->hasFile('company_logo'),
 
-    Log::info('Files Received', [
-        'has_cv' => $request->hasFile('cv'),
-        'has_logo' => $request->hasFile('company_logo'),
-    ]);
+                'company_logo' =>
+                    $request->file('company_logo'),
 
+                'company_logo_mime' =>
+                    $request->file('company_logo')
+                        ?->getMimeType(),
+
+                'company_logo_client_mime' =>
+                    $request->file('company_logo')
+                        ?->getClientMimeType(),
+
+                'company_logo_name' =>
+                    $request->file('company_logo')
+                        ?->getClientOriginalName(),
+
+                'company_logo_size' =>
+                    $request->file('company_logo')
+                        ?->getSize(),
+
+                'all_request_data' =>
+                    $request->except([
+                        'company_logo',
+                        'cv',
+                    ]),
+            ]);
 
     $user = $request->user();
 
@@ -128,26 +142,6 @@ class JobProfileController extends Controller
     $profile = JobProfile::where('id', $id)
         ->where('user_id', $user->id)
         ->firstOrFail();
-
-
-    Log::info('Profile Found', [
-        'profile_id' => $profile->id,
-        'type' => $profile->type,
-    ]);
-
-    Log::info('CV Information',[
-    'has_file'=>$request->hasFile('cv'),
-    'cv'=>$request->file('cv'),
-    'extension'=>$request->file('cv')
-        ? $request->file('cv')->getClientOriginalExtension()
-        : null,
-    'mime'=>$request->file('cv')
-        ? $request->file('cv')->getMimeType()
-        : null,
-    'name'=>$request->file('cv')
-        ? $request->file('cv')->getClientOriginalName()
-        : null,
-]);
 
     $validated = $request->validate([
 
@@ -170,15 +164,8 @@ class JobProfileController extends Controller
 
     ]);
 
-
-    Log::info('Validation Passed', [
-        'validated' => $validated,
-    ]);
-
-
     if ($request->hasFile('company_logo')) {
 
-        Log::info('Uploading Company Logo');
 
         if (
             $profile->company_logo &&
@@ -192,10 +179,6 @@ class JobProfileController extends Controller
                     $profile->company_logo
                 );
 
-            Log::info(
-                'Old Company Logo Deleted'
-            );
-
         }
 
         $validated['company_logo'] = $request
@@ -204,17 +187,10 @@ class JobProfileController extends Controller
                 'company_logo',
                 'public'
             );
-
-        Log::info('New Company Logo Uploaded', [
-            'path' => $validated['company_logo'],
-        ]);
-
     }
 
 
     if ($request->hasFile('cv')) {
-
-        Log::info('Uploading CV');
 
         if (
             $profile->cv &&
@@ -228,10 +204,6 @@ class JobProfileController extends Controller
                     $profile->cv
                 );
 
-            Log::info(
-                'Old CV Deleted'
-            );
-
         }
 
         $validated['cv'] = $request
@@ -240,11 +212,6 @@ class JobProfileController extends Controller
                 'cv',
                 'public'
             );
-
-        Log::info('New CV Uploaded', [
-            'path' => $validated['cv'],
-        ]);
-
     }
 
 
@@ -254,30 +221,11 @@ class JobProfileController extends Controller
             $request->skills
         );
 
-        Log::info('Skills Updated', [
-            'skills' => $validated['skills'],
-        ]);
-
     }
-
-
-    Log::info('Updating Profile', [
-        'data' => $validated,
-    ]);
-
 
     $profile->update(
         $validated
     );
-
-
-    Log::info('Profile Updated Successfully', [
-        'profile' => $profile->fresh(),
-    ]);
-
-
-    Log::info('========== UPDATE END ==========');
-
 
     return response()->json([
 
