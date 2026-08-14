@@ -13,14 +13,30 @@ class Product extends Model
         'company_available', 'location', 'delivery_method', 'delivery_time',
         'delivery_price', 'category_id', 'front_image', 'back_image', 'side_image',
         'pdf_file', 'is_digital', 'sale_type', 'downloadable', 'key_features',
-        'specifications', 'total_price', 'parent_id', 'new_subcategory'
+        'specifications', 'total_price', 'parent_id', 'new_subcategory',
+        'visibility', 'visibility_badges', 'visibility_unlocked', 'visibility_unlocked_at',
     ];
 
 
     protected $casts = [
+
+    'visibility_unlocked' => 'boolean',
+
+    'visibility_unlocked_at' => 'datetime',
+
+    'visibility_badges' => 'integer',
+
     'key_features' => 'array',
+    
     'specifications' => 'array',
     ];
+
+    public function visibility(): HasOne
+    {
+        return $this->hasOne(
+            ProductVisibility::class
+        );
+    }
 
     public function category()
     {

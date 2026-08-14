@@ -73,6 +73,21 @@ use App\Http\Controllers\JobApplicationController;
 use App\Http\Controllers\JobController;
 use App\Http\Controllers\AdvertisementController;
 use App\Http\Controllers\JobPostController;
+use App\Http\Controllers\ProductVisibilityController;
+
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get(
+        '/product/{id}/visibility',
+        [ProductVisibilityController::class, 'show']
+    );
+
+    Route::post(
+        '/product/{id}/visibility',
+        [ProductVisibilityController::class, 'update']
+    );
+
+});
 
 Route::middleware('auth:sanctum')->group(function(){
 
@@ -793,6 +808,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // routes/api.php
     Route::get('/product-search', [ProductController::class, 'searchProduct']);
+
+    Route::get(
+        '/my-product-reviews',
+        [ReviewController::class, 'myProductReviews']
+    );
 });
 
     Route::middleware('auth:sanctum')->group(function () {

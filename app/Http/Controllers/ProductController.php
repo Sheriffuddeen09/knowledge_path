@@ -176,23 +176,234 @@ class ProductController extends Controller
             }
 
             
-            // Product Index
+        
+    private function productVisibleInLocation(
+            Product $product,
+            string $location,
+            array $locations
+        ): bool {
 
-            public function index()
-            {
+    if (
+        auth()->check() &&
+        $product->user_id == auth()->id()
+    ) {
+        return true;
+    }
 
-            $products = Product::with('images')
-            ->withCount('reviews')
-            ->latest()
-            ->paginate(20);
+    if ($product->location === $location) {
+        return true;
+    }
 
-            return response()->json($products);
+    if (!$product->visibility_unlocked) {
+        return false;
+    }
 
+    if ((int) $product->visibility === 100) {
+        return true;
+    }
+
+    $visibility = (int) $product->visibility;
+
+
+    if (!in_array(
+        $visibility,
+        [25, 50, 75],
+        true
+    )) {
+        return false;
+    }
+
+    $locations = collect($locations)
+        ->filter(fn ($item) => filled($item))
+        ->unique()
+        ->values()
+        ->toArray();
+
+
+    if (count($locations) === 0) {
+        return false;
+    }
+
+    $totalLocations = count($locations);
+
+    $allowedLocations = (int) ceil(
+        ($totalLocations * $visibility) / 100
+    );
+
+    $productLocation = $product->location;
+
+    $locationScores = [];
+
+
+    foreach ($locations as $availableLocation) {
+
+        $locationScores[$availableLocation] =
+            md5(
+                $product->id .
+                '|' .
+                $availableLocation
+            );
+
+    }
+
+    asort($locationScores);
+
+    $selectedLocations = array_slice(
+        array_keys($locationScores),
+        0,
+        $allowedLocations
+    );
+
+
+    if (
+        $productLocation &&
+        !in_array(
+            $productLocation,
+            $selectedLocations,
+            true
+        )
+    ) {
+
+        if (count($selectedLocations) > 0) {
+
+            array_pop($selectedLocations);
+
+        }
+
+        $selectedLocations[] =
+            $productLocation;
+    }
+
+
+    return in_array(
+        $location,
+        $selectedLocations,
+        true
+    );
+}
+
+    public function index(Request $request)
+{
+    $user = $request->user();
+
+    $userLocation = $user?->location;
+
+    $selectedLocation = $request->query(
+        'location',
+        $userLocation
+    );
+
+    $locations = Product::query()
+        ->whereNotNull('location')
+        ->where('location', '!=', '')
+        ->select('location')
+        ->distinct()
+        ->orderBy('location')
+        ->pluck('location')
+        ->filter()
+        ->unique()
+        ->values()
+        ->toArray();
+
+    $allProducts = Product::with([
+            'images'
+        ])
+        ->withCount('reviews')
+        ->latest()
+        ->get();
+
+        $visibleProducts = $allProducts
+        ->filter(function ($product) use (
+            $selectedLocation,
+            $locations,
+            $user
+        ) {
+
+            if (
+                $user &&
+                $product->user_id == $user->id
+            ) {
+                return true;
             }
 
 
+            if (!$selectedLocation) {
+                return false;
+            }
 
-            // Product Id
+            return $this->productVisibleInLocation(
+                $product,
+                $selectedLocation,
+                $locations
+            );
+
+        })
+        ->values();
+
+    $perPage = 20;
+
+    $currentPage = max(
+        1,
+        (int) $request->query(
+            'page',
+            1
+        )
+    );
+
+
+    $total = $visibleProducts->count();
+
+
+    $lastPage = max(
+        1,
+        (int) ceil(
+            $total / $perPage
+        )
+    );
+
+
+    $products = $visibleProducts
+        ->slice(
+            ($currentPage - 1) * $perPage,
+            $perPage
+        )
+        ->values();
+
+    $locationHasProducts =
+        $visibleProducts->isNotEmpty();
+
+    return response()->json([
+
+        'data' =>
+            $products,
+
+        'current_page' =>
+            $currentPage,
+
+        'last_page' =>
+            $lastPage,
+
+        'per_page' =>
+            $perPage,
+
+        'total' =>
+            $total,
+
+        'user_location' =>
+            $userLocation,
+
+        'selected_location' =>
+            $selectedLocation,
+
+        'location_has_products' =>
+            $locationHasProducts,
+
+        'locations' =>
+            $locations,
+
+    ]);
+}
+            // Product Id review
             public function show($id)
             {
                 $product = Product::with(['images', 'reviews.user'])
@@ -206,12 +417,12 @@ class ProductController extends Controller
 
             // User Product
            public function myProducts()
-{
-    return Product::with('images') // <-- eager load images
-        ->where('user_id', auth()->id())
-        ->latest()
-        ->get();
-}
+            {
+                return Product::with('images') // <-- eager load images
+                    ->where('user_id', auth()->id())
+                    ->latest()
+                    ->get();
+            }
 
 
 
