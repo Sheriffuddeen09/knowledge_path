@@ -396,31 +396,81 @@ class JobApplicationController extends Controller
 {
     $user = $request->user();
 
+    $unreadCount = JobApplication::whereHas(
+        'jobPost',
+        function ($query) use ($user) {
+
+            $query->where(
+                'user_id',
+                $user->id
+            );
+
+        }
+    )
+    ->whereNull('removed_by_poster_at')
+    ->whereNull('read_by_poster_at')
+    ->count();
+
     $applications = JobApplication::with([
         'user.jobProfile',
         'jobPost.category',
         'interview',
     ])
-    ->whereHas('jobPost', function ($query) use ($user) {
+    ->whereHas(
+        'jobPost',
+        function ($query) use ($user) {
 
-        $query->where(
-            'user_id',
-            $user->id
-        );
+            $query->where(
+                'user_id',
+                $user->id
+            );
 
-    })
+        }
+    )
     ->whereNull('removed_by_poster_at')
     ->latest()
     ->paginate(10);
 
+
     return response()->json([
+
         'success' => true,
+
         'applications' => $applications,
+
+        'unread_count' => $unreadCount,
+
     ]);
 }
 
 
-    
+    public function markApplicationsAsRead(Request $request)
+{
+    $user = $request->user();
+
+    JobApplication::whereHas(
+        'jobPost',
+        function ($query) use ($user) {
+
+            $query->where(
+                'user_id',
+                $user->id
+            );
+
+        }
+    )
+    ->whereNull('removed_by_poster_at')
+    ->whereNull('read_by_poster_at')
+    ->update([
+        'read_by_poster_at' => now(),
+    ]);
+
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Application notifications cleared.',
+    ]);
+}
 
 public function accept(
     Request $request,

@@ -34,6 +34,10 @@ class JobApplication extends Model
         'reviewed_at',
     
         'removed_by_poster_at',
+
+        'removed_by_poster_at',
+    
+        'read_by_poster_at',
     ];
 
     protected $casts = [
@@ -45,6 +49,8 @@ class JobApplication extends Model
         'reviewed_at' => 'datetime',
          
         'removed_by_poster_at' => 'datetime',
+    
+        'read_by_poster_at' => 'datetime',
 
         'removed_by_applicant_at' => 'datetime',
 

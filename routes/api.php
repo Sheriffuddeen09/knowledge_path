@@ -75,16 +75,33 @@ use App\Http\Controllers\AdvertisementController;
 use App\Http\Controllers\JobPostController;
 use App\Http\Controllers\ProductVisibilityController;
 
-
 Route::middleware('auth:sanctum')->group(function () {
+
+
     Route::get(
-        '/product/{id}/visibility',
-        [ProductVisibilityController::class, 'show']
+        '/my-products/visibility',
+        [
+            ProductVisibilityController::class,
+            'index'
+        ]
     );
+
 
     Route::post(
         '/product/{id}/visibility',
-        [ProductVisibilityController::class, 'update']
+        [
+            ProductVisibilityController::class,
+            'upgrade'
+        ]
+    );
+
+
+    Route::delete(
+        '/product/{id}/visibility',
+        [
+            ProductVisibilityController::class,
+            'destroy'
+        ]
     );
 
 });
@@ -97,7 +114,7 @@ Route::middleware('auth:sanctum')->group(function(){
             JobApplicationController::class,
             'index'
         ]
-    );
+    ); 
 
 
     Route::post(
@@ -279,11 +296,6 @@ Route::get(
     [AdvertisementController::class, 'show']
 );
 
-
-Route::get(
-"/advertisement/my-advertisements",
-[AdvertisementController::class, "myAdvertisement"]
-);
 Route::post(
 "/advertisement/approve/{id}",
 [AdvertisementController::class, "approve"]
@@ -292,10 +304,27 @@ Route::post(
 "/advertisement/decline/{id}",
 [AdvertisementController::class, "decline"]
 );
-Route::post(
-"/advertisement/unlock-visibility/{id}",
-[AdvertisementController::class, "unlockVisibility"]
-);
+
+
+ Route::get(
+        '/my-advertisements',
+        [AdvertisementController::class, 'myAdvertisement']
+    );
+
+    Route::post(
+        '/advertisement/unlock-visibility/{id}',
+        [AdvertisementController::class, 'unlockVisibility']
+    );
+
+    Route::post(
+        '/advertisement/{id}/visibility/renew',
+        [AdvertisementController::class, 'renewVisibility']
+    );
+
+    Route::delete(
+        '/advertisement/{id}/visibility',
+        [AdvertisementController::class, 'deleteVisibility']
+    );
 });
 
 
@@ -333,6 +362,10 @@ Route::put(
 
 );
 
+Route::post(
+    '/job-applications/mark-read',
+    [JobApplicationController::class, 'markApplicationsAsRead']
+);
 
 });
 

@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+
 
 class Product extends Model
 {
@@ -10,11 +12,12 @@ class Product extends Model
      protected $fillable = [
         'user_id', 'title', 'author', 'description', 'price', 'discount',
         'charges', 'currency', 'stock', 'brand_name', 'company_type',
-        'company_available', 'location', 'delivery_method', 'delivery_time',
+        'company_available', 'location', 'address','delivery_method', 'delivery_time',
         'delivery_price', 'category_id', 'front_image', 'back_image', 'side_image',
         'pdf_file', 'is_digital', 'sale_type', 'downloadable', 'key_features',
         'specifications', 'total_price', 'parent_id', 'new_subcategory',
         'visibility', 'visibility_badges', 'visibility_unlocked', 'visibility_unlocked_at',
+        'visibility_started_at', 'visibility_expires_at',
     ];
 
 
@@ -25,6 +28,10 @@ class Product extends Model
     'visibility_unlocked_at' => 'datetime',
 
     'visibility_badges' => 'integer',
+
+    'visibility_started_at' => 'datetime',
+
+    'visibility_expires_at' => 'datetime',
 
     'key_features' => 'array',
     
