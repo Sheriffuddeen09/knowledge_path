@@ -118,6 +118,8 @@ class JobApplicationController extends Controller
 
             'status' => 'pending',
 
+            'read_by_poster_at' => null,
+
         ]);
 
 
@@ -444,34 +446,56 @@ class JobApplicationController extends Controller
 }
 
 
-    public function markApplicationsAsRead(Request $request)
+
+public function unreadCount(Request $request)
 {
     $user = $request->user();
 
-    JobApplication::whereHas(
-        'jobPost',
-        function ($query) use ($user) {
-
-            $query->where(
-                'user_id',
-                $user->id
-            );
-
-        }
+    $count = JobApplication::whereNull(
+        'read_by_poster_at'
     )
+    ->whereHas('jobPost', function ($query) use ($user) {
+
+        $query->where(
+            'user_id',
+            $user->id
+        );
+
+    })
     ->whereNull('removed_by_poster_at')
-    ->whereNull('read_by_poster_at')
+    ->count();
+
+    return response()->json([
+        'success' => true,
+        'count' => $count,
+    ]);
+}
+
+    public function markAsRead(Request $request)
+{
+    $user = $request->user();
+
+    JobApplication::whereNull(
+        'read_by_poster_at'
+    )
+    ->whereHas('jobPost', function ($query) use ($user) {
+
+        $query->where(
+            'user_id',
+            $user->id
+        );
+
+    })
+    ->whereNull('removed_by_poster_at')
     ->update([
         'read_by_poster_at' => now(),
     ]);
 
-
     return response()->json([
         'success' => true,
-        'message' => 'Application notifications cleared.',
+        'message' => 'Applications marked as read.',
     ]);
 }
-
 public function accept(
     Request $request,
     JobApplication $application

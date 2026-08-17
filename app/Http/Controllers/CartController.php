@@ -73,16 +73,20 @@ class CartController extends Controller
 
 
         public function deleteCart($id)
-            {
-                $user = Auth::user();
+{
+    $user = Auth::user();
 
-                $cartItem = Cart::where('id', $id)->where('user_id', $user->id)->firstOrFail();
+    $cartItem = Cart::where('id', $id)
+        ->where('user_id', $user->id)
+        ->firstOrFail();
 
-                $cartItem->delete();
+    $cartItem->delete();
 
-                // Return updated cart
-                $cart = Cart::with('product')->where('user_id', $user->id)->get();
-                return response()->json(['cart' => $cart]);
-            }
+    $cart = Cart::with('product')
+        ->where('user_id', $user->id)
+        ->get();
+
+    return response()->json(['cart' => $cart]);
+}
 
 }

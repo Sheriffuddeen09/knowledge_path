@@ -10,13 +10,15 @@ class OrderItem extends Model
         'order_id',
         'product_id',
         'title',
+        'description',
         'image',
         'quantity',
         'price',
         'delivery_price',
         'discount',
         'total_price',
-        'delivery_method'
+        'delivery_method',
+        'seller_id',
     ];
 
     // 🔗 RELATION
@@ -28,5 +30,11 @@ class OrderItem extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+
+    public function seller()
+    {
+        return $this->belongsTo(User::class, 'seller_id');
     }
 }

@@ -362,10 +362,15 @@ Route::put(
 
 );
 
-Route::post(
-    '/job-applications/mark-read',
-    [JobApplicationController::class, 'markApplicationsAsRead']
-);
+    Route::get(
+        '/job-applications/unread-count',
+        [JobApplicationController::class, 'unreadCount']
+    );
+
+    Route::post(
+        '/job-applications/mark-read',
+        [JobApplicationController::class, 'markAsRead']
+    );
 
 });
 
@@ -890,8 +895,16 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::middleware('auth:sanctum')->group(function () {
-        Route::post('/product/save-draft', [OrderController::class, 'saveDraft']);
         Route::get('/product/drafts/{userId}', [OrderController::class, 'getDrafts']);
+        Route::post(
+        '/product/save-draft',
+        [OrderController::class, 'saveDraft']
+        );
+
+        Route::get(
+            '/product/drafts',
+            [OrderController::class, 'getDrafts']
+        );
         Route::delete('/product/draft/{id}', [OrderController::class, 'deleteDraft']);
         Route::get('/saved-products/count/{userId}', function ($userId) {
             $count = DB::table('saved_products')
