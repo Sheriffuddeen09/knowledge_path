@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Cart;
 use App\Models\Order;
 use App\Models\OrderItem;
 use Illuminate\Http\Request;
@@ -220,19 +221,6 @@ class OrderController extends Controller
 
 
             $sellerId = $product->user_id;
-
-
-            if (!$sellerId) {
-
-                Log::warning(
-                    'Product has no seller',
-                    [
-                        'product_id' => $product->id
-                    ]
-                );
-
-                continue;
-            }
 
 
             $itemPrice = (float) (
@@ -1063,10 +1051,7 @@ public function getDrafts(Request $request)
 
         $user = $request->user();
 
-        \Log::info('GET DRAFTS USER', [
-            'user' => $user,
-            'user_id' => $user?->id,
-        ]);
+       
 
         if (!$user) {
             return response()->json([
@@ -1081,11 +1066,7 @@ public function getDrafts(Request $request)
             ->latest()
             ->get();
 
-        \Log::info('GET DRAFTS RESULT', [
-            'user_id' => $user->id,
-            'count' => $drafts->count(),
-            'drafts' => $drafts,
-        ]);
+       
 
         $drafts->transform(function ($item) {
 
@@ -1098,10 +1079,7 @@ public function getDrafts(Request $request)
 
     } catch (\Exception $e) {
 
-        \Log::error('GET DRAFTS ERROR', [
-            'message' => $e->getMessage(),
-            'line' => $e->getLine(),
-        ]);
+       
 
         return response()->json([
             'success' => false,
@@ -1134,61 +1112,96 @@ public function deleteDraft($id)
 
 
     public function createChat(Request $request)
-    {
-        $request->validate([
-            'user_id' => 'required|exists:users,id',   // 👈 the OTHER user
-            'order_id' => 'required|exists:orders,id',
-        ]);
+{
+    $request->validate([
+        'user_id' => 'required|exists:users,id',
+        'order_id' => 'required|exists:orders,id',
+    ]);
 
-        $currentUserId = auth()->id();       // 👈 logged in user
-        $otherUserId = $request->user_id;    // 👈 who we want to chat with
-        $orderId = $request->order_id;
+    $currentUserId = (int) auth()->id();
+    $otherUserId = (int) $request->user_id;
+    $orderId = (int) $request->order_id;
 
-        // 🚫 Prevent chatting with yourself
-        if ($currentUserId == $otherUserId) {
+    // Prevent chatting with yourself
+    if ($currentUserId === $otherUserId) {
+        return response()->json([
+            'success' => false,
+            'message' => 'You cannot chat with yourself'
+        ], 400);
+    }
+
+    $order = Order::with('items')->findOrFail($orderId);
+
+    $isBuyer = (int) $order->user_id === $currentUserId;
+
+    $isSeller = $order->items->contains(function ($item) use ($currentUserId) {
+        return (int) $item->seller_id === $currentUserId;
+    });
+
+    if (!$isBuyer && !$isSeller) {
+        return response()->json([
+            'success' => false,
+            'message' => 'You are not authorized to chat for this order.'
+        ], 403);
+    }
+
+
+    if ($isBuyer) {
+
+
+        $sellerExists = $order->items->contains(function ($item) use ($otherUserId) {
+            return (int) $item->seller_id === $otherUserId;
+        });
+
+        if (!$sellerExists) {
             return response()->json([
                 'success' => false,
-                'message' => 'You cannot chat with yourself'
-            ], 400);
+                'message' => 'This seller is not part of this order.'
+            ], 403);
         }
+    }
 
-        // 🔍 Ensure order exists
-        $order = Order::findOrFail($orderId);
+    if ($isSeller) {
 
-        // 🛡️ SECURITY: Ensure only buyer or seller can chat
-        $isBuyer = $order->user_id == $currentUserId;
-        $isSeller = $order->seller_id == $currentUserId;
+        if ((int) $order->user_id !== $otherUserId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This buyer is not associated with this order.'
+            ], 403);
+        }
+    }
 
-        // 🔁 Normalize users (prevents duplicate chats)
-        $userOne = min($currentUserId, $otherUserId);
-        $userTwo = max($currentUserId, $otherUserId);
+    $userOne = min(
+        $currentUserId,
+        $otherUserId
+    );
 
-        // ✅ Create or get existing chat (unique per order)
-        $chat = Chat::firstOrCreate([
+    $userTwo = max(
+        $currentUserId,
+        $otherUserId
+    );
+
+    $chat = Chat::where('user_one_id', $userOne)
+        ->where('user_two_id', $userTwo)
+        ->first();
+
+
+
+    if (!$chat) {
+
+        $chat = Chat::create([
             'user_one_id' => $userOne,
             'user_two_id' => $userTwo,
-            'order_id' => $orderId, // 👈 VERY IMPORTANT
+            'order_id' => $orderId,
             'type' => 'marketplace',
         ]);
-
-
-        return response()->json([
-            'success' => true,
-            'chat' => $chat,
-            'chat_id' => $chat->id
-        ]);
     }
-public function unreadCount($orderId)
-{
-    $userId = auth()->id();
 
-    $count = Message::where('order_id', $orderId)
-        ->where('receiver_id', $userId)
-        ->where('is_read', false)
-        ->count();
 
     return response()->json([
-        'unread' => $count
+        'success' => true,
+        'chat' => $chat,
+        'chat_id' => $chat->id
     ]);
 }
 }

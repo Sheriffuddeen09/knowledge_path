@@ -915,14 +915,22 @@ Route::middleware('auth:sanctum')->group(function () {
             return response()->json(['count' => $count]);
         });
 
-        Route::post('/saved-products/clear/{userId}', function ($userId) {
-            DB::table('saved_products')
-                ->where('user_id', $userId)
-                ->where('status', 'draft')
-                ->update(['status' => 'viewed']); // or 'saved'
+        Route::post('/saved-products/count/{userId}/clear', function ($userId) {
 
-            return response()->json(['message' => 'cleared']);
-        });
+                DB::table('saved_products')
+                    ->where('user_id', $userId)
+                    ->where('status', 'draft')
+                    ->update([
+                        'status' => 'saved',
+                    ]);
+
+                return response()->json([
+                    'success' => true,
+                    'count' => 0,
+                ]);
+            });
+
+        
     });
 
 
