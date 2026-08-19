@@ -19,11 +19,16 @@ class Post extends Model
         'post_media', 
         'trim_start',
         'trim_end',
+        'background_color',
+        'font',
+        'reel_type',
+        'reel_duration',
     ];
 
     protected $casts = [
     'trim_start' => 'float',
     'trim_end' => 'float',
+    'reel_duration' => 'integer',
         ];
     public function user()
     {

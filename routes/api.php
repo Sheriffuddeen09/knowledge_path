@@ -74,6 +74,22 @@ use App\Http\Controllers\JobController;
 use App\Http\Controllers\AdvertisementController;
 use App\Http\Controllers\JobPostController;
 use App\Http\Controllers\ProductVisibilityController;
+use App\Http\Controllers\ReelController;
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    Route::get('/reels', [
+        ReelController::class,
+        'index'
+    ]);
+
+    Route::post('/reels', [
+        ReelController::class,
+        'store'
+    ]);
+
+
+});
 
 Route::middleware('auth:sanctum')->group(function () {
 
