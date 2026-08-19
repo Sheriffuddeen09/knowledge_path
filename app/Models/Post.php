@@ -16,9 +16,15 @@ class Post extends Model
         'original_post_id',
         'is_new_home',
         'is_new_video',
-        'post_media',
+        'post_media', 
+        'trim_start',
+        'trim_end',
     ];
 
+    protected $casts = [
+    'trim_start' => 'float',
+    'trim_end' => 'float',
+        ];
     public function user()
     {
         return $this->belongsTo(User::class);

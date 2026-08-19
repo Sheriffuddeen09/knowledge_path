@@ -942,6 +942,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     //Notification
     Route::middleware('auth:sanctum')->get('/page-notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/requests/seen', [NotificationController::class, 'markRequestsAsSeen']);
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/notifications/read/{id}', [NotificationController::class, 'markAsReadNotification']);
     });

@@ -29,41 +29,73 @@ class PostController extends Controller
 {
     $request->validate([
         'content' => 'nullable|string',
+
         'visibility' => 'required|in:public,friends,private',
+
         'images' => 'nullable|array',
         'images.*' => 'image|mimes:jpg,jpeg,png,webp|max:5120',
+
         'video' => 'nullable|file|mimes:mp4,mov|max:51200',
+
+        'trim_start' => 'nullable|numeric|min:0',
+        'trim_end' => 'nullable|numeric|gt:trim_start',
     ]);
 
-    // ❌ Empty post check
     if (
         !$request->content &&
         !$request->hasFile('images') &&
         !$request->hasFile('video')
     ) {
-        return response()->json(['message' => 'Post is empty'], 422);
+        return response()->json([
+            'message' => 'Post is empty'
+        ], 422);
     }
 
-    // ❌ Block image + video together
-    if ($request->hasFile('images') && $request->hasFile('video')) {
+    if (
+        $request->hasFile('images') &&
+        $request->hasFile('video')
+    ) {
         return response()->json([
             'message' => 'You can upload images OR a video, not both.'
         ], 422);
     }
 
-    // ✅ Create post
+    if (
+        !$request->hasFile('video') &&
+        (
+            $request->filled('trim_start') ||
+            $request->filled('trim_end')
+        )
+    ) {
+        return response()->json([
+            'message' => 'Trim values can only be used with a video.'
+        ], 422);
+    }
+
     $post = Post::create([
     'user_id' => auth()->id(),
     'content' => $request->content,
     'visibility' => $request->visibility,
-    'is_new_home' => 1,   // ALL posts increase home
-    'is_new_video' => 0,  // default
-    ]);
 
-    // ✅ Save images
+    'trim_start' => $request->trim_start,
+    'trim_end' => $request->trim_end,
+
+    'is_new_home' => 1,
+    'is_new_video' => 0,
+        ]);
+    
+
     if ($request->hasFile('images')) {
-        foreach ($request->file('images') as $index => $image) {
-            $path = $image->store('posts/images', 'public');
+
+        foreach (
+            $request->file('images')
+            as $index => $image
+        ) {
+
+            $path = $image->store(
+                'posts/images',
+                'public'
+            );
 
             $post->media()->create([
                 'type' => 'image',
@@ -73,9 +105,123 @@ class PostController extends Controller
         }
     }
 
-    // ✅ Save ONE video
+
     if ($request->hasFile('video')) {
-        $path = $request->file('video')->store('posts/videos', 'public');
+
+        $video = $request->file('video');
+
+        if (
+            !$request->filled('trim_start') ||
+            !$request->filled('trim_end')
+        ) {
+
+            $path = $video->store(
+                'posts/videos',
+                'public'
+            );
+
+        } else {
+
+            $trimStart = (float) $request->trim_start;
+            $trimEnd = (float) $request->trim_end;
+
+            $duration = $trimEnd - $trimStart;
+
+            if ($duration <= 0) {
+
+                return response()->json([
+                    'message' => 'Invalid video trim duration.'
+                ], 422);
+            }
+
+            $originalPath = $video->store(
+                'posts/temp',
+                'public'
+            );
+
+            $inputPath = Storage::disk('public')
+                ->path($originalPath);
+
+            $outputDirectory = 'posts/videos';
+
+            Storage::disk('public')
+                ->makeDirectory($outputDirectory);
+
+            $outputFilename =
+                'post_' .
+                uniqid() .
+                '_' .
+                time() .
+                '.mp4';
+
+            $outputRelativePath =
+                $outputDirectory .
+                '/' .
+                $outputFilename;
+
+            $outputPath = Storage::disk('public')
+                ->path($outputRelativePath);
+
+            $process = new Process([
+                'ffmpeg',
+
+                '-ss',
+                (string) $trimStart,
+
+                '-i',
+                $inputPath,
+
+                '-t',
+                (string) $duration,
+
+                '-c:v',
+                'libx264',
+
+                '-preset',
+                'fast',
+
+                '-crf',
+                '23',
+
+                '-c:a',
+                'aac',
+
+                '-movflags',
+                '+faststart',
+
+                '-y',
+
+                $outputPath,
+            ]);
+
+            $process->setTimeout(300);
+
+            try {
+
+                $process->mustRun();
+
+            } catch (\Throwable $e) {
+
+                Storage::disk('public')
+                    ->delete($originalPath);
+
+                $post->delete();
+
+                return response()->json([
+                    'message' =>
+                        'Video processing failed.',
+                    'error' =>
+                        config('app.debug')
+                            ? $e->getMessage()
+                            : null,
+                ], 500);
+            }
+
+            Storage::disk('public')
+                ->delete($originalPath);
+
+            $path = $outputRelativePath;
+        }
 
         $post->media()->create([
             'type' => 'video',
@@ -84,24 +230,33 @@ class PostController extends Controller
         ]);
     }
 
+    $hasVideo = $post
+        ->media()
+        ->where('type', 'video')
+        ->exists();
 
-    $hasVideo = $post->media()->where('type', 'video')->exists();
-    $hasImage = $post->media()->where('type', 'image')->exists();
+    $hasImage = $post
+        ->media()
+        ->where('type', 'image')
+        ->exists();
+
     $hasContent = !empty($request->content);
 
-    // ONLY video (no image, no content)
-    $isVideoOnly = $hasVideo && !$hasImage && !$hasContent;
+    $isVideoOnly =
+        $hasVideo &&
+        !$hasImage &&
+        !$hasContent;
 
     $post->update([
         'is_new_home' => 1,
-        'is_new_video' => $isVideoOnly ? 1 : 0,
+        'is_new_video' =>
+            $isVideoOnly ? 1 : 0,
     ]);
 
     return response()->json([
         'post' => $post->load('media')
     ], 201);
 }
-
 
 
 public function index()

@@ -371,4 +371,21 @@ public function markNotificationsAsRead()
     ]);
 }
 
+public function markRequestsAsSeen(Request $request)
+{
+    $user = $request->user();
+
+    // Change this query to match your actual request table
+    NotificationRequest::where('user_id', $user->id)
+        ->where('seen', false)
+        ->update([
+            'seen' => true,
+        ]);
+
+    return response()->json([
+        'success' => true,
+    ]);
+}
+
+
 }
