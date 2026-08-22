@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Post extends Model
 {
@@ -102,7 +103,24 @@ class Post extends Model
             ->wherePivot('status', 'accepted');
     }
 
+    public function reelViews(): HasMany
+    {
+        return $this->hasMany(ReelView::class);
+    }
 
+    public function reelReactions(): HasMany
+    {
+        return $this->hasMany(ReelReaction::class);
+    }
 
+    public function post()
+    {
+        return $this->belongsTo(Post::class);
+    }
+
+    public function messages()
+    {
+        return $this->hasMany(Message::class);
+    }
 
 }

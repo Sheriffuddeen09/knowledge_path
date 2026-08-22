@@ -17,7 +17,9 @@ return new class extends Migration
                 $table->foreignId('sender_id')->constrained('users')->cascadeOnDelete();
                 $table->foreignId('receiver_id')->constrained('users')->cascadeOnDelete();
 
-                $table->enum('type', ['text', 'image', 'voice']);
+                $table->enum('type', ['text', 'image', 'voice', 'reel']);
+
+                $table->foreignId('post_id')->nullable()->constrained('posts')->nullOnDelete();
                 
                 $table->text('message')->nullable();
                 $table->string('file')->nullable();
