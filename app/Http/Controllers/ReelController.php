@@ -3,10 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Post;
+use App\Models\ReelView;
+use App\Models\ReelReaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Process\Process;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 
@@ -34,6 +37,7 @@ public function store(Request $request)
             'string',
             'max:5000',
         ],
+        
 
         'visibility' => [
             'required',
@@ -69,6 +73,13 @@ public function store(Request $request)
             'max:102400',
         ],
 
+        'media.*.description' => [
+            'nullable',
+            'string',
+            'max:700',
+        ],
+
+
         'media.*.type' => [
             'required',
             Rule::in([
@@ -99,13 +110,6 @@ public function store(Request $request)
 
     $type = $request->reel_type;
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | TEXT REEL
-    |--------------------------------------------------------------------------
-    */
-
     if ($type === 'text') {
 
         if (!$request->filled('content')) {
@@ -124,14 +128,6 @@ public function store(Request $request)
             ], 422);
         }
     }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | MEDIA VALIDATION
-    |--------------------------------------------------------------------------
-    */
-
     $uploadedMedia =
         $request->file('media', []);
 
@@ -146,14 +142,6 @@ public function store(Request $request)
                 'At least one image or video is required.'
         ], 422);
     }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | DETERMINE MEDIA TYPES
-    |--------------------------------------------------------------------------
-    */
-
     $hasImages = false;
     $hasVideos = false;
 
@@ -175,13 +163,6 @@ public function store(Request $request)
             $hasVideos = true;
         }
     }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | CHECK REEL TYPE MATCHES MEDIA
-    |--------------------------------------------------------------------------
-    */
 
     if ($type === 'image' && $hasVideos) {
 
@@ -236,13 +217,6 @@ public function store(Request $request)
         ], 422);
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | CALCULATE TOTAL REEL DURATION
-    |--------------------------------------------------------------------------
-    */
-
     $totalReelDuration = 0;
 
 
@@ -253,26 +227,12 @@ public function store(Request $request)
                 "media.$index.type"
             );
 
-
-        /*
-        |--------------------------------------------------------------------------
-        | IMAGE = 30 SECONDS
-        |--------------------------------------------------------------------------
-        */
-
         if ($mediaType === 'image') {
 
             $totalReelDuration += 30;
 
             continue;
         }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | VIDEO
-        |--------------------------------------------------------------------------
-        */
 
         if ($mediaType === 'video') {
 
@@ -297,13 +257,6 @@ public function store(Request $request)
                 ], 422);
             }
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | HARD 90 SECOND LIMIT
-            |--------------------------------------------------------------------------
-            */
-
             if ($videoDuration > 90) {
 
                 return response()->json([
@@ -317,13 +270,6 @@ public function store(Request $request)
         }
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | CREATE POST
-    |--------------------------------------------------------------------------
-    */
-
     $post = Post::create([
         'user_id' =>
             auth()->id(),
@@ -336,6 +282,7 @@ public function store(Request $request)
 
         'content' =>
             $request->content,
+            
 
         'visibility' =>
             $request->visibility,
@@ -357,14 +304,6 @@ public function store(Request $request)
         'is_new_video' =>
             1,
     ]);
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | PROCESS EVERY MEDIA FILE
-    |--------------------------------------------------------------------------
-    */
-
     foreach (
         $uploadedMedia
         as $index => $media
@@ -384,66 +323,51 @@ public function store(Request $request)
                 "media.$index.type"
             );
 
-
-        /*
-        |--------------------------------------------------------------------------
-        | IMAGE
-        |--------------------------------------------------------------------------
-        */
-
         if ($mediaType === 'image') {
 
-            /*
-            |--------------------------------------------------------------------------
-            | Validate image
-            |--------------------------------------------------------------------------
-            */
+    if (
+        !str_starts_with(
+            $file->getMimeType(),
+            'image/'
+        )
+    ) {
 
-            if (
-                !str_starts_with(
-                    $file->getMimeType(),
-                    'image/'
-                )
-            ) {
+        $post->delete();
 
-                $post->delete();
+        return response()->json([
+            'message' =>
+                "Media item {$index} is not a valid image."
+        ], 422);
+    }
 
-                return response()->json([
-                    'message' =>
-                        "Media item {$index} is not a valid image."
-                ], 422);
-            }
+    $path = $file->store(
+        'posts/reels/images',
+        'public'
+    );
 
+    $postMedia = $post->media()->create([
+        'type' => 'image',
+        'path' => $path,
+        'order' => $index,
+    ]);
 
-            $path =
-                $file->store(
-                    'posts/reels/images',
-                    'public'
-                );
+    $description = $request->input(
+        "media.$index.description"
+    );
 
+    if (
+        $description &&
+        trim($description) !== ''
+    ) {
 
-            $post->media()->create([
-                'type' =>
-                    'image',
+        $postMedia->description()->create([
+            'type' => 'image',
+            'content' => trim($description),
+        ]);
+    }
 
-                'path' =>
-                    $path,
-
-                'order' =>
-                    $index,
-            ]);
-
-
-            continue;
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | VIDEO
-        |--------------------------------------------------------------------------
-        */
-
+    continue;
+}
         if ($mediaType === 'video') {
 
             $trimStart =
@@ -460,13 +384,6 @@ public function store(Request $request)
 
             $duration =
                 $trimEnd - $trimStart;
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Validate duration
-            |--------------------------------------------------------------------------
-            */
 
             if ($duration <= 0) {
 
@@ -489,13 +406,6 @@ public function store(Request $request)
                 ], 422);
             }
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | Store original temporarily
-            |--------------------------------------------------------------------------
-            */
-
             $originalPath =
                 $file->store(
                     'posts/reels/temp',
@@ -507,13 +417,6 @@ public function store(Request $request)
                 Storage::disk('public')
                     ->path($originalPath);
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | Output directory
-            |--------------------------------------------------------------------------
-            */
-
             $outputDirectory =
                 'posts/reels/videos';
 
@@ -522,13 +425,6 @@ public function store(Request $request)
                 ->makeDirectory(
                     $outputDirectory
                 );
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Output filename
-            |--------------------------------------------------------------------------
-            */
 
             $outputFilename =
                 'reel_' .
@@ -551,14 +447,6 @@ public function store(Request $request)
                     ->path(
                         $outputRelativePath
                     );
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | FFMPEG
-            |--------------------------------------------------------------------------
-            */
-
             $process =
                 new Process([
                     'ffmpeg',
@@ -595,13 +483,6 @@ public function store(Request $request)
 
             $process->setTimeout(300);
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | RUN FFMPEG
-            |--------------------------------------------------------------------------
-            */
-
             try {
 
                 $process->mustRun();
@@ -610,13 +491,6 @@ public function store(Request $request)
 
                 Storage::disk('public')
                     ->delete($originalPath);
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | Delete already-created media
-                |--------------------------------------------------------------------------
-                */
 
                 foreach (
                     $post->media as $savedMedia
@@ -652,57 +526,37 @@ public function store(Request $request)
                 ], 500);
             }
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | Delete original temporary video
-            |--------------------------------------------------------------------------
-            */
-
             Storage::disk('public')
                 ->delete(
                     $originalPath
                 );
+            $postMedia = $post->media()->create([
+                    'type' => 'video',
+                    'path' => $outputRelativePath,
+                    'order' => $index,
+                ]);
 
+                $description = $request->input(
+                    "media.$index.description"
+                );
 
-            /*
-            |--------------------------------------------------------------------------
-            | Save processed video
-            |--------------------------------------------------------------------------
-            */
+                if (
+                    $description &&
+                    trim($description) !== ''
+                ) {
 
-            $post->media()->create([
-                'type' =>
-                    'video',
-
-                'path' =>
-                    $outputRelativePath,
-
-                'order' =>
-                    $index,
-            ]);
+                    $postMedia->description()->create([
+                        'type' => 'video',
+                        'content' => trim($description),
+                    ]);
+                }
         }
     }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | LOAD RELATIONSHIPS
-    |--------------------------------------------------------------------------
-    */
 
     $post->load([
         'user',
         'media',
     ]);
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | RESPONSE
-    |--------------------------------------------------------------------------
-    */
-
     return response()->json([
         'success' =>
             true,
@@ -716,111 +570,259 @@ public function store(Request $request)
 }
 
 
-    public function index(Request $request)
-    {
-        $user = $request->user();
+public function index(Request $request)
+{
+    $user = $request->user();
 
-        /*
-        |--------------------------------------------------------------------------
-        | Only reels created within 24 hours
-        |--------------------------------------------------------------------------
-        */
+    $reels = Post::query()
+        ->where('post_type', 'reel')
+        ->where('created_at', '>=', now()->subHours(24))
+        ->whereIn('visibility', [
+            'public',
+            'friends',
+        ])
 
-        $reels = Post::query()
-            ->where('post_type', 'reel')
-            ->where('created_at', '>=', now()->subHours(24))
-            ->whereIn(
-                'visibility',
-                ['public', 'friends']
-            )
-            ->with([
-                'user:id,first_name,last_name',
-                'media',
+        ->with([
+    'user:id,first_name,last_name',
+
+    'media' => function ($query) {
+        $query
+            ->select([
+                'id',
+                'post_id',
+                'type',
+                'path',
+                'order',
             ])
-            ->withCount('reelViews')
-            ->latest()
-            ->get();
+            ->with([
+                'description:id,post_media_id,type,content',
+            ])
+            ->orderBy('order');
+                },
+            ])
 
-        /*
-        |--------------------------------------------------------------------------
-        | Remove users that current user cannot see.
-        |
-        | Keep your existing chat-user permission here.
-        |--------------------------------------------------------------------------
-        */
+        ->withCount([
+            'reelViews',
+            'reactions',
+        ])
 
-        $reels = $reels->filter(function ($reel) use ($user) {
+        ->withExists([
+            'reelViews as has_viewed' => function ($query) use ($user) {
+                $query->where(
+                    'user_id',
+                    $user->id
+                );
+            },
+        ])
 
-            if ($reel->user_id === $user->id) {
+        ->latest()
+        ->get();
+
+    $reels = $reels->filter(
+        function ($reel) use ($user) {
+
+            // Own reels
+            if (
+                (int) $reel->user_id ===
+                (int) $user->id
+            ) {
                 return true;
             }
 
-            return $this->canSeeReel(
-                $user->id,
-                $reel->user_id
-            );
-        });
+            // Public reels
+            if (
+                $reel->visibility === 'public'
+            ) {
+                return true;
+            }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Group reels by user
-        |--------------------------------------------------------------------------
-        */
+            // Friends reels
+            if (
+                $reel->visibility === 'friends'
+            ) {
+                return $this->canSeeReel(
+                    $user->id,
+                    $reel->user_id
+                );
+            }
 
-        $grouped = $reels
-            ->groupBy('user_id')
-            ->values()
-            ->map(function ($userReels) use ($user) {
+            return false;
+        }
+    );
 
-                $owner = $userReels->first()->user;
+    /*
+    |--------------------------------------------------------------------------
+    | FORMAT REELS
+    |--------------------------------------------------------------------------
+    */
+
+    $reels = $reels->map(
+        function ($reel) {
+
+            return [
+                'id' => $reel->id,
+
+                'reel_type' =>
+                    $reel->reel_type,
+
+                'content' =>
+                    $reel->content,
+
+                'visibility' =>
+                    $reel->visibility,
+
+                'duration' =>
+                    $reel->reel_duration,
+
+                'created_at' =>
+                    $reel->created_at,
+
+                'expires_at' =>
+                    $reel->created_at
+                        ->copy()
+                        ->addHours(24),
+
+                'has_viewed' =>
+                    (bool) $reel->has_viewed,
+
+                'views_count' =>
+                    $reel->reel_views_count,
+
+                'user_reaction' =>
+                    $reel->reactions
+                        ->where(
+                            'user_id',
+                            auth()->id()
+                        )
+                        ->first()?->reaction,
+
+                'user' => [
+                    'id' =>
+                        $reel->user->id,
+
+                    'first_name' =>
+                        $reel->user->first_name,
+
+                    'last_name' =>
+                        $reel->user->last_name,
+
+                    'initial' =>
+                        strtoupper(
+                            mb_substr(
+                                $reel->user->first_name ?: 'U',
+                                0,
+                                1
+                            )
+                        ),
+                ],
+
+                /*
+                |--------------------------------------------------------------------------
+                | MEDIA
+                |--------------------------------------------------------------------------
+                */
+
+                'media' =>
+                    $reel->media
+                        ->sortBy('order')
+                        ->values()
+                        ->map(
+                            function ($media) {
+
+                                return [
+                                    'id' =>
+                                        $media->id,
+
+                                    'type' =>
+                                        $media->type,
+
+                                    'url' =>
+                                        asset(
+                                            'storage/' .
+                                            $media->path
+                                        ),
+
+                                    'order' =>
+                                        $media->order,
+
+                                    'description' => $media->description
+                                            ? [
+                                                'id' => $media->description->id,
+                                                'type' => $media->description->type,
+                                                'content' => $media->description->content,
+                                            ]
+                                            : null,
+                                ];
+                            }
+                        )
+                        ->values(),
+            ];
+        }
+    )
+    ->values();
+
+    /*
+    |--------------------------------------------------------------------------
+    | GROUP BY USER
+    |--------------------------------------------------------------------------
+    */
+
+    $grouped = $reels
+        ->groupBy('user_id');
+
+
+    $myReels = $reels
+        ->filter(
+            function ($reel) use ($user) {
+
+                return (int) $reel['user']['id'] ===
+                    (int) $user->id;
+            }
+        )
+        ->sortBy('created_at')
+        ->values();
+
+    $otherUsers = $reels
+        ->filter(
+            function ($reel) use ($user) {
+
+                return (int) $reel['user']['id'] !==
+                    (int) $user->id;
+            }
+        )
+        ->groupBy(
+            function ($reel) {
+                return $reel['user']['id'];
+            }
+        )
+        ->map(
+            function ($userReels) {
+
+                $first =
+                    $userReels->first();
 
                 return [
-                    'user' => [
-                        'id' =>
-                            $owner->id,
-
-                        'first_name' =>
-                            $owner->first_name,
-
-                        'last_name' =>
-                            $owner->last_name,
-
-                        'initial' =>
-                            strtoupper(
-                                mb_substr(
-                                    $owner->first_name ?? 'U',
-                                    0,
-                                    1
-                                )
-                            ),
-                    ],
+                    'user' => $first['user'],
 
                     'reels' =>
                         $userReels
                             ->sortBy('created_at')
-                            ->values()
-                            ->map(function ($reel) use ($user) {
-
-                                return $this->formatReel(
-                                    $reel,
-                                    $user
-                                );
-                            }),
+                            ->values(),
                 ];
-            });
+            }
+        )
+        ->values();
 
-        return response()->json([
-            'success' => true,
-            'reels' => $grouped,
-        ]);
-    }
+    return response()->json([
+        'success' => true,
 
+        'my_reels' =>
+            $myReels,
 
-    /*
-    |--------------------------------------------------------------------------
-    | SHOW ONE REEL
-    |--------------------------------------------------------------------------
-    */
+        'reels' =>
+            $otherUsers,
+    ]);
+}
 
     public function show(
         Request $request,
@@ -1133,4 +1135,19 @@ public function store(Request $request)
             })
             ->exists();
     }
+
+
+    public function markViewed(Post $reel)
+    {
+        ReelView::firstOrCreate([
+            'post_id' => $reel->id,
+            'user_id' => auth()->id(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+        ]);
+    }
+
+
 }

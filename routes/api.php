@@ -79,6 +79,12 @@ use App\Http\Controllers\ReelController;
 
 Route::middleware('auth:sanctum')->group(function () {
 
+    Route::middleware('auth:sanctum')->post(
+        '/reels/{reel}/view',
+        [ReelController::class, 'markViewed']
+    );
+
+
     Route::get(
         '/reels',
         [ReelController::class, 'index']

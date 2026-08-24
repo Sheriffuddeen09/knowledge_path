@@ -9,6 +9,8 @@ class Post extends Model
 {
     protected $fillable = [
         'user_id',
+        'post_type',
+        'reel_type',
         'content',
         'image',
         'video',
@@ -22,7 +24,6 @@ class Post extends Model
         'trim_end',
         'background_color',
         'font',
-        'reel_type',
         'reel_duration',
     ];
 
@@ -111,11 +112,6 @@ class Post extends Model
     public function reelReactions(): HasMany
     {
         return $this->hasMany(ReelReaction::class);
-    }
-
-    public function post()
-    {
-        return $this->belongsTo(Post::class);
     }
 
     public function messages()
