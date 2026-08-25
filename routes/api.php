@@ -84,6 +84,15 @@ Route::middleware('auth:sanctum')->group(function () {
         [ReelController::class, 'markViewed']
     );
 
+    Route::get(
+        '/reels/{reel}/reactions',
+        [ReelController::class, 'reactionUsers']
+    );
+
+    Route::get(
+        '/reels/{reel}/views',
+        [ReelController::class, 'viewUsers']
+    );
 
     Route::get(
         '/reels',

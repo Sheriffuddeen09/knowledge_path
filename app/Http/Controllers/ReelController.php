@@ -1150,4 +1150,93 @@ public function index(Request $request)
     }
 
 
+     public function reactionUsers(Request $request, Reel $reel)
+    {
+        $users = $reel->reactions()
+            ->with([
+                'user:id,first_name,last_name'
+            ])
+            ->latest()
+            ->get()
+            ->map(function ($reaction) {
+                return [
+                    'id' => $reaction->user->id,
+
+                    'first_name' =>
+                        $reaction->user->first_name,
+
+                    'last_name' =>
+                        $reaction->user->last_name,
+
+                    'initial' =>
+                        strtoupper(
+                            substr(
+                                $reaction->user->first_name ?? '',
+                                0,
+                                1
+                            )
+                        ),
+
+                    'reaction' =>
+                        $reaction->reaction,
+
+                    'created_at' =>
+                        $reaction->created_at,
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+
+            'count' => $users->count(),
+
+            'users' => $users,
+        ]);
+    }
+
+
+    /**
+     * Users who viewed a reel.
+     */
+    public function viewUsers(Request $request, Reel $reel)
+    {
+        $users = $reel->views()
+            ->with([
+                'user:id,first_name,last_name'
+            ])
+            ->latest()
+            ->get()
+            ->map(function ($view) {
+                return [
+                    'id' => $view->user->id,
+
+                    'first_name' =>
+                        $view->user->first_name,
+
+                    'last_name' =>
+                        $view->user->last_name,
+
+                    'initial' =>
+                        strtoupper(
+                            substr(
+                                $view->user->first_name ?? '',
+                                0,
+                                1
+                            )
+                        ),
+
+                    'viewed_at' =>
+                        $view->created_at,
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+
+            'count' => $users->count(),
+
+            'users' => $users,
+        ]);
+    }
+
 }
