@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\Post;
+use App\Models\PostMedia;
 use App\Models\Chat;
 use App\Models\Message;
 use App\Models\MessageDownload;
@@ -81,8 +83,25 @@ public function messages(Chat $chat)
         })
         ->with([
             'sender:id,first_name,last_name,role',
+
             'reactions:id,message_id,user_id,emoji',
-            'reactions.user:id,first_name,last_name'
+            'reactions.user:id,first_name,last_name',
+
+            'post',
+
+            'postMedia' => function ($query) {
+                $query
+                    ->select([
+                        'id',
+                        'post_id',
+                        'type',
+                        'path',
+                        'order',
+                    ])
+                    ->with([
+                        'description:id,post_media_id,type,content',
+                    ]);
+                    },
         ])
         ->orderBy('id', 'asc')
         ->get();
@@ -153,6 +172,9 @@ public function messages(Chat $chat)
             'type' => $msg->type,
             'message' => $msg->message,
             'iv' => $msg->iv,
+            'reel_preview' => null,
+            'post_id' => $msg->post_id,
+            'post_media_id' => $msg->post_media_id,
             'reactions' => $msg->reactions->map(function ($reaction) {
                 return [
                     'id' => $reaction->id,
@@ -195,6 +217,79 @@ public function messages(Chat $chat)
 
                 // 
         ];
+        if (
+                    $msg->type === 'reel' &&
+                    $msg->post
+                ) {
+
+                    if ($msg->postMedia) {
+
+                        $base['reel_preview'] = [
+                            'post_id' =>
+                                $msg->post->id,
+
+                            'media_id' =>
+                                $msg->postMedia->id,
+
+                            'type' =>
+                                $msg->postMedia->type,
+
+                            'url' =>
+                                $msg->postMedia->path
+                                    ? asset(
+                                        'storage/' .
+                                        $msg->postMedia->path
+                                    )
+                                    : null,
+
+                            'description' =>
+                                $msg->postMedia->description
+                                    ? [
+                                        'id' =>
+                                            $msg->postMedia->description->id,
+
+                                        'type' =>
+                                            $msg->postMedia->description->type,
+
+                                        'content' =>
+                                            $msg->postMedia->description->content,
+                                    ]
+                                    : null,
+
+                            'content' =>
+                                $msg->post->content,
+
+                            'reel_type' =>
+                                $msg->post->reel_type,
+                        ];
+                    }
+                    else {
+
+                        $base['reel_preview'] = [
+                            'post_id' =>
+                                $msg->post->id,
+
+                            'media_id' =>
+                                null,
+
+                            'type' =>
+                                'content',
+
+                            'url' =>
+                                null,
+
+                            'content' =>
+                                $msg->post->content,
+
+                            'description' =>
+                                null,
+
+                            'reel_type' =>
+                                $msg->post->reel_type,
+                        ];
+                    }
+                }
+
         if ($msg->group_id) {
             if (!isset($groupMap[$msg->group_id])) {
                 $groupMap[$msg->group_id] = $base;

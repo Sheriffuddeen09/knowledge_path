@@ -269,7 +269,8 @@ public function index()
         ->pluck('post_id')
         ->toArray();
 
-    $posts = Post::whereNotIn('id', $viewedPostIds) // 🔥 THIS WAS MISSING
+    $posts = Post::whereNotIn('id', $viewedPostIds)
+    ->where('post_type', '!=', 'reel')
         ->where(function ($query) use ($friendIds) {
 
             // PUBLIC
@@ -349,7 +350,6 @@ public function index()
     ]);
 }
 
-
 public function show($id)
 {
     $post = Post::with([
@@ -359,51 +359,20 @@ public function show($id)
         'comments.user',
         'comments.replies.user',
         'originalPost.user',
-        'originalPost.media'
+        'originalPost.media',
     ])
     ->withCount([
         'reactions',
         'comments',
         'shares',
-        'reposts'
+        'reposts',
     ])
+    ->where('post_type', '!=', 'reel')
     ->findOrFail($id);
 
-    $isRepost = !is_null($post->original_post_id);
-
-    $basePost = $post->original_post_id
-        ? $post->rootOriginal()
-        : $post;
-
-    return response()->json([
-        'status' => true,
-        'post' => [
-            'id' => $post->id,
-            'is_repost' => $isRepost,
-            'original_post_id' => $post->original_post_id,
-            'created_at' => $post->created_at->diffForHumans(),
-
-            'content' => $basePost->content,
-
-            'media' => $basePost->media->map(fn ($m) => [
-                'id' => $m->id,
-                'type' => $m->type,
-                'url' => asset('storage/' . $m->path),
-            ]),
-
-            'user' => [
-                'id' => $basePost->user->id,
-                'name' => $basePost->user->first_name.' '.$basePost->user->last_name,
-            ],
-
-            'created_at' => $post->created_at->diffForHumans(),
-            'reactions_count' => $basePost->reactions_count ?? 0,
-            'comments_count'  => $basePost->comments_count ?? 0,
-            'shares_count'    => $basePost->shares_count ?? 0,
-            'reposts_count'   => $basePost->reposts_count ?? 0,
-        ]
-    ]);
+    // ...your existing normal post response
 }
+
 
 
 public function hide(Post $post)

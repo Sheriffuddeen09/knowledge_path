@@ -76,7 +76,7 @@ use App\Http\Controllers\JobPostController;
 use App\Http\Controllers\ProductVisibilityController;
 use App\Http\Controllers\ReelController;
 
-
+// /post-count
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware('auth:sanctum')->post(
@@ -100,8 +100,8 @@ Route::middleware('auth:sanctum')->group(function () {
     );
 
     Route::get(
-        '/reels/{reel}',
-        [ReelController::class, 'show']
+        '/reels-get',
+        [ReelController::class, 'reel']
     );
 
     Route::post(
@@ -1074,8 +1074,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     //  count
     Route::get('/post-count', [NotificationController::class, 'postCount']);
+    Route::get('/reel-count', [NotificationController::class, 'reelCount']);
     Route::post('/clear-home-posts', [NotificationController::class, 'clearHomePosts']);
     Route::post('/clear-video-posts', [NotificationController::class, 'clearVideoPosts']);
+    Route::post('/clear-video-reels', [NotificationController::class, 'clearVideoReels']);
 
     Route::post('/messages/clear-unread', [NotificationController::class, 'clearUnreadMessages']);
     Route::middleware('auth:sanctum')->group(function () {

@@ -154,4 +154,17 @@ class Message extends Model
             . '/meeting/'
             . $this->meeting_room_id;
     }
+
+    public function post()
+    {
+        return $this->belongsTo(Post::class);
+    }
+
+    public function postMedia()
+    {
+        return $this->belongsTo(
+            PostMedia::class,
+            'post_media_id'
+        );
+    }
 }

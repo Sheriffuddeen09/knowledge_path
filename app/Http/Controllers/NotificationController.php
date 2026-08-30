@@ -387,5 +387,47 @@ public function markRequestsAsSeen(Request $request)
     ]);
 }
 
+public function reelCount()
+{
+    $homeCount = Post::where(
+        'is_new_home',
+        1
+    )->count();
+
+    $reelCount = Post::where(
+        'post_type',
+        'reel'
+    )
+        ->where(
+            'is_new_video',
+            1
+        )
+        ->count();
+
+    return response()->json([
+        'home_count' => $homeCount,
+
+        'reel_count' => $reelCount,
+    ]);
+}
+
+public function clearReelPosts()
+{
+    Post::where(
+        'post_type',
+        'reel'
+    )
+        ->where(
+            'is_new_video',
+            1
+        )
+        ->update([
+            'is_new_video' => 0
+        ]);
+
+    return response()->json([
+        'success' => true
+    ]);
+}
 
 }

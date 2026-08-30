@@ -3,13 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Models\Post;
+use App\Models\PostMedia;
 use App\Models\ReelView;
+use App\Models\Chat;
 use App\Models\ReelReaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Process\Process;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
+use App\Mail\ReelMessageMail;
+use App\Mail\ReelReactionMail;
+use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 
@@ -40,13 +45,13 @@ public function store(Request $request)
         
 
         'visibility' => [
-            'required',
-            Rule::in([
-                'public',
-                'friends',
-                'private',
-            ]),
-        ],
+                'nullable',
+                Rule::in([
+                    'public',
+                    'friends',
+                    'private',
+                ]),
+            ],
 
         'background_color' => [
             'nullable',
@@ -270,6 +275,11 @@ public function store(Request $request)
         }
     }
 
+    $visibility = $request->input(
+    'visibility'
+    ) ?: 'friends';
+    
+    
     $post = Post::create([
         'user_id' =>
             auth()->id(),
@@ -285,7 +295,7 @@ public function store(Request $request)
             
 
         'visibility' =>
-            $request->visibility,
+            $visibility,
 
         'background_color' =>
             $request->background_color,
@@ -358,8 +368,7 @@ public function store(Request $request)
     if (
         $description &&
         trim($description) !== ''
-    ) {
-
+    ) {  
         $postMedia->description()->create([
             'type' => 'image',
             'content' => trim($description),
@@ -568,46 +577,52 @@ public function store(Request $request)
             $post,
     ], 201);
 }
-
-
+   
 public function index(Request $request)
 {
     $user = $request->user();
 
     $reels = Post::query()
         ->where('post_type', 'reel')
-        ->where('created_at', '>=', now()->subHours(24))
+        ->where(
+            'created_at',
+            '>=',
+            now()->subHours(24)
+        )
         ->whereIn('visibility', [
-            'public',
             'friends',
         ])
 
         ->with([
-    'user:id,first_name,last_name',
+            'user:id,first_name,last_name',
 
-    'media' => function ($query) {
-        $query
-            ->select([
-                'id',
-                'post_id',
-                'type',
-                'path',
-                'order',
-            ])
-            ->with([
-                'description:id,post_media_id,type,content',
-            ])
-            ->orderBy('order');
-                },
-            ])
+            'media' => function ($query) {
 
-        ->withCount([
-            'reelViews',
-            'reactions',
+                $query
+                    ->select([
+                        'id',
+                        'post_id',
+                        'type',
+                        'path',
+                        'order',
+                    ])
+                    ->with([
+                        'description:id,post_media_id,type,content',
+                    ])
+                    ->orderBy('order');
+            },
         ])
 
+        // Reel views + total reactions
+        ->withCount([
+            'reelViews',
+            'reelReactions',
+        ])
+
+        // Has current user viewed this reel?
         ->withExists([
             'reelViews as has_viewed' => function ($query) use ($user) {
+
                 $query->where(
                     'user_id',
                     $user->id
@@ -615,8 +630,30 @@ public function index(Request $request)
             },
         ])
 
+        // CURRENT USER'S REACTION
+        ->addSelect([
+            'user_reaction' => ReelReaction::query()
+                ->select('reel_reactions.reaction')
+                ->whereColumn(
+                    'reel_reactions.post_id',
+                    'posts.id'
+                )
+                ->where(
+                    'reel_reactions.user_id',
+                    $user->id
+                )
+                ->limit(1),
+        ])
+
         ->latest()
         ->get();
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | FILTER REELS USER CAN SEE
+    |--------------------------------------------------------------------------
+    */
 
     $reels = $reels->filter(
         function ($reel) use ($user) {
@@ -629,17 +666,11 @@ public function index(Request $request)
                 return true;
             }
 
-            // Public reels
-            if (
-                $reel->visibility === 'public'
-            ) {
-                return true;
-            }
-
             // Friends reels
             if (
                 $reel->visibility === 'friends'
             ) {
+
                 return $this->canSeeReel(
                     $user->id,
                     $reel->user_id
@@ -650,126 +681,127 @@ public function index(Request $request)
         }
     );
 
-    /*
-    |--------------------------------------------------------------------------
-    | FORMAT REELS
-    |--------------------------------------------------------------------------
-    */
+    $reels = $reels
+        ->map(
+            function ($reel) {
 
-    $reels = $reels->map(
-        function ($reel) {
+                return [
 
-            return [
-                'id' => $reel->id,
+                    'id' =>
+                        $reel->id,
 
-                'reel_type' =>
-                    $reel->reel_type,
+                    'reel_type' =>
+                        $reel->reel_type,
 
-                'content' =>
-                    $reel->content,
+                    'content' =>
+                        $reel->content,
 
-                'visibility' =>
-                    $reel->visibility,
+                    'visibility' =>
+                        $reel->visibility,
 
-                'duration' =>
-                    $reel->reel_duration,
+                    'duration' =>
+                        $reel->reel_duration,
 
-                'created_at' =>
-                    $reel->created_at,
+                    'created_at' =>
+                        $reel->created_at,
 
-                'expires_at' =>
-                    $reel->created_at
-                        ->copy()
-                        ->addHours(24),
+                    'expires_at' =>
+                        $reel->created_at
+                            ->copy()
+                            ->addHours(24),
 
-                'has_viewed' =>
+                    'has_viewed' =>
                     (bool) $reel->has_viewed,
 
-                'views_count' =>
-                    $reel->reel_views_count,
+                    'views_count' =>
+                    (int) $reel->reel_views_count,
 
-                'user_reaction' =>
-                    $reel->reactions
-                        ->where(
-                            'user_id',
-                            auth()->id()
-                        )
-                        ->first()?->reaction,
+                    'reactions_count' =>
+                    (int) $reel->reel_reactions_count,
 
-                'user' => [
-                    'id' =>
-                        $reel->user->id,
+                    'user_reaction' =>
+                    $reel->user_reaction,
+                    'user' => [
 
-                    'first_name' =>
-                        $reel->user->first_name,
+                        'id' =>
+                            $reel->user->id,
 
-                    'last_name' =>
-                        $reel->user->last_name,
+                        'first_name' =>
+                            $reel->user->first_name,
 
-                    'initial' =>
-                        strtoupper(
-                            mb_substr(
-                                $reel->user->first_name ?: 'U',
-                                0,
-                                1
+                        'last_name' =>
+                            $reel->user->last_name,
+
+                        'initial' =>
+                            strtoupper(
+                                mb_substr(
+                                    $reel->user->first_name ?: 'U',
+                                    0,
+                                    1
+                                )
+                            ),
+                    ],
+
+                    'media' =>
+                        $reel->media
+                            ->sortBy('order')
+                            ->values()
+                            ->map(
+                                function ($media) {
+
+                                    return [
+
+                                        'id' =>
+                                            $media->id,
+
+                                        'type' =>
+                                            $media->type,
+
+                                        'url' =>
+                                            asset(
+                                                'storage/' .
+                                                $media->path
+                                            ),
+
+                                        'order' =>
+                                            $media->order,
+
+                                        'description' =>
+                                            $media->description
+                                                ? [
+
+                                                    'id' =>
+                                                        $media
+                                                            ->description
+                                                            ->id,
+
+                                                    'type' =>
+                                                        $media
+                                                            ->description
+                                                            ->type,
+
+                                                    'content' =>
+                                                        $media
+                                                            ->description
+                                                            ->content,
+
+                                                ]
+                                                : null,
+                                    ];
+                                }
                             )
-                        ),
-                ],
+                            ->values(),
+                ];
+            }
+        )
+        ->values();
 
-                /*
-                |--------------------------------------------------------------------------
-                | MEDIA
-                |--------------------------------------------------------------------------
-                */
-
-                'media' =>
-                    $reel->media
-                        ->sortBy('order')
-                        ->values()
-                        ->map(
-                            function ($media) {
-
-                                return [
-                                    'id' =>
-                                        $media->id,
-
-                                    'type' =>
-                                        $media->type,
-
-                                    'url' =>
-                                        asset(
-                                            'storage/' .
-                                            $media->path
-                                        ),
-
-                                    'order' =>
-                                        $media->order,
-
-                                    'description' => $media->description
-                                            ? [
-                                                'id' => $media->description->id,
-                                                'type' => $media->description->type,
-                                                'content' => $media->description->content,
-                                            ]
-                                            : null,
-                                ];
-                            }
-                        )
-                        ->values(),
-            ];
-        }
-    )
-    ->values();
 
     /*
     |--------------------------------------------------------------------------
-    | GROUP BY USER
+    | MY REELS
     |--------------------------------------------------------------------------
     */
-
-    $grouped = $reels
-        ->groupBy('user_id');
-
 
     $myReels = $reels
         ->filter(
@@ -782,6 +814,13 @@ public function index(Request $request)
         ->sortBy('created_at')
         ->values();
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | OTHER USERS
+    |--------------------------------------------------------------------------
+    */
+
     $otherUsers = $reels
         ->filter(
             function ($reel) use ($user) {
@@ -792,6 +831,7 @@ public function index(Request $request)
         )
         ->groupBy(
             function ($reel) {
+
                 return $reel['user']['id'];
             }
         )
@@ -802,7 +842,9 @@ public function index(Request $request)
                     $userReels->first();
 
                 return [
-                    'user' => $first['user'],
+
+                    'user' =>
+                        $first['user'],
 
                     'reels' =>
                         $userReels
@@ -813,8 +855,11 @@ public function index(Request $request)
         )
         ->values();
 
+
     return response()->json([
-        'success' => true,
+
+        'success' =>
+            true,
 
         'my_reels' =>
             $myReels,
@@ -824,45 +869,222 @@ public function index(Request $request)
     ]);
 }
 
-    public function show(
-        Request $request,
-        Post $reel
-    ) {
-        abort_unless(
-            $reel->post_type === 'reel',
-            404
-        );
+public function reel()
+{
+    $user = auth()->user();
 
-        abort_unless(
-            $reel->created_at
-                ->gte(now()->subHours(24)),
-            404
-        );
+    $friendIds = $user
+        ->allFriendIds()
+        ->toArray();
 
-        abort_unless(
-            $this->canSeeReel(
-                $request->user()->id,
-                $reel->user_id
-            ),
-            403
-        );
-
-        $reel->load([
-            'user:id,first_name,last_name',
-            'media',
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'reel' =>
-                $this->formatReel(
-                    $reel,
-                    $request->user()
-                ),
-        ]);
-    }
+    $viewedPostIds = PostView::where(
+        'user_id',
+        $user->id
+    )
+    ->pluck('post_id')
+    ->toArray();
 
 
+    $posts = Post::query()
+
+        // Do not show already viewed reels
+        ->whereNotIn(
+            'id',
+            $viewedPostIds
+        )
+
+        // ONLY REELS
+        ->where(
+            'post_type',
+            'reel'
+        )
+
+        // ONLY REELS THAT HAVE VIDEO
+        ->whereHas('media', function ($query) {
+            $query->where(
+                'type',
+                'video'
+            );
+        })
+
+        // VISIBILITY
+        ->where(function ($query) use ($friendIds, $user) {
+
+            // PUBLIC
+            $query->where(
+                'visibility',
+                'public'
+            )
+
+            // PRIVATE - OWNER ONLY
+            ->orWhere(function ($q) use ($user) {
+
+                $q->where(
+                    'visibility',
+                    'private'
+                )
+                ->where(
+                    'user_id',
+                    $user->id
+                );
+
+            })
+
+            // FRIENDS
+            ->orWhere(function ($q) use ($friendIds, $user) {
+
+                $q->where(
+                    'visibility',
+                    'friends'
+                )
+                ->where(function ($sub) use ($friendIds, $user) {
+
+                    $sub->where(
+                        'user_id',
+                        $user->id
+                    )
+                    ->orWhereIn(
+                        'user_id',
+                        $friendIds
+                    );
+
+                });
+
+            });
+
+        })
+
+        ->with([
+
+            'user:id,first_name,last_name,image',
+
+            // ONLY VIDEO MEDIA
+            'media' => function ($query) {
+
+                $query
+                    ->where(
+                        'type',
+                        'video'
+                    )
+                    ->orderBy('order');
+
+            },
+
+        ])
+
+        ->withCount([
+            'reactions',
+            'comments',
+            'shares',
+            'reposts',
+        ])
+
+        ->latest()
+
+        ->get()
+
+        ->map(function ($post) {
+
+            return [
+
+                'id' =>
+                    $post->id,
+
+                'post_type' =>
+                    $post->post_type,
+
+                'reel_type' =>
+                    $post->reel_type,
+
+                'content' =>
+                    $post->content,
+
+                'visibility' =>
+                    $post->visibility,
+
+                'duration' =>
+                    $post->reel_duration,
+
+                'created_at' =>
+                    $post->created_at,
+
+                'expires_at' =>
+                    $post->created_at
+                        ->copy()
+                        ->addHours(24),
+
+                'user' => [
+
+                    'id' =>
+                        $post->user->id,
+
+                    'name' =>
+                        $post->user->first_name .
+                        ' ' .
+                        $post->user->last_name,
+
+                    'image' =>
+                        $post->user->image
+                            ? asset(
+                                'storage/' .
+                                $post->user->image
+                            )
+                            : null,
+
+                ],
+
+                'media' =>
+                    $post->media
+                        ->map(function ($media) {
+
+                            return [
+
+                                'id' =>
+                                    $media->id,
+
+                                'type' =>
+                                    $media->type,
+
+                                'url' =>
+                                    asset(
+                                        'storage/' .
+                                        $media->path
+                                    ),
+
+                                'order' =>
+                                    $media->order,
+
+                            ];
+
+                        })
+                        ->values(),
+
+                'reactions_count' =>
+                    $post->reactions_count,
+
+                'comments_count' =>
+                    $post->comments_count,
+
+                'shares_count' =>
+                    $post->shares_count,
+
+                'reposts_count' =>
+                    $post->reposts_count,
+
+            ];
+
+        });
+
+    return response()->json([
+
+        'status' =>
+            true,
+
+        'posts' =>
+            $posts,
+
+    ]);
+}
     /*
     |--------------------------------------------------------------------------
     | VIEW REEL
@@ -903,124 +1125,225 @@ public function index(Request $request)
     }
 
 
-    /*
-    |--------------------------------------------------------------------------
-    | REACTION
-    |--------------------------------------------------------------------------
-    */
-
+        
     public function reaction(
-        Request $request,
-        Post $reel
-    ) {
-        $validated = $request->validate([
-            'reaction' => [
-                'required',
-                'string',
-                'max:50',
-            ],
-        ]);
+    Request $request,
+    Post $reel
+) {
+    $validated = $request->validate([
+        'reaction' => [
+            'required',
+            'string',
+            'max:50',
+        ],
+    ]);
 
-        abort_unless(
-            $this->canSeeReel(
-                $request->user()->id,
-                $reel->user_id
-            ),
-            403
-        );
+    abort_unless(
+        $this->canSeeReel(
+            $request->user()->id,
+            $reel->user_id
+        ),
+        403
+    );
 
-        $reaction =
-            ReelReaction::updateOrCreate(
-                [
-                    'post_id' =>
-                        $reel->id,
-
-                    'user_id' =>
-                        $request->user()->id,
-                ],
-                [
-                    'reaction' =>
-                        $validated['reaction'],
-                ]
-            );
-
-        return response()->json([
-            'success' => true,
-            'reaction' => $reaction,
-        ]);
-    }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | SEND MESSAGE WITH REEL
-    |--------------------------------------------------------------------------
-    */
-
-    public function message(
-        Request $request,
-        Post $reel
-    ) {
-        $validated = $request->validate([
-            'message' => [
-                'required',
-                'string',
-                'max:5000',
-            ],
-        ]);
-
-        abort_unless(
-            $this->canSeeReel(
-                $request->user()->id,
-                $reel->user_id
-            ),
-            403
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | IMPORTANT
-        |
-        | Replace this section with your existing
-        | chat/message model if you already have one.
-        |--------------------------------------------------------------------------
-        */
-
-        $message = DB::table('messages')->insertGetId([
-            'sender_id' =>
-                $request->user()->id,
-
-            'receiver_id' =>
-                $reel->user_id,
-
-            'message' =>
-                $validated['message'],
-
+    $reaction = ReelReaction::updateOrCreate(
+        [
             'post_id' =>
                 $reel->id,
 
-            'type' =>
-                'reel',
+            'user_id' =>
+                $request->user()->id,
+        ],
+        [
+            'reaction' =>
+                $validated['reaction'],
+        ]
+    );
 
-            'created_at' =>
-                now(),
+    $reel->load('user');
 
-            'updated_at' =>
-                now(),
-        ]);
+   
+    if (
+        $reel->user &&
+        $reel->user->id !== $request->user()->id &&
+        !empty($reel->user->email)
+    ) {
 
-        return response()->json([
-            'success' => true,
-            'message_id' => $message,
-        ]);
+        Mail::to(
+            $reel->user->email
+        )->send(
+            new ReelReactionMail(
+                $reel,
+                $request->user(),
+                $validated['reaction']
+            )
+        );
     }
 
+    return response()->json([
+        'success' => true,
+        'reaction' => $reaction,
+    ]);
+}
+
+
+    public function message(
+    Request $request,
+    Post $reel
+) {
+    $validated = $request->validate([
+        'message' => [
+            'required',
+            'string',
+            'max:5000',
+        ],
+
+        'post_media_id' => [
+            'nullable',
+            'integer',
+        ],
+    ]);
+
+    $user = $request->user();
+
+    abort_unless(
+        $this->canSeeReel(
+            $user->id,
+            $reel->user_id
+        ),
+        403
+    );
 
     /*
     |--------------------------------------------------------------------------
-    | FORMAT REEL
+    | Make sure the media belongs to this reel
     |--------------------------------------------------------------------------
     */
+
+    $postMedia = null;
+
+    if (!empty($validated['post_media_id'])) {
+
+        $postMedia = PostMedia::where(
+            'id',
+            $validated['post_media_id']
+        )
+        ->where(
+            'post_id',
+            $reel->id
+        )
+        ->first();
+
+        abort_unless(
+            $postMedia,
+            422
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Find or create chat
+    |--------------------------------------------------------------------------
+    */
+
+    $userOne = min(
+        $user->id,
+        $reel->user_id
+    );
+
+    $userTwo = max(
+        $user->id,
+        $reel->user_id
+    );
+
+    $chat = Chat::firstOrCreate([
+        'user_one_id' => $userOne,
+        'user_two_id' => $userTwo,
+    ]);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Create message
+    |--------------------------------------------------------------------------
+    */
+
+    $messageId = DB::table('messages')->insertGetId([
+
+        'chat_id' =>
+            $chat->id,
+
+        'sender_id' =>
+            $user->id,
+
+        'receiver_id' =>
+            $reel->user_id,
+
+        'message' =>
+            $validated['message'],
+
+        /*
+        |--------------------------------------------------------------------------
+        | Parent reel
+        |--------------------------------------------------------------------------
+        */
+
+        'post_id' =>
+            $reel->id,
+
+        'post_media_id' =>
+        $validated['post_media_id'] ?? null,
+
+        'type' =>
+            'reel',
+
+        'created_at' =>
+            now(),
+
+        'updated_at' =>
+            now(),
+    ]);
+
+    $reel->load('user');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Don't send an email when messaging own reel
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+        $reel->user &&
+        $reel->user->id !== $user->id &&
+        !empty($reel->user->email)
+    ) {
+        Mail::to(
+            $reel->user->email
+        )->send(
+            new ReelMessageMail(
+                $reel,
+                $user,
+                $validated['message']
+            )
+        );
+    }
+
+    return response()->json([
+        'success' => true,
+
+        'message_id' =>
+            $messageId,
+
+        'chat_id' =>
+            $chat->id,
+
+        'post_id' =>
+            $reel->id,
+
+        'post_media_id' =>
+            $postMedia?->id,
+    ]);
+}
+
 
     private function formatReel(
         Post $reel,
@@ -1149,94 +1472,101 @@ public function index(Request $request)
         ]);
     }
 
+public function reactionUsers(
+    Request $request,
+    Post $reel
+) {
+    $users = $reel->reelReactions()
+        ->with([
+            'user:id,first_name,last_name'
+        ])
+        ->latest()
+        ->get()
+        ->filter(function ($reaction) {
+            return $reaction->user !== null;
+        })
+        ->map(function ($reaction) {
 
-     public function reactionUsers(Request $request, Reel $reel)
-    {
-        $users = $reel->reactions()
-            ->with([
-                'user:id,first_name,last_name'
-            ])
-            ->latest()
-            ->get()
-            ->map(function ($reaction) {
-                return [
-                    'id' => $reaction->user->id,
+            return [
+                'id' =>
+                    $reaction->user->id,
 
-                    'first_name' =>
-                        $reaction->user->first_name,
+                'first_name' =>
+                    $reaction->user->first_name,
 
-                    'last_name' =>
-                        $reaction->user->last_name,
+                'last_name' =>
+                    $reaction->user->last_name,
 
-                    'initial' =>
-                        strtoupper(
-                            substr(
-                                $reaction->user->first_name ?? '',
-                                0,
-                                1
-                            )
-                        ),
+                'initial' =>
+                    strtoupper(
+                        substr(
+                            $reaction->user->first_name ?? '',
+                            0,
+                            1
+                        )
+                    ),
 
-                    'reaction' =>
-                        $reaction->reaction,
+                'reaction' =>
+                    $reaction->reaction,
 
-                    'created_at' =>
-                        $reaction->created_at,
-                ];
-            });
+                'created_at' =>
+                    $reaction->created_at,
+            ];
+        })
+        ->values();
 
-        return response()->json([
-            'success' => true,
+    return response()->json([
+        'success' => true,
+        'count' => $users->count(),
+        'users' => $users,
+    ]);
+}
 
-            'count' => $users->count(),
+public function viewUsers(
+    Request $request,
+    Post $reel
+) {
+    $users = $reel->reelViews()
+        ->with([
+            'user:id,first_name,last_name'
+        ])
+        ->latest()
+        ->get()
+        ->filter(function ($view) {
+            return $view->user !== null;
+        })
+        ->map(function ($view) {
 
-            'users' => $users,
-        ]);
-    }
+            return [
+                'id' =>
+                    $view->user->id,
 
+                'first_name' =>
+                    $view->user->first_name,
 
-    /**
-     * Users who viewed a reel.
-     */
-    public function viewUsers(Request $request, Reel $reel)
-    {
-        $users = $reel->views()
-            ->with([
-                'user:id,first_name,last_name'
-            ])
-            ->latest()
-            ->get()
-            ->map(function ($view) {
-                return [
-                    'id' => $view->user->id,
+                'last_name' =>
+                    $view->user->last_name,
 
-                    'first_name' =>
-                        $view->user->first_name,
+                'initial' =>
+                    strtoupper(
+                        substr(
+                            $view->user->first_name ?? '',
+                            0,
+                            1
+                        )
+                    ),
 
-                    'last_name' =>
-                        $view->user->last_name,
+                'viewed_at' =>
+                    $view->created_at,
+            ];
+        })
+        ->values();
 
-                    'initial' =>
-                        strtoupper(
-                            substr(
-                                $view->user->first_name ?? '',
-                                0,
-                                1
-                            )
-                        ),
-
-                    'viewed_at' =>
-                        $view->created_at,
-                ];
-            });
-
-        return response()->json([
-            'success' => true,
-
-            'count' => $users->count(),
-
-            'users' => $users,
-        ]);
-    }
+    return response()->json([
+        'success' => true,
+        'count' => $users->count(),
+        'users' => $users,
+    ]);
+}
 
 }
