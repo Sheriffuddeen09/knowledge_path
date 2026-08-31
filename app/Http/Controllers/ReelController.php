@@ -1569,4 +1569,98 @@ public function viewUsers(
     ]);
 }
 
+public function deleteReel(Request $request, Post $reel)
+{
+    $user = $request->user();
+
+    // Only the owner can delete the reel
+    if ((int) $reel->user_id !== (int) $user->id) {
+        return response()->json([
+            'success' => false,
+            'message' => 'You are not allowed to delete this reel.',
+        ], 403);
+    }
+
+    // Make sure this is actually a reel
+    if ($reel->post_type !== 'reel') {
+        return response()->json([
+            'success' => false,
+            'message' => 'This post is not a reel.',
+        ], 422);
+    }
+
+    try {
+
+        /*
+        |--------------------------------------------------------------------------
+        | Delete physical media files
+        |--------------------------------------------------------------------------
+        */
+
+        $reel->load('media');
+
+        foreach ($reel->media as $media) {
+
+            if ($media->path) {
+
+                $path = storage_path(
+                    'app/public/' . $media->path
+                );
+
+                if (file_exists($path)) {
+                    unlink($path);
+                }
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Delete related records
+        |--------------------------------------------------------------------------
+        */
+
+        $reel->reelViews()->delete();
+
+        $reel->reelReactions()->delete();
+
+        $reel->messages()->update([
+            'post_id' => null,
+            'post_media_id' => null,
+        ]);
+
+        $reel->media()->delete();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Delete the reel itself
+        |--------------------------------------------------------------------------
+        */
+
+        $reel->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Reel deleted successfully.',
+            'post_id' => $reel->id,
+        ]);
+
+    } catch (\Throwable $e) {
+
+        \Log::error(
+            'REEL DELETE ERROR',
+            [
+                'post_id' => $reel->id,
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]
+        );
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Unable to delete reel.',
+        ], 500);
+    }
+}
+
+
 }

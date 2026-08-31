@@ -5,14 +5,14 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Post;
 use App\Models\Notification;
+use App\Models\PostMedia;
+use App\Models\PostDownload;
 use App\Models\PostView;
 use App\Models\PostReaction;
 use App\Models\PostComment;
 use Illuminate\Support\Str;
 use App\Models\Message;
-use App\Models\PostMedia;
 use App\Models\HiddenPost;
-use App\Models\PostDownload;
 use App\Models\User;
 use App\Models\PostSave;
 use Illuminate\Support\Facades\Log;
@@ -26,7 +26,7 @@ use Symfony\Component\Process\Process;
 
 class PostController extends Controller
 {
-
+// downloadVideo
  public function store(Request $request)
 {
     $request->validate([
@@ -423,6 +423,58 @@ public function downloadVideo(Request $request, $postId)
     return response()->download($path, 'IPK-video.mp4', [
         'Content-Type' => 'video/mp4'
     ]);
+}
+
+
+public function downloadReel(Request $request, $mediaId)
+{
+    $user = $request->user();
+
+    // Get the EXACT media item selected by the user
+    $media = PostMedia::findOrFail($mediaId);
+
+    // Make sure this media is actually a video
+    if ($media->type !== 'video') {
+        return response()->json([
+            'error' => 'This media is not a video.'
+        ], 404);
+    }
+
+    // Get the parent post
+    $post = Post::findOrFail($media->post_id);
+
+    // Optional: record download
+    if ($user) {
+        PostDownload::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'post_id' => $post->id,
+            ],
+            [
+                'updated_at' => now(),
+            ]
+        );
+    }
+
+    // Physical file location
+    $path = storage_path(
+        'app/public/' . $media->path
+    );
+
+    if (!file_exists($path)) {
+        return response()->json([
+            'error' => 'Video file not found.',
+            'path' => $media->path,
+        ], 404);
+    }
+
+    return response()->download(
+        $path,
+        'IPK-video-' . $media->id . '.mp4',
+        [
+            'Content-Type' => 'video/mp4',
+        ]
+    );
 }
 
 public function downloadImage(Request $request, $mediaId)

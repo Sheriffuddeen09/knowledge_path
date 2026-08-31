@@ -76,8 +76,13 @@ use App\Http\Controllers\JobPostController;
 use App\Http\Controllers\ProductVisibilityController;
 use App\Http\Controllers\ReelController;
 
-// /post-count
+
 Route::middleware('auth:sanctum')->group(function () {
+
+    Route::middleware('auth:sanctum')->delete(
+        '/reels/{reel}',
+        [ReelController::class, 'deleteReel']
+    );
 
     Route::middleware('auth:sanctum')->post(
         '/reels/{reel}/view',
@@ -1020,6 +1025,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/post/{id}/reactions', [PostReactionController::class, 'index']);
     Route::post('/posts/{post}/hide', [PostController::class, 'hide'])->middleware('auth:sanctum');
     Route::get('/download/video/{post}', [PostController::class, 'downloadVideo']);
+    Route::get('/download/video/{media}', [PostController::class, 'downloadReel']);
     Route::get('/download/image/{media}', [PostController::class, 'downloadImage']);
 
 
