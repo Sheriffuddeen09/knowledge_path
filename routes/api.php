@@ -79,6 +79,11 @@ use App\Http\Controllers\ReelController;
 
 Route::middleware('auth:sanctum')->group(function () {
 
+    Route::post(
+        '/chats/{chatId}/share-reel',
+        [ChatController::class, 'shareReel']
+    );
+    
     Route::middleware('auth:sanctum')->delete(
         '/reels/{reel}',
         [ReelController::class, 'deleteReel']

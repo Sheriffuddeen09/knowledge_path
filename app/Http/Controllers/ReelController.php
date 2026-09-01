@@ -1662,5 +1662,116 @@ public function deleteReel(Request $request, Post $reel)
     }
 }
 
+public function shareReel(Request $request, $chatId)
+{
+    try {
 
+        if (!auth()->check()) {
+            return response()->json([
+                'error' => 'Unauthenticated'
+            ], 401);
+        }
+
+        $request->validate([
+            'type' => 'required|in:text,image,video',
+            'message' => 'required|string',
+            'post_id' => 'required|exists:posts,id',
+            'post_media_id' => 'nullable|integer',
+        ]);
+
+        $userId = auth()->id();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Make sure this is actually a reel
+        |--------------------------------------------------------------------------
+        */
+
+        $post = Post::findOrFail(
+            $request->post_id
+        );
+
+        if ($post->post_type !== 'reel') {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This post is not a reel.'
+            ], 422);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Create NORMAL chat message
+        |--------------------------------------------------------------------------
+        */
+
+        $message = Message::create([
+            'chat_id' => $chatId,
+
+            'user_id' => $userId,
+
+            'sender_id' => $userId,
+
+            /*
+            |--------------------------------------------------------------------------
+            | This is important:
+            |
+            | text  = normal text message
+            | image = normal image message
+            | video = normal video message
+            |--------------------------------------------------------------------------
+            */
+
+            'type' => $request->type,
+
+            'message' => $request->message,
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Increment reel share count
+        |--------------------------------------------------------------------------
+        */
+
+        $post->increment(
+            'shares_count'
+        );
+
+        return response()->json([
+
+            'status' => true,
+
+            'message' => $message,
+
+            'shares_count' =>
+                $post->fresh()->shares_count,
+
+        ], 201);
+
+    } catch (\Throwable $e) {
+
+        \Log::error(
+            'shareReel error',
+            [
+                'error' =>
+                    $e->getMessage(),
+
+                'chat_id' =>
+                    $chatId,
+
+                'user_id' =>
+                    auth()->id(),
+            ]
+        );
+
+        return response()->json([
+
+            'status' => false,
+
+            'error' =>
+                $e->getMessage(),
+
+        ], 500);
+    }
+}
 }
