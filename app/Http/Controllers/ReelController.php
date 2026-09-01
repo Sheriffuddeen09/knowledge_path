@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Post;
 use App\Models\PostMedia;
+use App\Models\Message;
 use App\Models\ReelView;
 use App\Models\Chat;
 use App\Models\ReelReaction;
@@ -16,7 +17,8 @@ use App\Mail\ReelMessageMail;
 use App\Mail\ReelReactionMail;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
-
+use Illuminate\Support\Str;
+use App\Mail\NewMessageNotification;
 
 class ReelController extends Controller
 {
@@ -1662,34 +1664,77 @@ public function deleteReel(Request $request, Post $reel)
     }
 }
 
+
+
 public function shareReel(Request $request, $chatId)
 {
     try {
 
         if (!auth()->check()) {
             return response()->json([
-                'error' => 'Unauthenticated'
+                'status' => false,
+                'message' => 'Unauthenticated.'
             ], 401);
         }
 
         $request->validate([
             'type' => 'required|in:text,image,video',
-            'message' => 'required|string',
+            'message' => 'nullable|string',
             'post_id' => 'required|exists:posts,id',
             'post_media_id' => 'nullable|integer',
         ]);
 
         $userId = auth()->id();
 
-        /*
-        |--------------------------------------------------------------------------
-        | Make sure this is actually a reel
-        |--------------------------------------------------------------------------
-        */
+        $chat = Chat::findOrFail($chatId);
 
-        $post = Post::findOrFail(
-            $request->post_id
-        );
+        $receiverId = null;
+
+        if (
+            $chat->teacher_id &&
+            $chat->student_id
+        ) {
+
+            if ((int) $chat->teacher_id === (int) $userId) {
+
+                $receiverId = $chat->student_id;
+
+            } elseif ((int) $chat->student_id === (int) $userId) {
+
+                $receiverId = $chat->teacher_id;
+
+            }
+
+        }
+
+        elseif (
+            $chat->user_one_id &&
+            $chat->user_two_id
+        ) {
+
+            if ((int) $chat->user_one_id === (int) $userId) {
+
+                $receiverId = $chat->user_two_id;
+
+            } elseif ((int) $chat->user_two_id === (int) $userId) {
+
+                $receiverId = $chat->user_one_id;
+
+            }
+
+        }
+
+        if (!$receiverId) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'You are not a member of this chat.'
+            ], 403);
+        }
+
+
+        $post = Post::with('media')
+            ->findOrFail($request->post_id);
 
         if ($post->post_type !== 'reel') {
 
@@ -1699,43 +1744,155 @@ public function shareReel(Request $request, $chatId)
             ], 422);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Create NORMAL chat message
-        |--------------------------------------------------------------------------
-        */
+        if ($request->type === 'text') {
 
-        $message = Message::create([
-            'chat_id' => $chatId,
+            if (!$post->content) {
 
-            'user_id' => $userId,
+                return response()->json([
+                    'status' => false,
+                    'message' => 'This reel has no text content.'
+                ], 422);
+            }
 
-            'sender_id' => $userId,
+            $message = Message::create([
 
-            /*
-            |--------------------------------------------------------------------------
-            | This is important:
-            |
-            | text  = normal text message
-            | image = normal image message
-            | video = normal video message
-            |--------------------------------------------------------------------------
-            */
+                'chat_id' => $chat->id,
 
-            'type' => $request->type,
+                'sender_id' => $userId,
 
-            'message' => $request->message,
+                'receiver_id' => $receiverId,
+
+                'type' => 'text',
+
+                'message' => $post->content,
+
+                'file' => null,
+
+                'post_id' => $post->id,
+
+            ]);
+        }
+
+        else {
+
+            if (!$request->post_media_id) {
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Media ID is required.'
+                ], 422);
+            }
+
+            $media = $post->media()
+                ->where('id', $request->post_media_id)
+                ->first();
+
+            if (!$media) {
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Selected reel media was not found.'
+                ], 404);
+            }
+
+            $mediaType =
+                $media->type ??
+                $media->media_type;
+
+            if ($mediaType !== $request->type) {
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Selected media type does not match.'
+                ], 422);
+            }
+
+            $sourcePath =
+                $media->path ??
+                $media->file ??
+                $media->media_url;
+
+            if (!$sourcePath) {
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Media file not found.'
+                ], 404);
+            }
+
+            $extension = pathinfo(
+                $sourcePath,
+                PATHINFO_EXTENSION
+            );
+
+            $chatFileName =
+                'shared_reel_' .
+                $post->id .
+                '_' .
+                $media->id .
+                '_' .
+                Str::random(10) .
+                '.' .
+                $extension;
+
+            $chatPath =
+                'chat_files/' .
+                $chatFileName;
+
+            if (!Storage::disk('public')->exists($sourcePath)) {
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Original reel media file does not exist.'
+                ], 404);
+            }
+
+            Storage::disk('public')->copy(
+                $sourcePath,
+                $chatPath
+            );
+
+            $message = Message::create([
+
+                'chat_id' => $chat->id,
+
+                'sender_id' => $userId,
+
+                'receiver_id' => $receiverId,
+
+                'type' => $request->type,
+
+                'message' => null,
+
+                'file' => $chatPath,
+
+                'file_name' =>
+                    basename($sourcePath),
+
+                'post_id' => $post->id,
+
+            ]);
+        }
+        $post->increment('shares_count');
+
+        $message->load([
+            'sender',
+            'receiver'
         ]);
 
-        /*
-        |--------------------------------------------------------------------------
-        | Increment reel share count
-        |--------------------------------------------------------------------------
-        */
+        if (
+            $message->receiver &&
+            $message->receiver->email
+        ) {
 
-        $post->increment(
-            'shares_count'
-        );
+            Mail::to(
+                $message->receiver->email
+            )->send(
+                new NewMessageNotification(
+                    $message
+                )
+            );
+        }
 
         return response()->json([
 
@@ -1750,27 +1907,101 @@ public function shareReel(Request $request, $chatId)
 
     } catch (\Throwable $e) {
 
-        \Log::error(
-            'shareReel error',
-            [
-                'error' =>
-                    $e->getMessage(),
+        \Log::error('shareReel error', [
 
-                'chat_id' =>
-                    $chatId,
+            'error' =>
+                $e->getMessage(),
 
-                'user_id' =>
-                    auth()->id(),
-            ]
-        );
+            'chat_id' =>
+                $chatId,
+
+            'user_id' =>
+                auth()->id(),
+
+        ]);
 
         return response()->json([
 
             'status' => false,
 
+            'message' =>
+                'Unable to share reel.',
+
             'error' =>
                 $e->getMessage(),
 
+        ], 500);
+    }
+}
+
+
+public function destroyMedia(Post $reel, PostMedia $media)
+{
+    try {
+
+        $user = auth()->user();
+
+        if ($reel->user_id !== $user->id) {
+            return response()->json([
+                'status' => false,
+                'message' => 'You can only delete your own reel.'
+            ], 403);
+        }
+
+        if ($media->post_id !== $reel->id) {
+            return response()->json([
+                'status' => false,
+                'message' => 'This media does not belong to this reel.'
+            ], 404);
+        }
+
+        if ($media->path) {
+            Storage::disk('public')->delete(
+                $media->path
+            );
+        }
+
+        $media->delete();
+
+        $remainingMedia = $reel->media()->exists();
+
+        $hasContent =
+            is_string($reel->content) &&
+            trim($reel->content) !== '';
+
+        if (!$remainingMedia && !$hasContent) {
+
+            $reel->delete();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Media deleted and reel removed.',
+                'reel_deleted' => true,
+                'reel_id' => $reel->id,
+                'media_id' => $media->id,
+            ]);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Media deleted successfully.',
+            'reel_deleted' => false,
+            'reel_id' => $reel->id,
+            'media_id' => $media->id,
+        ]);
+
+    } catch (\Throwable $e) {
+
+        \Log::error('DELETE REEL MEDIA ERROR', [
+            'reel_id' => $reel->id ?? null,
+            'media_id' => $media->id ?? null,
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'status' => false,
+            'message' => 'Failed to delete media.',
+            'error' => $e->getMessage(),
         ], 500);
     }
 }

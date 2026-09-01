@@ -12,6 +12,7 @@ class Message extends Model
         'type',
         'message',
         'file',
+        'file_name',
         'edited',
         'forwarded_from',
         'replied_to',

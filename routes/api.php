@@ -81,13 +81,18 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post(
         '/chats/{chatId}/share-reel',
-        [ChatController::class, 'shareReel']
+        [ReelController::class, 'shareReel']
     );
     
-    Route::middleware('auth:sanctum')->delete(
-        '/reels/{reel}',
-        [ReelController::class, 'deleteReel']
-    );
+    Route::delete('/reels/{reel}', [
+        ReelController::class,
+        'destroy'
+    ]);
+
+    Route::delete('/reels/{reel}/media/{media}', [
+        ReelController::class,
+        'destroyMedia'
+    ]);
 
     Route::middleware('auth:sanctum')->post(
         '/reels/{reel}/view',
