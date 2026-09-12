@@ -5,3 +5,27 @@ php artisan route:list
 
 
 php artisan db:seed --class=CoursetitleSeeder
+
+$user = App\Models\User::find(2);
+
+DB::table('user_badges')->insert([
+    'user_id' => $user->id,
+    'badges' => 100,
+    'source' => 'assignment',
+    'result_id' => null,
+    'created_at' => now(),
+    'updated_at' => now(),
+]);
+
+DB::table('user_badges')->insert([
+    'user_id' => 2,
+    'badges' => 100,
+    'source' => 'assignment',
+    'result_id' => null,
+    'created_at' => now(),
+    'updated_at' => now(),
+]);
+
+DB::table('user_badges')
+    ->where('user_id', 2)
+    ->sum('badges');

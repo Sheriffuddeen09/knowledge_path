@@ -25,6 +25,7 @@ class Post extends Model
         'background_color',
         'font',
         'reel_duration',
+        'advertisement_id',
     ];
 
     protected $casts = [
@@ -119,4 +120,12 @@ class Post extends Model
         return $this->hasMany(Message::class);
     }
 
+    public function advertisement()
+{
+    return $this->belongsTo(
+        Advertisement::class,
+        'advertisement_id',
+        'id'
+    );
+}
 }

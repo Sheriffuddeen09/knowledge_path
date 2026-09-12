@@ -5,6 +5,7 @@ use App\Mail\AdvertisementDeclinedMail;
 use App\Mail\AdvertisementPendingMail;
 use App\Models\Advertisement;
 use App\Models\User;
+use App\Models\Post;
 use App\Models\UserBadge;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -159,32 +160,34 @@ public function unlockVisibility(Request $request, $id)
         ->firstOrFail();
 
     if ($advertisement->status !== 'approved') {
-
         return response()->json([
             'message' => 'Advertisement has not been approved.'
         ], 403);
-
     }
 
-    $option = $this->visibilityOption(
-        $request->audience
-    );
+    if ($advertisement->visibility_unlocked) {
+        return response()->json([
+            'message' => 'Advertisement visibility has already been unlocked.'
+        ], 403);
+    }
+
+    $option = $this->visibilityOption($request->audience);
 
     $requiredBadges = $option['badges'];
-
     $months = $option['months'];
 
     $totalBadges = $this->totalBadges();
 
     if ($totalBadges < $requiredBadges) {
-
         return response()->json([
             'message' =>
                 "You need {$requiredBadges} badges to unlock this visibility."
         ], 403);
-
     }
 
+    /*
+     * Deduct badges.
+     */
     UserBadge::create([
         'user_id' => auth()->id(),
         'badges' => -$requiredBadges,
@@ -192,36 +195,42 @@ public function unlockVisibility(Request $request, $id)
     ]);
 
     $startedAt = now();
-
     $expiresAt = now()->addMonths($months);
 
     $advertisement->update([
-
-        'audience' =>
-            $request->audience,
-
-        'required_badges' =>
-            $requiredBadges,
-
-        'visibility_unlocked' =>
-            true,
-
-        'visibility_started_at' =>
-            $startedAt,
-
-        'visibility_expires_at' =>
-            $expiresAt,
-
+        'audience' => $request->audience,
+        'required_badges' => $requiredBadges,
+        'visibility_unlocked' => true,
+        'visibility_started_at' => $startedAt,
+        'visibility_expires_at' => $expiresAt,
     ]);
 
-    return response()->json([
+    $post = Post::create([
+        'user_id' => $advertisement->user_id,
+        'content' => $advertisement->description,
+        'post_type' => 'post',
+        'advertisement_id' => $advertisement->id,
+    ]);
 
+    /*
+     * Copy advertisement media into PostMedia.
+     */
+    if ($advertisement->media) {
+        $post->media()->create([
+            'type' => $advertisement->media_type,
+            'path' => $advertisement->media,
+        ]);
+    }
+
+    return response()->json([
         'message' =>
             'Advertisement visibility unlocked successfully.',
 
         'advertisement' =>
-            $advertisement->fresh(),
+            $advertisement->fresh(['post', 'user']),
 
+        'post' =>
+            $post->load(['user', 'media']),
     ], 200);
 }
 

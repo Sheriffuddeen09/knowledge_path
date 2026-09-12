@@ -76,7 +76,7 @@ use App\Http\Controllers\JobPostController;
 use App\Http\Controllers\ProductVisibilityController;
 use App\Http\Controllers\ReelController;
 
-
+// views
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post(
@@ -1027,9 +1027,11 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/posts', [PostController::class, 'store']);
     Route::get('/posts-get', [PostController::class, 'index']);
+    Route::get('/posts-get-video', [PostController::class, 'indexVideo']);
     Route::get('/posts/{post}', [PostController::class, 'show']);
+    Route::post('/post/{post}/view', [PostController::class, 'viewid']);
 
-    // Post Reactions reply
+    // posts-single
     Route::post('/post/{id}/reaction', [PostReactionController::class, 'store']);
     Route::delete('/post/{id}/reaction', [PostReactionController::class, 'destroy']);
     Route::get('/post/{id}/reactions', [PostReactionController::class, 'index']);
@@ -1037,6 +1039,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/download/video/{post}', [PostController::class, 'downloadVideo']);
     Route::get('/download/video/{media}', [PostController::class, 'downloadReel']);
     Route::get('/download/image/{media}', [PostController::class, 'downloadImage']);
+    Route::post('/posts/{post}/view', [PostController::class, 'view']);
 
 
 
@@ -1079,7 +1082,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
 
-    // Single user Post
+    // teacher-single
 
     Route::get('/posts-single', [PostController::class, 'myPosts']);
     Route::get('/users/{id}/posts-single', [PostController::class, 'userPosts']);
@@ -1087,6 +1090,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/posts-single/{post}', [PostController::class, 'update'])->middleware('auth:sanctum');
     Route::delete('/image/media/{id}', [PostController::class, 'destroyImage']);
 
+    Route::get('/post/{post}/next-video', [
+    PostController::class,
+    'nextVideo'
+    ]);
+// /posts-get
+        Route::get('/post/{post}/previous-video', [
+            PostController::class,
+            'previousVideo'
+        ]);
+
+        Route::post('/videos/reset-views', [
+            PostController::class,
+            'resetVideoViews'
+        ]);
 
     //  count
     Route::get('/post-count', [NotificationController::class, 'postCount']);
