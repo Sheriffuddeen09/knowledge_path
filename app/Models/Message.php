@@ -46,6 +46,8 @@ class Message extends Model
         'edited'       => 'boolean',
         'is_forwarded' => 'boolean',
         'replied_to'   => 'array', 
+        'is_pinned' => 'boolean',
+        'pin_expires_at' => 'datetime',
     ];
 
     public function forwardedFrom()

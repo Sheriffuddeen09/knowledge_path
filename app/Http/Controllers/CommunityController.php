@@ -25,20 +25,44 @@ use App\Mail\CommunityMessageNotification;
 class CommunityController extends Controller
 
 {
-
+// pin
 
      public function messages($id)
 {
-   $community = Community::with([
-    'messages.sender',
-    'messages.repliedMessage.sender',
-    'messages.approvals',
+   $community = Community::findOrFail($id);
 
-    'messages.poll',
-    'messages.poll.sender',
-    'messages.poll.options',
-    'messages.poll.options.voteUsers',
-    ])->findOrFail($id);
+
+     CommunityMessage::where(
+        'community_id',
+        $community->id
+    )
+    ->where(
+        'is_pinned',
+        true
+    )
+    ->whereNotNull(
+        'pin_expires_at'
+    )
+    ->where(
+        'pin_expires_at',
+        '<=',
+        now()
+    )
+    ->update([
+        'is_pinned' => false,
+        'pin_expires_at' => null,
+    ]);
+
+     $community->load([
+        'messages.sender',
+        'messages.repliedMessage.sender',
+        'messages.approvals',
+
+        'messages.poll',
+        'messages.poll.sender',
+        'messages.poll.options',
+        'messages.poll.options.voteUsers',
+    ]);
 
     $lastReadId = DB::table(
         'community_members'
@@ -972,48 +996,57 @@ public function sendPending(Request $request)
     }
 
 
-    public function pin(Request $request)
-    {
-        $request->validate([
-            'message_id' => 'required|exists:community_messages,id',
-        ]);
+   public function pin(Request $request)
+        {
+            $request->validate([
+                'message_id' => 'required|exists:community_messages,id',
+                'days' => 'required|integer|in:7,14,30',
+            ]);
 
-        $message = CommunityMessage::findOrFail(
-            $request->message_id
-        );
+            $message = CommunityMessage::findOrFail(
+                $request->message_id
+            );
+ 
 
-        $message->update([
-            'is_pinned' => true,
-        ]);
+            $message->is_pinned = true;
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Message pinned successfully',
-            'data' => $message,
-        ]);
-    }
+            $message->pin_expires_at = now()->addDays(
+                (int) $request->days
+            );
+
+            $message->save();
+
+            return response()->json([
+                'message' =>
+                    "Message pinned for {$request->days} days",
+
+                'data' => $message,
+            ]);
+        }
 
     public function unpin(Request $request)
-    {
-        $request->validate([
-            'message_id' => 'required|exists:community_messages,id',
-        ]);
+{
+    $request->validate([
+        'message_id' =>
+            'required|exists:community_messages,id',
+    ]);
 
-        $message = CommunityMessage::findOrFail(
-            $request->message_id
-        );
+    $message = CommunityMessage::findOrFail(
+        $request->message_id
+    );
 
-        $message->update([
-            'is_pinned' => false,
-        ]);
+    $message->is_pinned = false;
+    $message->pin_expires_at = null;
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Message unpinned successfully',
-            'data' => $message,
-        ]);
-    }
+    $message->save();
 
+    return response()->json([
+        'message' =>
+            'Message unpinned successfully',
+
+        'data' => $message,
+    ]);
+}
     
     public function forward(Request $request)
 {

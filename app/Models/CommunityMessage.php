@@ -13,6 +13,11 @@ class CommunityMessage extends Model
     protected $dates = [
         'deleted_at',
     ];
+
+     protected $casts = [
+        'is_pinned' => 'boolean',
+        'pin_expires_at' => 'datetime',
+    ];
     
     protected $fillable = [
     'community_id',

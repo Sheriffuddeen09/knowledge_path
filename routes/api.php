@@ -1031,7 +1031,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/posts/{post}', [PostController::class, 'show']);
     Route::post('/post/{post}/view', [PostController::class, 'viewid']);
 
-    // posts-single
+    ///messages/pin
     Route::post('/post/{id}/reaction', [PostReactionController::class, 'store']);
     Route::delete('/post/{id}/reaction', [PostReactionController::class, 'destroy']);
     Route::get('/post/{id}/reactions', [PostReactionController::class, 'index']);

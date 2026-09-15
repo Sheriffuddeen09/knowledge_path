@@ -30,10 +30,11 @@ use App\Services\MessageCryptoService;
 use Illuminate\Support\Str;
 use App\Mail\NewMessageNotification;
 use Illuminate\Support\Facades\Mail;
+use Carbon\Carbon;
 
 class ChatController extends Controller
 {
-
+// pin
 
 public function messages(Chat $chat)
 {
@@ -44,11 +45,23 @@ public function messages(Chat $chat)
             ->where('role', 'admin')
             ->exists();
         $onlyAdminCanSend = $chat->only_admin_send ?? false;
-            if ($chat->isBlockedFor($userId)) {
+        //   'created_at'
+        if ($chat->isBlockedFor($userId)) {
                 return response()->json([
                     'message' => 'This chat is blocked'
                 ], 403);
             }
+
+            Message::where('chat_id', $chat->id)
+                ->where('is_pinned', true)
+                ->whereNotNull('pin_expires_at')
+                ->where('pin_expires_at', '<=', now())
+                ->update([
+                    'is_pinned' => false,
+                    'pin_expires_at' => null,
+                ]);
+
+
     $myLastReadId = DB::table('chat_user')
         ->where('chat_id', $chat->id)
         ->where('user_id', $userId)
@@ -191,6 +204,10 @@ public function messages(Chat $chat)
             'sender' => $msg->sender,
             'is_forwarded' => $msg->is_forwarded ?? false,
             'created_at' => $msg->created_at?->toISOString(),
+            'is_pinned' => (bool) $msg->is_pinned,
+            'pin_expires_at' => $msg->pin_expires_at
+                ? \Carbon\Carbon::parse($msg->pin_expires_at)->toISOString()
+                : null,
             'status' => $status,
             'delivered_at' => $msg->delivered_at,
             'read_by' => $readBy,
@@ -409,8 +426,7 @@ public function oldMessage(Request $request)
 
 
 
-//clearChat $chat->messages()
-
+ 
 public function index()
 {
     $userId = auth()->id();
@@ -612,7 +628,7 @@ public function index()
     return response()->json($chats);
 }
 
-
+// pin
 
 public function send(Request $request)
 {
@@ -643,14 +659,39 @@ public function send(Request $request)
 
         }
 
-        try {
-            $chatKey = decrypt($chat->chat_key_user1);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Chat encryption corrupted. Please reinitialize.'
-            ], 422);
-        }
+        if (
+                empty($chat->chat_key_user1) ||
+                empty($chat->chat_key_user2)
+            ) {
+                $chatKey = base64_encode(
+                    random_bytes(32)
+                );
 
+                $chat->update([
+                    'chat_key_user1' => encrypt($chatKey),
+                    'chat_key_user2' => encrypt($chatKey),
+                ]);
+            } else {
+                try {
+                    $chatKey = decrypt(
+                        $chat->chat_key_user1
+                    );
+                } catch (\Throwable $e) {
+
+                    \Log::error(
+                        'CHAT KEY DECRYPT FAILED',
+                        [
+                            'chat_id' => $chat->id,
+                            'error' => $e->getMessage(),
+                        ]
+                    );
+
+                    return response()->json([
+                        'message' =>
+                            'Chat encryption key is corrupted.'
+                    ], 422);
+                }
+            }
         if (empty($chatKey)) {
             return response()->json([
                 'message' => 'Chat encryption key missing.'
@@ -847,8 +888,12 @@ public function send(Request $request)
             $chat->user_two_id
         ])->filter()->unique();
 
-        foreach ($userIds as $userId) {
-            $message->users()->attach($userId, ['deleted' => false]);
+       foreach ($userIds as $userId) {
+            $message->users()->syncWithoutDetaching([
+                $userId => [
+                    'deleted' => false,
+                ],
+            ]);
         }
 
         // ✅ RESTORE CHAT FOR USERS THAT REMOVED IT
@@ -1420,29 +1465,39 @@ public function markAsRead($id)
     return response()->json(['success' => true]);
 }
 
+
+
 public function pin(Request $request)
 {
+    $request->validate([
+        'message_id' => 'required|exists:messages,id',
+        'days' => 'required|integer|in:7,14,30',
+    ]);
+
     $message = Message::findOrFail($request->message_id);
 
     $message->is_pinned = true;
+    $message->pin_expires_at = now()->addDays((int) $request->days);
     $message->save();
 
     return response()->json([
-        'message' => 'Message pinned successfully',
-        'data' => $message
+        'message' => "Message pinned for {$request->days} days",
+        'data' => $message,
     ]);
 }
+
 
 public function unpin(Request $request)
 {
     $message = Message::findOrFail($request->message_id);
 
     $message->is_pinned = false;
+    $message->pin_expires_at = null;
     $message->save();
 
     return response()->json([
         'message' => 'Message unpinned successfully',
-        'data' => $message
+        'data' => $message,
     ]);
 }
 
