@@ -274,7 +274,7 @@ public function index()
     ->where('post_type', '!=', 'reel')
         ->where(function ($query) use ($friendIds) {
 
-            // PUBLIC
+            // myPosts
             $query->where('visibility', 'public')
 
             // PRIVATE (only owner)
@@ -642,11 +642,12 @@ public function myPosts()
             'media'
         ])
         ->withCount([
-            'reactions',
-            'comments',
-            'shares',
-            'reposts'
-        ])
+                'reactions',
+                'comments',
+                'shares',
+                'reposts',
+                'views',
+            ])
         ->latest()
         ->get()
 
@@ -713,6 +714,7 @@ public function myPosts()
                 'comments_count'  => $post->comments_count,
                 'shares_count'    => $post->shares_count,
                 'reposts_count'   => $post->reposts_count ?? 0,
+                'views'           => $post->views_count,
             ];
         })
         ->values();
@@ -732,11 +734,12 @@ public function userPosts($id)
             'media'
         ])
         ->withCount([
-            'reactions',
-            'comments',
-            'shares',
-            'reposts'
-        ])
+                'reactions',
+                'comments',
+                'shares',
+                'reposts',
+                'views',
+            ])
         ->latest()
         ->get()
 
@@ -804,6 +807,7 @@ public function userPosts($id)
                 'comments_count'  => $post->comments_count,
                 'shares_count'    => $post->shares_count,
                 'reposts_count'   => $post->reposts_count ?? 0,
+                'views'           => $post->views_count,
             ];
         })
         ->values();

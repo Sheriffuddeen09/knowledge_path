@@ -676,7 +676,7 @@ Route::middleware('auth:sanctum')->group(function () {
     '/communities/{community}/mark-read',
     [CommunityController::class, 'markAsRead']
     );
-
+<!-- /posts-single -->
     Route::put(
     '/community/messages/pin',
     [CommunityController::class, 'pin']
