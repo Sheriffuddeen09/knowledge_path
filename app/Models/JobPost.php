@@ -65,7 +65,8 @@ class JobPost extends Model
 
         'views',
 
-        'application_count'
+        'application_count',
+        'decline_reason',
 
     ];
 

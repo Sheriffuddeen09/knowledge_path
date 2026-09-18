@@ -6,6 +6,8 @@ use App\Models\Post;
 use App\Models\PostMedia;
 use App\Models\Message;
 use App\Models\ReelView;
+use App\Models\Advertisement;
+use App\Models\PostView;
 use App\Models\Chat;
 use App\Models\ReelReaction;
 use Illuminate\Http\Request;
@@ -2005,4 +2007,797 @@ public function destroyMedia(Post $reel, PostMedia $media)
         ], 500);
     }
 }
+
+// created_at
+
+public function indexReel()
+{
+    $userId = auth()->id();
+
+    $viewedReelIds = PostView::where('user_id', $userId)
+        ->pluck('post_id')
+        ->toArray();
+
+    $reels = Post::where('post_type', 'reel')
+
+        ->whereNull('advertisement_id')
+
+        ->whereHas('media', function ($q) {
+            $q->where('type', 'video');
+        })
+
+        ->with([
+            'user:id,first_name,last_name,image,role',
+            'media',
+            'originalPost.user',
+            'originalPost.media',
+        ])
+
+        ->withCount([
+            'reactions',
+            'comments',
+            'shares',
+            'reposts',
+        ])
+
+        ->latest()
+
+        ->get()
+
+        ->map(function ($reel) use ($viewedReelIds) {
+
+            $isRepost = !is_null(
+                $reel->original_post_id
+            );
+
+            $baseReel = $reel->original_post_id
+                ? $reel->rootOriginal()
+                : $reel;
+
+            $viewed = in_array(
+                $baseReel->id,
+                $viewedReelIds
+            );
+
+            return [
+                'id' => $reel->id,
+
+                'post_type' => 'reel',
+
+                'reel_type' => $baseReel->reel_type,
+
+                'is_advertisement' => false,
+
+                'advertisement_id' => null,
+
+                'viewed' => $viewed,
+
+                'is_repost' => $isRepost,
+
+                'original_post_id' =>
+                    $reel->original_post_id,
+
+                'reposted_by' => $isRepost
+                    ? [
+                        'id' => $reel->user->id,
+
+                        'name' => trim(
+                            $reel->user->first_name .
+                            ' ' .
+                            $reel->user->last_name
+                        ),
+                    ]
+                    : null,
+
+                'content' =>
+                    $baseReel->content,
+
+                'duration' =>
+                    $baseReel->reel_duration,
+
+                'media' =>
+                    $baseReel->media
+                        ->map(function ($m) {
+
+                            return [
+                                'id' => $m->id,
+
+                                'type' => $m->type,
+
+                                'url' => asset(
+                                    'storage/' . $m->path
+                                ),
+
+                                'order' =>
+                                    $m->order,
+                            ];
+                        })
+                        ->values(),
+
+                'user' => $baseReel->user
+                    ? [
+                        'id' =>
+                            $baseReel->user->id,
+
+                        'name' => trim(
+                            $baseReel->user->first_name .
+                            ' ' .
+                            $baseReel->user->last_name
+                        ),
+
+                        'role' =>
+                            $baseReel->user->role ?? null,
+
+                        'image' =>
+                            $baseReel->user->image ?? null,
+                    ]
+                    : null,
+
+                'created_at' => $reel->created_at?->toISOString(),
+
+                'expires_at' =>
+                    $reel->created_at
+                        ?->copy()
+                        ->addHours(24),
+
+                'reactions_count' =>
+                    $baseReel->reactions_count ?? 0,
+
+                'comments_count' =>
+                    $baseReel->comments_count ?? 0,
+
+                'shares_count' =>
+                    $baseReel->shares_count ?? 0,
+
+                'reposts_count' =>
+                    $baseReel->reposts_count ?? 0,
+            ];
+        })
+
+        ->values();
+
+    return response()->json([
+        'status' => true,
+
+        'reels' => $reels,
+
+        'reels_count' => $reels->count(),
+    ]);
+}
+
+public function nextReel(Request $request, Post $reel)
+{
+    $userId = auth()->id();
+
+    if ($reel->post_type !== 'reel') {
+        return response()->json([
+            'status' => false,
+            'message' => 'The selected post is not a reel.',
+        ], 404);
+    }
+
+    $showAdvertisement = $request->boolean(
+        'show_advertisement',
+        false
+    );
+
+    /*
+    |--------------------------------------------------------------------------
+    | Advertisement
+    |--------------------------------------------------------------------------
+    */
+
+    if ($showAdvertisement) {
+
+        $advertisement =
+            $this->getRandomAdvertisement($userId);
+
+        if ($advertisement) {
+
+            $formattedAdvertisement =
+                $this->formatAdvertisementPost(
+                    $advertisement
+                );
+
+            if ($formattedAdvertisement) {
+
+                return response()->json([
+                    'status' => true,
+
+                    'type' => 'advertisement',
+
+                    'video' =>
+                        $formattedAdvertisement,
+
+                    'all_viewed' => false,
+                ]);
+            }
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Find next reel
+    |--------------------------------------------------------------------------
+    */
+
+    $nextReel = Post::where(
+        'post_type',
+        'reel'
+    )
+
+        ->whereNull('advertisement_id')
+
+        ->whereHas('media', function ($q) {
+            $q->where('type', 'video');
+        })
+
+        ->where(
+            'id',
+            '>',
+            $reel->id
+        )
+
+        ->whereDoesntHave(
+            'views',
+            function ($q) use ($userId) {
+
+                $q->where(
+                    'user_id',
+                    $userId
+                );
+            }
+        )
+
+        ->orderBy(
+            'id',
+            'asc'
+        )
+
+        ->with([
+            'user:id,first_name,last_name,role,image',
+            'media',
+        ])
+
+        ->withCount([
+            'reactions',
+            'comments',
+            'shares',
+            'reposts',
+        ])
+
+        ->first();
+
+    /*
+    |--------------------------------------------------------------------------
+    | No more reels
+    |--------------------------------------------------------------------------
+    */
+
+    if (!$nextReel) {
+
+        return response()->json([
+            'status' => true,
+
+            'type' => 'reel',
+
+            'video' => null,
+
+            'all_viewed' => true,
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Return next reel
+    |--------------------------------------------------------------------------
+    */
+
+    return response()->json([
+        'status' => true,
+
+        'type' => 'reel',
+
+        'video' =>
+            $this->formatReelPost(
+                $nextReel,
+                $userId
+            ),
+
+        'all_viewed' => false,
+    ]);
+}
+
+private function formatReelPost(
+    Post $post,
+    $userId = null
+) {
+    $video = $post->media
+        ->where('type', 'video')
+        ->first();
+
+    $viewed = false;
+
+    if (
+        $userId &&
+        $post->post_type === 'reel' &&
+        is_null($post->advertisement_id)
+    ) {
+        $viewed = $post->views()
+            ->where(
+                'user_id',
+                $userId
+            )
+            ->exists();
+    }
+
+    return [
+        'id' => $post->id,
+
+        'post_type' => 'reel',
+
+        'reel_type' =>
+            $post->reel_type,
+
+        'is_advertisement' => false,
+
+        'advertisement_id' => null,
+
+        'viewed' => $viewed,
+
+        'content' =>
+            $post->content,
+
+        'duration' =>
+            $post->reel_duration,
+
+        'created_at' =>
+            $post->created_at?->diffForHumans(),
+
+        'expires_at' =>
+            $post->created_at
+                ?->copy()
+                ->addHours(24),
+
+        'video' => $video
+            ? [
+                'id' => $video->id,
+
+                'type' => 'video',
+
+                'url' => asset(
+                    'storage/' . $video->path
+                ),
+
+                'order' =>
+                    $video->order,
+            ]
+            : null,
+
+        'media' => $video
+            ? [
+                [
+                    'id' => $video->id,
+
+                    'type' => 'video',
+
+                    'url' => asset(
+                        'storage/' . $video->path
+                    ),
+
+                    'order' =>
+                        $video->order,
+                ],
+            ]
+            : [],
+
+        'user' => $post->user
+            ? [
+                'id' =>
+                    $post->user->id,
+
+                'name' => trim(
+                    $post->user->first_name .
+                    ' ' .
+                    $post->user->last_name
+                ),
+
+                'role' =>
+                    $post->user->role,
+
+                'image' =>
+                    $post->user->image,
+            ]
+            : null,
+
+        'reactions_count' =>
+            $post->reactions()->count(),
+
+        'comments_count' =>
+            $post->comments()->count(),
+
+        'shares_count' =>
+            $post->shares()->count(),
+
+        'reposts_count' =>
+            $post->reposts()->count(),
+    ];
+}
+
+
+public function previousReel(Post $reel)
+{
+    $userId = auth()->id();
+
+    if ($reel->post_type !== 'reel') {
+        return response()->json([
+            'status' => false,
+            'message' => 'The selected post is not a reel.',
+        ], 404);
+    }
+
+    $baseQuery = Post::where(
+        'post_type',
+        'reel'
+    )
+
+        ->whereNull('advertisement_id')
+
+        ->whereHas('media', function ($q) {
+            $q->where('type', 'video');
+        });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Previous reel
+    |--------------------------------------------------------------------------
+    */
+
+    $previousReel = (clone $baseQuery)
+
+        ->where(
+            'id',
+            '<',
+            $reel->id
+        )
+
+        ->orderBy(
+            'id',
+            'desc'
+        )
+
+        ->with([
+            'user:id,first_name,last_name,role,image',
+            'media',
+        ])
+
+        ->withCount([
+            'reactions',
+            'comments',
+            'shares',
+            'reposts',
+        ])
+
+        ->first();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Loop to the last reel
+    |--------------------------------------------------------------------------
+    */
+
+    if (!$previousReel) {
+
+        $previousReel = (clone $baseQuery)
+
+            ->where(
+                'id',
+                '>',
+                $reel->id
+            )
+
+            ->orderBy(
+                'id',
+                'desc'
+            )
+
+            ->with([
+                'user:id,first_name,last_name,role,image',
+                'media',
+            ])
+
+            ->withCount([
+                'reactions',
+                'comments',
+                'shares',
+                'reposts',
+            ])
+
+            ->first();
+    }
+
+    if (!$previousReel) {
+
+        return response()->json([
+            'status' => false,
+
+            'type' => 'reel',
+
+            'video' => null,
+        ], 404);
+    }
+
+    return response()->json([
+        'status' => true,
+
+        'type' => 'reel',
+
+        'video' =>
+            $this->formatReelPost(
+                $previousReel,
+                $userId
+            ),
+    ]);
+}
+
+
+public function resetReelViews()
+{
+    $userId = auth()->id();
+
+    PostView::where(
+        'user_id',
+        $userId
+    )
+
+        ->whereHas('post', function ($q) {
+
+            $q->where(
+                'post_type',
+                'reel'
+            )
+
+            ->whereNull(
+                'advertisement_id'
+            )
+
+            ->whereHas(
+                'media',
+                function ($media) {
+
+                    $media->where(
+                        'type',
+                        'video'
+                    );
+                }
+            );
+        })
+
+        ->delete();
+
+    return response()->json([
+        'status' => true,
+
+        'message' =>
+            'Reel views reset successfully.',
+    ]);
+}
+
+public function viewedid(
+    Request $request,
+    Post $reel
+) {
+    if ($reel->post_type !== 'reel') {
+
+        return response()->json([
+            'status' => false,
+
+            'message' =>
+                'Only reels can be viewed through this endpoint.',
+        ], 422);
+    }
+
+    if ($reel->advertisement_id !== null) {
+
+        return response()->json([
+            'status' => false,
+
+            'message' =>
+                'Advertisements cannot be recorded as reels.',
+        ], 422);
+    }
+
+    $user = $request->user();
+
+    $view = PostView::firstOrCreate([
+        'post_id' => $reel->id,
+
+        'user_id' => $user->id,
+    ]);
+
+    return response()->json([
+        'status' => true,
+
+        'message' =>
+            'Reel view recorded.',
+
+        'viewed' => true,
+
+        'post_id' =>
+            $reel->id,
+    ]);
+}
+
+
+private function userCanSeeAdvertisement(
+    Advertisement $advertisement,
+    int $userId
+): bool {
+    return true;
+}
+
+private function getRandomAdvertisement($userId)
+{
+    $advertisements = Advertisement::query()
+        ->where('status', 'approved')
+        ->where('visibility_unlocked', true)
+        ->whereNotNull('visibility_expires_at')
+        ->where(
+            'visibility_expires_at',
+            '>',
+            now()
+        )
+        ->with([
+            'post.user:id,first_name,last_name,image,role',
+            'post.media',
+        ])
+        ->get();
+
+    \Log::info('ADVERTISEMENT CHECK', [
+        'user_id' => $userId,
+        'count_before_audience_filter' => $advertisements->count(),
+        'advertisements' => $advertisements->map(function ($ad) {
+            return [
+                'id' => $ad->id,
+                'status' => $ad->status,
+                'visibility_unlocked' =>
+                    $ad->visibility_unlocked,
+                'audience' => $ad->audience,
+                'expires_at' =>
+                    $ad->visibility_expires_at,
+                'post_id' =>
+                    $ad->post?->id,
+                'media_count' =>
+                    $ad->post?->media?->count(),
+            ];
+        })->values(),
+    ]);
+
+    $advertisements = $advertisements->filter(
+        function ($advertisement) use ($userId) {
+
+            if (!$advertisement->post) {
+                return false;
+            }
+
+            return $this->userCanSeeAdvertisement(
+                $advertisement,
+                $userId
+            );
+        }
+    );
+
+    \Log::info('ADVERTISEMENT AFTER AUDIENCE FILTER', [
+        'user_id' => $userId,
+        'count' => $advertisements->count(),
+        'ids' => $advertisements->pluck('id')->values(),
+    ]);
+
+    if ($advertisements->isEmpty()) {
+        return null;
+    }
+
+    return $advertisements->random();
+}
+
+
+private function formatAdvertisementPost(
+    Advertisement $advertisement
+) {
+    $post = $advertisement->post;
+
+    if (!$post) {
+        return null;
+    }
+
+    $media = $post->media
+        ->map(function ($m) {
+
+            return [
+                'id' => $m->id,
+
+                'type' => $m->type,
+
+                'url' => asset(
+                    'storage/' . $m->path
+                ),
+            ];
+        })
+        ->values();
+
+    return [
+        'id' => $post->id,
+
+        'post_type' => 'post',
+
+        'is_advertisement' => true,
+
+        'advertisement_id' =>
+            $advertisement->id,
+
+        'advertisement_type' =>
+            $advertisement->type,
+
+        'title' =>
+            $advertisement->title,
+
+        'description' =>
+            $advertisement->description,
+
+        'link' =>
+            $advertisement->link,
+
+        'media' =>
+            $media,
+
+        'video' =>
+            $media->firstWhere(
+                'type',
+                'video'
+            ),
+
+        'user' => $post->user
+            ? [
+                'id' =>
+                    $post->user->id,
+
+                'name' => trim(
+                    $post->user->first_name .
+                    ' ' .
+                    $post->user->last_name
+                ),
+
+                'role' =>
+                    $post->user->role,
+
+                'image' =>
+                    $post->user->image,
+            ]
+            : null,
+
+        'created_at' =>
+            $post->created_at?->diffForHumans(),
+
+        'reactions_count' =>
+            $post->reactions()->count(),
+
+        'comments_count' =>
+            $post->comments()->count(),
+
+        'shares_count' =>
+            $post->shares()->count(),
+
+        'reposts_count' =>
+            $post->reposts()->count(),
+
+        'viewed' => false,
+
+        'expires_at' =>
+            $advertisement
+                ->visibility_expires_at
+                ?->toISOString(),
+    ];
+}
+
+
 }

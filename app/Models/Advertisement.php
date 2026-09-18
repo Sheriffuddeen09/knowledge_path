@@ -11,6 +11,7 @@ protected $fillable = [ "user_id", "type", "title", "description",
  'visibility_unlocked',
 'visibility_started_at',
 'visibility_expires_at',
+ 'decline_reason',
 ];
 protected $casts = [
 

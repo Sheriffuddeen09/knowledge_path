@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 class AdvertisementController extends Controller
 {
+
+// decline
 private function totalBadges()
 {
 return UserBadge::where(
@@ -132,22 +134,34 @@ $advertisement
 return response()->json([ "message"=>"Advertisement approved successfully."
 ]);
 }
-public function decline(Request $request,$id)
-{
-$advertisement= Advertisement::findOrFail($id);
-$advertisement->update([ "status"=>"declined", "decline_reason"=>$request->decline_reason
-]);
-Mail::to(
-$advertisement->user->email
-)->send(
-new AdvertisementDeclinedMail(
-$advertisement
-)
-);
-return response()->json([ "message"=>"Advertisement declined."
-]);
-}
 
+
+public function decline(Request $request, $id)
+{
+    $request->validate([
+        'decline_reason' => 'required|string|max:2000',
+    ], [
+        'decline_reason.required' => 'Please provide a reason for declining this advertisement.',
+    ]);
+
+    $advertisement = Advertisement::with('user')->findOrFail($id);
+
+    $advertisement->update([
+        'status' => 'declined',
+        'decline_reason' => $request->decline_reason,
+    ]);
+
+    Mail::to($advertisement->user->email)->send(
+        new AdvertisementDeclinedMail(
+            $advertisement->fresh()
+        )
+    );
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Advertisement declined.',
+    ]);
+}
 
 public function unlockVisibility(Request $request, $id)
 {

@@ -12,37 +12,127 @@ class ProductVisibilityController extends Controller
     
 
     private function visibilityPlan($visibility)
-    {
-        return match ((string) $visibility) {
+{
+    return match ((string) $visibility) {
 
-            '25' => [
-                'badges' => 80,
-                'months' => 1,
-                'label' => '1/4 of locations',
-            ],
+        '25' => [
+            'badges' => 80,
+            'months' => 1,
+            'label' => '1/4 of locations',
+        ],
 
-            '50' => [
-                'badges' => 180,
-                'months' => 2,
-                'label' => '1/2 of locations',
-            ],
+        '50' => [
+            'badges' => 180,
+            'months' => 2,
+            'label' => '1/2 of locations',
+        ],
 
-            '75' => [
-                'badges' => 270,
-                'months' => 3,
-                'label' => '3/4 of locations',
-            ],
+        '75' => [
+            'badges' => 270,
+            'months' => 3,
+            'label' => '3/4 of locations',
+        ],
 
-            '100' => [
-                'badges' => 300,
-                'months' => 4,
-                'label' => 'All locations',
-            ],
+        '100' => [
+            'badges' => 300,
+            'months' => 4,
+            'label' => 'All locations',
+        ],
 
-            default => null,
-        };
+        default => null,
+    };
+}
+
+
+    public function upgrade(Request $request, $id)
+{
+    $request->validate([
+        'visibility' => 'required|in:25,50,75,100',
+    ]);
+
+    $user = $request->user();
+
+    $product = Product::where('id', $id)
+        ->where('user_id', $user->id)
+        ->firstOrFail();
+
+    $plan = $this->visibilityPlan($request->visibility);
+
+    if (!$plan) {
+        return response()->json([
+            'message' => 'Invalid visibility plan.'
+        ], 422);
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Do not allow another upgrade while current visibility is active
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+        $product->visibility_unlocked &&
+        $product->visibility_expires_at &&
+        now()->lessThan($product->visibility_expires_at)
+    ) {
+        return response()->json([
+            'message' => 'This product visibility is still active.'
+        ], 403);
+    }
+
+    $totalBadges = UserBadge::where('user_id', $user->id)
+        ->sum('badges');
+
+    if ($totalBadges < $plan['badges']) {
+        return response()->json([
+            'message' => "You need {$plan['badges']} badges."
+        ], 403);
+    }
+
+    DB::transaction(function () use (
+        $product,
+        $user,
+        $plan,
+        $request
+    ) {
+
+        UserBadge::create([
+            'user_id' => $user->id,
+            'badges' => -$plan['badges'],
+            'source' => 'registration',
+        ]);
+
+        $startedAt = now();
+
+        $expiresAt = now()->addMonths($plan['months']);
+
+        $product->update([
+            'visibility' => $request->visibility,
+
+            'visibility_unlocked' => true,
+
+            'visibility_badges' => $plan['badges'],
+
+            'visibility_started_at' => $startedAt,
+
+            'visibility_expires_at' => $expiresAt,
+        ]);
+    });
+
+    $product->refresh();
+
+    return response()->json([
+        'message' => 'Product visibility updated successfully.',
+
+        'product' => $product->load('images'),
+
+        'visibility' => $product->visibility,
+
+        'visibility_started_at' => $product->visibility_started_at,
+
+        'visibility_expires_at' => $product->visibility_expires_at,
+    ]);
+}
 
     public function index(Request $request)
     {
@@ -110,127 +200,7 @@ class ProductVisibilityController extends Controller
     }
 
 
-    
-    public function upgrade(
-        Request $request,
-        $id
-    ) {
-
-        $request->validate([
-            'visibility' =>
-                'required|in:25,50,75,100',
-        ]);
-
-        $user = $request->user();
-
-        $product = Product::where(
-            'id',
-            $id
-        )
-        ->where(
-            'user_id',
-            $user->id
-        )
-        ->firstOrFail();
-
-        $plan =
-            $this->visibilityPlan(
-                $request->visibility
-            );
-
-
-        $totalBadges =
-            UserBadge::where(
-                'user_id',
-                $user->id
-            )->sum('badges');
-
-        if (
-            $totalBadges <
-            $plan['badges']
-        ) {
-
-            return response()->json([
-                'message' =>
-                    "You need {$plan['badges']} badges."
-            ], 403);
-
-        }
-
-
-        if (
-            $product->visibility_unlocked &&
-            $product->visibility_expires_at &&
-            now()->lessThan(
-                $product->visibility_expires_at
-            )
-        ) {
-
-            return response()->json([
-                'message' =>
-                    'This product visibility is still active.'
-            ], 403);
-
-        }
-
-        DB::transaction(function () use (
-            $product,
-            $user,
-            $plan,
-            $request
-        ) {
-
-           
-
-            UserBadge::create([
-                'user_id' =>
-                    $user->id,
-
-                'badges' =>
-                    -$plan['badges'],
-
-                'source' =>
-                    'registration',
-            ]);
-
-
-            $product->update([
-
-                'visibility' =>
-                    $request->visibility,
-
-                'visibility_unlocked' =>
-                    true,
-
-                'visibility_badges' =>
-                    $plan['badges'],
-
-                'visibility_started_at' =>
-                    now(),
-
-                'visibility_expires_at' =>
-                    now()->addMonths(
-                        $plan['months']
-                    ),
-
-            ]);
-
-        });
-
-
-        return response()->json([
-
-            'message' =>
-                'Product visibility updated successfully.',
-
-            'product' =>
-                $product->fresh()->load('images'),
-
-        ]);
-
-    }
-
-
+     
 
     public function destroy(
         Request $request,
@@ -297,129 +267,142 @@ class ProductVisibilityController extends Controller
         ]);
 
     }
-
-    public function update(Request $request, $id)
-    {
-        $request->validate([
-            'visibility' => 'required|in:25,50,75,100',
-        ]);
-
-
-        $product = Product::where('id', $id)
-            ->where('user_id', auth()->id())
-            ->firstOrFail();
-
-        $requiredBadges = $this->badgeRequired(
-            $request->visibility
-        );
-
-        $currentVisibility =
-            $product->visibility ?? 'location';
-
-
-        $visibilityRank = [
-
-            'location' => 0,
-
-            '25' => 1,
-
-            '50' => 2,
-
-            '75' => 3,
-
-            '100' => 4,
-
-        ];
-
-
-        if (
-            isset($visibilityRank[$currentVisibility]) &&
-            $visibilityRank[$request->visibility]
-                <= $visibilityRank[$currentVisibility]
-        ) {
-
-            return response()->json([
-
-                'message' =>
-                    'You cannot select this visibility because your product already has this or a higher visibility level.'
-
-            ], 422);
-
-        }
-
-        $totalBadges = $this->totalBadges();
-
-
-        if ($totalBadges < $requiredBadges) {
-
-            return response()->json([
-
-                'message' =>
-                    "You need {$requiredBadges} badges to unlock this visibility.",
-
-                'required_badges' => $requiredBadges,
-
-                'available_badges' => $totalBadges,
-
-            ], 403);
-        }
-
-
-        DB::transaction(function () use (
-            $product,
-            $request,
-            $requiredBadges
-        ) {
-
-
-            UserBadge::create([
-
-                'user_id' => auth()->id(),
-
-                'badges' => -$requiredBadges,
-
-                'source' => 'registration',
-
+        
+        public function update(Request $request, $id)
+        {
+            $request->validate([
+                'visibility' => 'required|in:25,50,75,100',
             ]);
 
-            $product->update([
+            $product = Product::where('id', $id)
+                ->where('user_id', auth()->id())
+                ->firstOrFail();
 
-                'visibility' =>
-                    $request->visibility,
+            $requiredBadges = $this->badgeRequired(
+                $request->visibility
+            );
 
-                'visibility_badges' =>
-                    $requiredBadges,
+            $visibilityRank = [
+                'location' => 0,
+                '25' => 1,
+                '50' => 2,
+                '75' => 3,
+                '100' => 4,
+            ];
 
-                'visibility_unlocked' =>
+            $currentVisibility = $product->visibility ?? 'location';
+
+            $currentRank = $visibilityRank[$currentVisibility] ?? 0;
+
+            $newRank = $visibilityRank[$request->visibility];
+
+            $isExpired =
+                $product->visibility_expires_at &&
+                now()->greaterThanOrEqualTo(
+                    $product->visibility_expires_at
+                );
+
+            if ($newRank < $currentRank) {
+                return response()->json([
+                    'message' =>
+                        'You cannot select a lower visibility level than your current level.',
+                ], 422);
+            }
+
+            if (
+                $newRank === $currentRank &&
+                $currentRank > 0 &&
+                !$isExpired
+            ) {
+                return response()->json([
+                    'message' =>
+                        'Your product already has this visibility level. You can renew it after it expires.',
+                ], 422);
+            }
+
+            $totalBadges = $this->totalBadges();
+
+            if ($totalBadges < $requiredBadges) {
+                return response()->json([
+                    'message' =>
+                        "You need {$requiredBadges} badges to unlock this visibility.",
+
+                    'required_badges' =>
+                        $requiredBadges,
+
+                    'available_badges' =>
+                        $totalBadges,
+                ], 403);
+            }
+
+            DB::transaction(function () use (
+                $product,
+                $request,
+                $requiredBadges
+            ) {
+
+                UserBadge::create([
+                    'user_id' => auth()->id(),
+
+                    'badges' => -$requiredBadges,
+
+                    'source' => 'registration',
+                ]);
+
+                $product->update([
+        
+                    'visibility' =>
+                        $request->visibility,
+        
+                    'visibility_badges' =>
+                        $requiredBadges,
+        
+                    'visibility_unlocked' =>
+                        true,
+        
+                    'visibility_unlocked_at' =>
+                        now(),
+
+                    'visibility_started_at' =>
+                        now(),
+
+                    'visibility_expires_at' =>
+                        now()->addDays(30),
+                ]);
+            });
+        
+
+            $product->refresh();
+        
+            return response()->json([
+
+                'status' =>
                     true,
 
-                'visibility_unlocked_at' =>
-                    now(),
+                'message' =>
+                    $isExpired
+                        ? 'Product visibility successfully renewed.'
+                        : 'Product visibility successfully upgraded.',
+
+                'product' =>
+                    $product,
+
+                'visibility' =>
+                    $product->visibility,
+
+                'badges_spent' =>
+                    $requiredBadges,
+
+                'remaining_badges' =>
+                    $this->totalBadges(),
+
+                'visibility_started_at' =>
+                    $product->visibility_started_at,
+
+                'visibility_expires_at' =>
+                    $product->visibility_expires_at,
 
             ]);
+        }
 
-        });
-
-
-        $product->refresh();
-
-
-        return response()->json([
-
-            'message' =>
-                'Product visibility successfully upgraded.',
-
-            'product' => $product,
-
-            'visibility' =>
-                $product->visibility,
-
-            'badges_spent' =>
-                $requiredBadges,
-
-            'remaining_badges' =>
-                $this->totalBadges(),
-
-        ]);
-    }
 }

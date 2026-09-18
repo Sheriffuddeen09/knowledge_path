@@ -20,9 +20,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Process\Process;
 use App\Models\Advertisement;
-
-
-
+use App\Models\Product;
 
 
 class PostController extends Controller
@@ -262,103 +260,275 @@ class PostController extends Controller
 }
 
 
-public function index()
+
+public function index(Request $request)
 {
-    $friendIds = auth()->user()->allFriendIds()->toArray();
+    $user = $request->user();
 
-    $viewedPostIds = PostView::where('user_id', auth()->id())
-        ->pluck('post_id')
-        ->toArray();
+    $friendIds = $user->allFriendIds()->toArray();
+ 
 
-    $posts = Post::whereNotIn('id', $viewedPostIds)
-    ->where('post_type', '!=', 'reel')
-        ->where(function ($query) use ($friendIds) {
+    $isRefresh = $request->boolean('refresh');
 
-            // myPosts
+    $viewedPostIds = [];
+
+    if (!$isRefresh) {
+        $viewedPostIds = PostView::where('user_id', $user->id)
+            ->pluck('post_id')
+            ->toArray();
+    }
+ 
+
+    $postsQuery = Post::query()
+        ->where('post_type', '!=', 'reel')
+
+        ->when(
+            !$isRefresh,
+            function ($query) use ($viewedPostIds) {
+                $query->whereNotIn('id', $viewedPostIds);
+            }
+        )
+
+        ->where(function ($query) use ($friendIds, $user) {
+
+            // PUBLIC
             $query->where('visibility', 'public')
 
-            // PRIVATE (only owner)
-            ->orWhere(function ($q) {
-                $q->where('visibility', 'private')
-                  ->where('user_id', auth()->id());
-            })
+                // PRIVATE - owner only
+                ->orWhere(function ($q) use ($user) {
+                    $q->where('visibility', 'private')
+                        ->where('user_id', $user->id);
+                })
 
-            // FRIENDS
-            ->orWhere(function ($q) use ($friendIds) {
-                $q->where('visibility', 'friends')
-                  ->where(function ($sub) use ($friendIds) {
-                      $sub->where('user_id', auth()->id())
-                          ->orWhereIn('user_id', $friendIds);
-                  });
-            });
+                // FRIENDS
+                ->orWhere(function ($q) use ($friendIds, $user) {
 
+                    $q->where('visibility', 'friends')
+
+                        ->where(function ($sub) use ($friendIds, $user) {
+
+                            $sub->where('user_id', $user->id)
+                                ->orWhereIn('user_id', $friendIds);
+
+                        });
+                });
         })
-       ->with([
-                'user:id,first_name,last_name,image',
-                'media',
-                'advertisement',
-                'originalPost.user',
-                'originalPost.media'
-            ])
+
+        ->with([
+            'user:id,first_name,last_name,image',
+            'media',
+            'advertisement',
+            'originalPost.user',
+            'originalPost.media',
+        ])
+
         ->withCount([
             'reactions',
             'comments',
             'shares',
-            'reposts'
+            'reposts',
         ])
-        ->latest()
+
+        
+        ->inRandomOrder();
+
+    $posts = $postsQuery
         ->get()
         ->map(function ($post) {
 
-    $isRepost = !is_null($post->original_post_id);
+            $isRepost = !is_null($post->original_post_id);
 
-    $basePost = $post->original_post_id
-        ? $post->rootOriginal()
-        : $post;
+            $basePost = $post->original_post_id
+                ? $post->rootOriginal()
+                : $post;
 
-    return [
-        'id' => $post->id,
-        'is_repost' => $isRepost,
-        'original_post_id' => $post->original_post_id,
-        'is_advertisement' => !is_null($post->advertisement_id),
+            return [
+                'id' => $post->id,
 
-        'advertisement' => $post->advertisement ? [
-            'id' => $post->advertisement->id,
-            'type' => $post->advertisement->type,
-        ] : null,
+                'feed_type' => 'post',
 
-        'reposted_by' => $isRepost ? [
-            'id' => $post->user->id,
-            'name' => $post->user->first_name.' '.$post->user->last_name,
-        ] : null,
+                'is_repost' => $isRepost,
 
-        'content' => $basePost->content,
+                'original_post_id' => $post->original_post_id,
 
-        'media' => $basePost->media->map(fn ($m) => [
-            'id' => $m->id,
-            'type' => $m->type,
-            'url' => asset('storage/' . $m->path),
-        ]),
+                'is_advertisement' =>
+                    !is_null($post->advertisement_id),
 
-        'user' => [
-            'id' => $basePost->user->id,
-            'name' => $basePost->user->first_name.' '.$basePost->user->last_name,
-        ],
+                'advertisement' => $post->advertisement
+                    ? [
+                        'id' => $post->advertisement->id,
+                        'type' => $post->advertisement->type,
+                    ]
+                    : null,
 
-        'created_at' => $post->created_at->diffForHumans(),
-        'reactions_count' => $basePost->reactions_count ?? 0,
-        'comments_count'  => $basePost->comments_count ?? 0,
-        'shares_count'    => $basePost->shares_count ?? 0,
-        'reposts_count'   => $basePost->reposts_count ?? 0,
-    ];
-});
+                'reposted_by' => $isRepost
+                    ? [
+                        'id' => $post->user->id,
+                        'name' =>
+                            $post->user->first_name . ' ' .
+                            $post->user->last_name,
+                    ]
+                    : null,
+
+                'content' => $basePost->content,
+
+                'media' => $basePost->media->map(
+                    fn ($m) => [
+                        'id' => $m->id,
+                        'type' => $m->type,
+                        'url' => asset(
+                            'storage/' . $m->path
+                        ),
+                    ]
+                )->values(),
+
+                'user' => [
+                    'id' => $basePost->user->id,
+
+                    'name' =>
+                        $basePost->user->first_name . ' ' .
+                        $basePost->user->last_name,
+                ],
+
+                'created_at' =>
+                    $post->created_at->diffForHumans(),
+
+                'reactions_count' =>
+                    $basePost->reactions_count ?? 0,
+
+                'comments_count' =>
+                    $basePost->comments_count ?? 0,
+
+                'shares_count' =>
+                    $basePost->shares_count ?? 0,
+
+                'reposts_count' =>
+                    $basePost->reposts_count ?? 0,
+            ];
+        })
+        ->values();
+ 
+    $products = Product::query()
+
+        ->where('visibility_unlocked', true)
+
+        ->whereNotNull('visibility')
+
+        ->where(function ($query) {
+
+            $query
+                ->whereNull('visibility_expires_at')
+                ->orWhere(
+                    'visibility_expires_at',
+                    '>',
+                    now()
+                );
+
+        })
+
+        ->with([
+            'images',
+            'user:id,first_name,last_name,image',
+        ])
+
+        ->withCount('reviews')
+ 
+
+        ->inRandomOrder()
+
+        ->limit(10)
+
+        ->get()
+
+        ->map(function ($product) {
+
+            $price = (float) $product->price;
+
+            $discount = (float) $product->discount;
+
+            /*
+            |--------------------------------------------------------------------------
+            | Discount is subtracted directly from price
+            |--------------------------------------------------------------------------
+            */
+
+            $finalPrice = max(
+                0,
+                $price - $discount
+            );
+
+            return [
+                'id' => $product->id,
+
+                'feed_type' => 'product',
+
+                'title' => $product->title,
+
+                'description' => $product->description,
+
+                'price' => $price,
+
+                'discount' => $discount,
+
+                'final_price' => $finalPrice,
+
+                'currency' => $product->currency,
+
+                'reviews_count' =>
+                    $product->reviews_count ?? 0,
+
+                'visibility' =>
+                    $product->visibility,
+
+                'visibility_unlocked' =>
+                    (bool) $product->visibility_unlocked,
+
+                'visibility_started_at' =>
+                    $product->visibility_started_at,
+
+                'visibility_expires_at' =>
+                    $product->visibility_expires_at,
+
+                'user' => $product->user
+                    ? [
+                        'id' => $product->user->id,
+                        'name' =>
+                            $product->user->first_name . ' ' .
+                            $product->user->last_name,
+                        'image' =>
+                            $product->user->image,
+                    ]
+                    : null,
+
+                'images' => $product->images
+                ->map(function ($image) {
+                    return [
+                        'id' => $image->id,
+                        'url' => asset(
+                            'storage/' . $image->image_path
+                        ),
+                    ];
+                })
+                ->values(),
+            ];
+        })
+        ->values();
+ 
+
     return response()->json([
         'status' => true,
-        'posts' => $posts
+
+        'posts' => $posts,
+
+        'products' => $products,
+
+        'posts_count' => $posts->count(),
+
+        'products_count' => $products->count(),
+
+        'is_refresh' => $isRefresh,
     ]);
 }
-
-
 
 public function show($id)
 {
@@ -380,9 +550,19 @@ public function show($id)
     ->where('post_type', '!=', 'reel')
     ->findOrFail($id);
 
-    // ...your existing normal post response
-}
+    $post->media->transform(function ($media) {
+        $media->url = $media->url
+            ?? ($media->path
+                ? asset('storage/' . $media->path)
+                : null);
 
+        return $media;
+    });
+
+    return response()->json([
+        'post' => $post,
+    ]);
+}
 
 
 public function hide(Post $post)
@@ -453,7 +633,7 @@ public function downloadReel(Request $request, $mediaId)
     // Get the parent post
     $post = Post::findOrFail($media->post_id);
 
-    // Optional: record download
+    // Optional: record show
     if ($user) {
         PostDownload::updateOrCreate(
             [
@@ -1010,6 +1190,8 @@ public function Search(Request $request)
     }
 }
 
+
+// created_at
 public function indexVideo()
 {
     $userId = auth()->id();
@@ -1150,10 +1332,8 @@ public function indexVideo()
                     ]
                     : null,
 
-                'created_at' =>
-                    $post->created_at
-                        ?->diffForHumans(),
-
+                'created_at' => $post->created_at?->toISOString(),
+                
                 'reactions_count' =>
                     $basePost->reactions_count ?? 0,
 

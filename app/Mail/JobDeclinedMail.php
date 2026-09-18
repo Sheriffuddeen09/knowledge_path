@@ -18,9 +18,12 @@ class JobDeclinedMail extends Mailable
         $this->job = $job;
     }
 
-
     public function build()
     {
+        $reason = nl2br(
+            e($this->job->decline_reason ?? 'No reason was provided.')
+        );
+
         return $this
             ->subject('Your Job Post Was Not Approved')
             ->html('
@@ -47,7 +50,6 @@ class JobDeclinedMail extends Mailable
                                 </td>
                             </tr>
 
-
                             <tr>
                                 <td>
 
@@ -55,17 +57,44 @@ class JobDeclinedMail extends Mailable
                                         Hello '.$this->job->user->name.',
                                     </p>
 
-
                                     <p>
                                         Thank you for submitting your job posting.
                                         After review, we couldn\'t approve it at this time.
                                     </p>
 
+                                    <!-- DECLINE REASON -->
 
-                                    <p>
+                                    <div style="
+                                        margin-top:25px;
+                                        padding:20px;
+                                        background:#fef2f2;
+                                        border-left:4px solid #dc2626;
+                                        border-radius:8px;
+                                    ">
+
+                                        <p style="
+                                            margin:0 0 10px 0;
+                                            color:#991b1b;
+                                            font-size:16px;
+                                            font-weight:bold;
+                                        ">
+                                            Reason for declining
+                                        </p>
+
+                                        <p style="
+                                            margin:0;
+                                            color:#374151;
+                                            font-size:14px;
+                                            line-height:1.7;
+                                        ">
+                                            '.$reason.'
+                                        </p>
+
+                                    </div>
+
+                                    <p style="margin-top:25px;">
                                         You may edit the job and submit it again.
                                     </p>
-
 
                                     <table width="100%" cellpadding="12">
 
@@ -75,10 +104,9 @@ class JobDeclinedMail extends Mailable
                                             </td>
 
                                             <td>
-                                                '.$this->job->title.'
+                                                '.e($this->job->title).'
                                             </td>
                                         </tr>
-
 
                                         <tr>
                                             <td>
@@ -92,22 +120,18 @@ class JobDeclinedMail extends Mailable
 
                                     </table>
 
-
                                     <p style="margin-top:30px;">
                                         Thank you for choosing Knowledge Path.
                                     </p>
 
-
                                 </td>
                             </tr>
-
 
                         </table>
 
                         </td>
                     </tr>
                 </table>
-
 
                 </body>
 

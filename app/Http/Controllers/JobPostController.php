@@ -214,7 +214,7 @@ public function destroyMyPostedJob(
     ]);
 }
 
-
+// decline
 public function show($id)
 {
     $job = JobPost::with([
@@ -840,65 +840,56 @@ public function pendingJobs(Request $request)
 
 
 
+public function decline(Request $request, $id)
+{
+    $request->validate([
+        'reason' => [
+            'required',
+            'string',
+            'max:2000',
+        ],
+    ], [
+        'reason.required' => 'Please provide a reason for declining this job.',
+    ]);
 
+    $job = JobPost::with([
+        'user',
+        'category'
+    ])->findOrFail($id);
 
-    public function decline(Request $request, $id)
-    {
-
-        $job = JobPost::with([
-            'user',
-            'category'
-        ])->findOrFail($id);
-
-
-
-        if ($job->status !== 'pending') {
-
-            return response()->json([
-
-                'message' => 'This job has already been processed.'
-
-            ],422);
-
-        }
-
-
-
-        $job->update([
-
-            'status' => 'declined',
-
-            'approved_by' => Auth::id(),
-
-            'approved_at' => now(),
-
-        ]);
-
-
-
-        // Send decline email
-        Mail::to($job->user->email)
-            ->send(new JobDeclinedMail($job->fresh([
-                'user',
-                'category'
-            ])));
-
-
-
+    if ($job->status !== 'pending') {
         return response()->json([
-
-            'success' => true,
-
-            'message' => 'Job declined successfully.',
-
-            'job' => $job->fresh([
-                'user',
-                'category'
-            ])
-
-        ]);
+            'message' => 'This job has already been processed.'
+        ], 422);
     }
 
+    $job->update([
+        'status' => 'declined',
+        'decline_reason' => $request->reason,
+        'approved_by' => Auth::id(),
+        'approved_at' => now(),
+    ]);
+
+    // Send decline email
+    Mail::to($job->user->email)
+        ->send(
+            new JobDeclinedMail(
+                $job->fresh([
+                    'user',
+                    'category'
+                ])
+            )
+        );
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Job declined successfully.',
+        'job' => $job->fresh([
+            'user',
+            'category'
+        ])
+    ]);
+}
 
     /**
      * Delete Job

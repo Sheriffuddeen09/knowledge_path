@@ -113,10 +113,34 @@ Route::middleware('auth:sanctum')->group(function () {
         '/reels',
         [ReelController::class, 'index']
     );
-
     Route::get(
         '/reels-get',
         [ReelController::class, 'reel']
+    );
+
+    Route::get(
+        '/reels-get-reel',
+        [ReelController::class, 'indexReel']
+    );
+
+    Route::get(
+        '/reel/{reel}/next-reel',
+        [ReelController::class, 'nextReel']
+    );
+
+    Route::get(
+        '/reel/{reel}/previous-reel',
+        [ReelController::class, 'previousReel']
+    );
+
+    Route::post(
+        '/reset-reel-views',
+        [ReelController::class, 'resetReelViews']
+    );
+
+    Route::post(
+        '/reel/{reel}/view',
+        [ReelController::class, 'viewedid']
     );
 
     Route::post(
@@ -676,12 +700,12 @@ Route::middleware('auth:sanctum')->group(function () {
     '/communities/{community}/mark-read',
     [CommunityController::class, 'markAsRead']
     );
-<!-- /posts-single -->
+
     Route::put(
     '/community/messages/pin',
     [CommunityController::class, 'pin']
     );
-
+// post/{}
     Route::delete(
         '/community/messages/pin',
         [CommunityController::class, 'unpin']
@@ -1028,10 +1052,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/posts', [PostController::class, 'store']);
     Route::get('/posts-get', [PostController::class, 'index']);
     Route::get('/posts-get-video', [PostController::class, 'indexVideo']);
+    Route::get('/post/{post}/next-video', [
+    PostController::class,
+    'nextVideo'
+    ]);
+// /posts-get
+        Route::get('/post/{post}/previous-video', [
+            PostController::class,
+            'previousVideo'
+        ]);
+
+        Route::post('/reset-video-views', [
+            PostController::class,
+            'resetVideoViews'
+        ]);
     Route::get('/posts/{post}', [PostController::class, 'show']);
     Route::post('/post/{post}/view', [PostController::class, 'viewid']);
 
-    ///messages/pin
+    //resetVideoViews
     Route::post('/post/{id}/reaction', [PostReactionController::class, 'store']);
     Route::delete('/post/{id}/reaction', [PostReactionController::class, 'destroy']);
     Route::get('/post/{id}/reactions', [PostReactionController::class, 'index']);
@@ -1100,7 +1138,7 @@ Route::middleware('auth:sanctum')->group(function () {
             'previousVideo'
         ]);
 
-        Route::post('/videos/reset-views', [
+        Route::post('/reset-video-views', [
             PostController::class,
             'resetVideoViews'
         ]);
