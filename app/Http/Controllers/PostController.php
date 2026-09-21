@@ -314,11 +314,21 @@ public function index(Request $request)
                 });
         })
 
-        ->with([
+       ->with([
             'user:id,first_name,last_name,image',
             'media',
             'advertisement',
-            'originalPost.user',
+
+            'originalPost' => function ($query) {
+                $query->withCount([
+                    'reactions',
+                    'comments',
+                    'shares',
+                    'reposts',
+                ]);
+            },
+
+            'originalPost.user:id,first_name,last_name,image',
             'originalPost.media',
         ])
 
@@ -390,8 +400,9 @@ public function index(Request $request)
                         $basePost->user->last_name,
                 ],
 
-                'created_at' =>
-                    $post->created_at->diffForHumans(),
+                'created_at' => $post->created_at->diffForHumans(),
+
+                'original_created_at' => $basePost->created_at->diffForHumans(),
 
                 'reactions_count' =>
                     $basePost->reactions_count ?? 0,
@@ -1074,30 +1085,70 @@ public function destroyImage($id)
         'post_id' => $post->id
     ]);
 }
+ 
 
 
-
-public function repost($postId)
+public function repost(Request $request, $postId)
 {
-    $post = Post::findOrFail($postId);
+    $user = $request->user();
 
-    // Prevent self repost notification
-    if ($post->user_id == auth()->id()) {
-        return response()->json(['message' => 'You cannot repost your own post'], 422);
+    $post = Post::findOrFail($postId);
+ 
+    if ((int) $post->user_id === (int) $user->id) {
+        return response()->json([
+            'message' => 'You cannot repost your own post',
+        ], 422);
+    }
+ 
+    $validated = $request->validate([
+        'visibility' => [
+            'required',
+            'in:public,friends',
+        ],
+    ]);
+
+    $existingRepost = Post::where('user_id', $user->id)
+        ->where('original_post_id', $post->id)
+        ->first();
+
+    if ($existingRepost) {
+        return response()->json([
+            'message' => 'You have already reposted this post.',
+            'repost' => $existingRepost,
+        ], 422);
     }
 
-    $reposterName = auth()->user()->first_name . ' ' . auth()->user()->last_name;
+    $repost = Post::create([
+        'user_id' => $user->id,
 
-    // Check existing notification
+        'original_post_id' => $post->id,
+
+        'content' => null,
+
+        'visibility' => $validated['visibility'],
+
+        'post_type' => 'repost',
+    ]);
+ 
+    $reposterName = trim(
+        $user->first_name . ' ' . $user->last_name
+    );
+
     $notification = Notification::where('user_id', $post->user_id)
         ->where('type', 'post_repost')
-        ->whereJsonContains('data->post_id', $postId)
+        ->whereJsonContains('data->post_id', $post->id)
         ->first();
 
     if ($notification) {
 
-        $data = json_decode($notification->data, true);
-        $reposters = collect($data['reposters'] ?? []);
+        $data = json_decode(
+            $notification->data,
+            true
+        );
+
+        $reposters = collect(
+            $data['reposters'] ?? []
+        );
 
         if (!$reposters->contains($reposterName)) {
             $reposters->push($reposterName);
@@ -1105,8 +1156,10 @@ public function repost($postId)
 
         $notification->update([
             'data' => json_encode([
-                'post_id' => $postId,
-                'reposters' => $reposters->values(),
+                'post_id' => $post->id,
+                'reposters' => $reposters
+                    ->values()
+                    ->toArray(),
             ]),
             'read' => false,
         ]);
@@ -1116,16 +1169,89 @@ public function repost($postId)
         Notification::create([
             'user_id' => $post->user_id,
             'type' => 'post_repost',
+
             'data' => json_encode([
-                'post_id' => $postId,
-                'reposters' => [$reposterName],
+                'post_id' => $post->id,
+                'reposters' => [
+                    $reposterName,
+                ],
             ]),
-            'redirect_url' => "/repost/{$postId}", // ✅ redirect to repost page
+
+            'redirect_url' => "/repost/{$post->id}",
+
             'read' => false,
         ]);
     }
+ 
+    $repost->load([
+        'user:id,first_name,last_name,image',
+        'originalPost.user:id,first_name,last_name,image',
+        'originalPost.media',
+    ]);
+ 
+    return response()->json([
+        'message' => 'Post reposted successfully',
 
-    return response()->json(['message' => 'Post reposted successfully']);
+        'repost' => [
+            'id' => $repost->id,
+
+            'feed_type' => 'post',
+
+            'is_repost' => true,
+
+            'original_post_id' =>
+                $repost->original_post_id,
+
+            'reposted_by' => [
+                'id' => $repost->user->id,
+
+                'name' =>
+                    $repost->user->first_name .
+                    ' ' .
+                    $repost->user->last_name,
+            ],
+
+            'content' =>
+                $repost->originalPost->content,
+
+            'media' =>
+                $repost->originalPost->media
+                    ->map(function ($media) {
+                        return [
+                            'id' => $media->id,
+
+                            'type' => $media->type,
+
+                            'url' => asset(
+                                'storage/' .
+                                $media->path
+                            ),
+                        ];
+                    })
+                    ->values(),
+
+            'user' => [
+                'id' =>
+                    $repost->originalPost->user->id,
+
+                'name' =>
+                    $repost->originalPost->user->first_name .
+                    ' ' .
+                    $repost->originalPost->user->last_name,
+            ],
+
+            'created_at' =>
+                $repost->created_at->diffForHumans(),
+
+            'reactions_count' => 0,
+
+            'comments_count' => 0,
+
+            'shares_count' => 0,
+
+            'reposts_count' => 0,
+        ],
+    ]);
 }
 
 

@@ -91,7 +91,7 @@ class RegisterController extends Controller
     }
 
     // Register
-    public function register(Request $request)
+public function register(Request $request)
 {
     $validator = Validator::make($request->all(), [
         'first_name' => 'required|string|max:255',
@@ -108,19 +108,24 @@ class RegisterController extends Controller
     ]);
 
     if ($validator->fails()) {
-        return response()->json(["errors" => $validator->errors()], 422);
+        return response()->json([
+            "errors" => $validator->errors()
+        ], 422);
     }
-
-    // Check OTP verification
-    $otpRecord = OtpVerification::where('email', $request->email)
+ 
+    $otpRecord = OtpVerification::where(
+        'email',
+        $request->email
+    )
         ->orderBy('created_at', 'desc')
         ->first();
 
     if (!$otpRecord || !$otpRecord->verified) {
-        return response()->json(['message' => 'Email not verified'], 400);
+        return response()->json([
+            'message' => 'Email not verified'
+        ], 400);
     }
-
-    // Create User
+ 
     $user = User::create([
         'first_name' => $request->first_name,
         'last_name' => $request->last_name,
@@ -133,44 +138,53 @@ class RegisterController extends Controller
         'password' => Hash::make($request->password),
         'email_verified_at' => now(),
         'privacy' => $request->privacy,
-        'location' =>  $request->location,
+        'location' => $request->location,
     ]);
-
+ 
     $otpRecord->delete();
 
-    // Give starter badges ONLY to students
-    UserBadge::create([
-        'user_id' => $user->id,
-        'badges' => 30,
-        'source' => 'registration',
-    ]);
+    if ($user->role === 'student') {
+        UserBadge::create([
+            'user_id' => $user->id,
+            'badges' => 30,
+            'source' => 'registration',
+        ]);
+    }
+ 
+    $receivers = User::where(
+        'role',
+        $user->role
+    )
+        ->where(
+            'id',
+            '!=',
+            $user->id
+        )
+        ->get();
 
-   
-    $targetRole = $user->role === 'student' ? 'admin' : 'student';
-
-    $receivers = User::where('role', $targetRole)->get();
+    $fullName = trim(
+        $user->first_name . ' ' . $user->last_name
+    );
 
     foreach ($receivers as $receiver) {
 
-        // Prevent sending notification to self (extra safety)
-        if ($receiver->id == $user->id) {
-            continue;
-        }
-
         Notification::create([
             'user_id' => $receiver->id,
+
             'type' => 'friend_suggestion',
+
             'data' => json_encode([
-                'name' => $user->first_name . ' ' . $user->last_name,
+                'name' => $fullName,
                 'user_id' => $user->id,
+                'role' => $user->role,
             ]),
-            'redirect_url' => '/friend-page', // 👈 Redirect here
+ 
+            'redirect_url' => '/friend',
         ]);
     }
-
+ 
     Auth::login($user);
-
-    // Redirect based on role
+ 
     $redirect = $user->role === 'admin'
         ? '/admin/dashboard'
         : '/student/dashboard';
@@ -179,9 +193,10 @@ class RegisterController extends Controller
         'status' => true,
         'message' => 'Registration complete and logged in',
         'redirect' => $redirect,
-        'user' => $user
+        'user' => $user,
     ], 201);
 }
+
 
 
     public function checkBeforeNext(Request $request)

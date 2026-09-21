@@ -880,79 +880,77 @@ public function reel()
     $friendIds = $user
         ->allFriendIds()
         ->toArray();
-
-    $viewedPostIds = PostView::where(
+ 
+    $viewedReelIds = PostView::where(
         'user_id',
         $user->id
     )
-    ->pluck('post_id')
-    ->toArray();
-
-
+        ->pluck('post_id')
+        ->toArray();
+ 
     $posts = Post::query()
 
-        // Do not show already viewed reels
-        ->whereNotIn(
-            'id',
-            $viewedPostIds
-        )
-
-        // ONLY REELS
         ->where(
             'post_type',
             'reel'
         )
 
-        // ONLY REELS THAT HAVE VIDEO
         ->whereHas('media', function ($query) {
+
             $query->where(
                 'type',
                 'video'
             );
+
         })
 
-        // VISIBILITY
-        ->where(function ($query) use ($friendIds, $user) {
-
-            // PUBLIC
+        ->where(function ($query) use (
+            $friendIds,
+            $user
+        ) {
+ 
             $query->where(
                 'visibility',
                 'public'
             )
-
-            // PRIVATE - OWNER ONLY
+ 
             ->orWhere(function ($q) use ($user) {
 
                 $q->where(
                     'visibility',
                     'private'
                 )
-                ->where(
-                    'user_id',
-                    $user->id
-                );
+                    ->where(
+                        'user_id',
+                        $user->id
+                    );
 
             })
-
-            // FRIENDS
-            ->orWhere(function ($q) use ($friendIds, $user) {
+ 
+            ->orWhere(function ($q) use (
+                $friendIds,
+                $user
+            ) {
 
                 $q->where(
                     'visibility',
                     'friends'
                 )
-                ->where(function ($sub) use ($friendIds, $user) {
+                    ->where(function ($sub) use (
+                        $friendIds,
+                        $user
+                    ) {
 
-                    $sub->where(
-                        'user_id',
-                        $user->id
-                    )
-                    ->orWhereIn(
-                        'user_id',
-                        $friendIds
-                    );
+                        $sub->where(
+                            'user_id',
+                            $user->id
+                        )
+                            ->orWhereIn(
+                                'user_id',
+                                $friendIds
+                            );
 
-                });
+                    });
 
             });
 
@@ -962,7 +960,6 @@ public function reel()
 
             'user:id,first_name,last_name,image',
 
-            // ONLY VIDEO MEDIA
             'media' => function ($query) {
 
                 $query
@@ -982,12 +979,19 @@ public function reel()
             'shares',
             'reposts',
         ])
-
+ 
         ->latest()
 
         ->get()
+ 
+        ->map(function ($post) use (
+            $viewedReelIds
+        ) {
 
-        ->map(function ($post) {
+            $hasViewed = in_array(
+                $post->id,
+                $viewedReelIds
+            );
 
             return [
 
@@ -1009,33 +1013,44 @@ public function reel()
                 'duration' =>
                     $post->reel_duration,
 
+                'has_viewed' =>
+                    $hasViewed,
+
+                'viewed' =>
+                    $hasViewed,
+
                 'created_at' =>
-                    $post->created_at,
+                    $post->created_at?->toISOString(),
 
                 'expires_at' =>
                     $post->created_at
-                        ->copy()
-                        ->addHours(24),
+                        ?->copy()
+                        ->addHours(24)
+                        ?->toISOString(),
 
-                'user' => [
+                'user' => $post->user
+                    ? [
 
-                    'id' =>
-                        $post->user->id,
+                        'id' =>
+                            $post->user->id,
 
-                    'name' =>
-                        $post->user->first_name .
-                        ' ' .
-                        $post->user->last_name,
+                        'name' =>
+                            trim(
+                                $post->user->first_name .
+                                ' ' .
+                                $post->user->last_name
+                            ),
 
-                    'image' =>
-                        $post->user->image
-                            ? asset(
-                                'storage/' .
-                                $post->user->image
-                            )
-                            : null,
+                        'image' =>
+                            $post->user->image
+                                ? asset(
+                                    'storage/' .
+                                    $post->user->image
+                                )
+                                : null,
 
-                ],
+                    ]
+                    : null,
 
                 'media' =>
                     $post->media
@@ -1074,10 +1089,26 @@ public function reel()
 
                 'reposts_count' =>
                     $post->reposts_count,
-
             ];
+        })
+ 
+        ->sortBy(function ($post) {
 
-        });
+            return $post['has_viewed']
+                ? 1
+                : 0;
+
+        })
+
+        ->values();
+
+ 
+    $hasUnviewedReels = $posts->contains(function ($post) {
+
+        return $post['has_viewed'] === false;
+
+    });
+
 
     return response()->json([
 
@@ -1087,8 +1118,17 @@ public function reel()
         'posts' =>
             $posts,
 
+        'reels_count' =>
+            $posts->count(),
+
+        'has_unviewed_reels' =>
+            $hasUnviewedReels,
+
     ]);
 }
+
+
+
     /*
     |--------------------------------------------------------------------------
     | VIEW REEL
@@ -2008,8 +2048,6 @@ public function destroyMedia(Post $reel, PostMedia $media)
     }
 }
 
-// created_at
-
 public function indexReel()
 {
     $userId = auth()->id();
@@ -2018,18 +2056,14 @@ public function indexReel()
         ->pluck('post_id')
         ->toArray();
 
-    $reels = Post::where('post_type', 'reel')
-
+    $reels = Post::query()
+        ->where('post_type', 'reel')
         ->whereNull('advertisement_id')
-
-        ->whereHas('media', function ($q) {
-            $q->where('type', 'video');
-        })
 
         ->with([
             'user:id,first_name,last_name,image,role',
             'media',
-            'originalPost.user',
+            'originalPost.user:id,first_name,last_name,image,role',
             'originalPost.media',
         ])
 
@@ -2041,18 +2075,33 @@ public function indexReel()
         ])
 
         ->latest()
-
         ->get()
 
         ->map(function ($reel) use ($viewedReelIds) {
 
-            $isRepost = !is_null(
-                $reel->original_post_id
-            );
+            $isRepost = !is_null($reel->original_post_id);
 
-            $baseReel = $reel->original_post_id
+            $baseReel = $isRepost
                 ? $reel->rootOriginal()
                 : $reel;
+
+            if (!$baseReel) {
+                return null;
+            }
+
+            /*
+             * Get only video media from the actual/base reel.
+             */
+            $videoMedia = $baseReel->media
+                ->where('type', 'video')
+                ->values();
+
+            /*
+             * Skip this record if the base reel has no video.
+             */
+            if ($videoMedia->isEmpty()) {
+                return null;
+            }
 
             $viewed = in_array(
                 $baseReel->id,
@@ -2074,50 +2123,38 @@ public function indexReel()
 
                 'is_repost' => $isRepost,
 
-                'original_post_id' =>
-                    $reel->original_post_id,
+                'original_post_id' => $reel->original_post_id,
 
                 'reposted_by' => $isRepost
                     ? [
-                        'id' => $reel->user->id,
+                        'id' => $reel->user?->id,
 
                         'name' => trim(
-                            $reel->user->first_name .
+                            ($reel->user?->first_name ?? '') .
                             ' ' .
-                            $reel->user->last_name
+                            ($reel->user?->last_name ?? '')
                         ),
                     ]
                     : null,
 
-                'content' =>
-                    $baseReel->content,
+                'content' => $baseReel->content,
 
-                'duration' =>
-                    $baseReel->reel_duration,
+                'duration' => $baseReel->reel_duration,
 
-                'media' =>
-                    $baseReel->media
-                        ->map(function ($m) {
-
-                            return [
-                                'id' => $m->id,
-
-                                'type' => $m->type,
-
-                                'url' => asset(
-                                    'storage/' . $m->path
-                                ),
-
-                                'order' =>
-                                    $m->order,
-                            ];
-                        })
-                        ->values(),
+                'media' => $videoMedia
+                    ->map(function ($m) {
+                        return [
+                            'id' => $m->id,
+                            'type' => $m->type,
+                            'url' => asset('storage/' . $m->path),
+                            'order' => $m->order,
+                        ];
+                    })
+                    ->values(),
 
                 'user' => $baseReel->user
                     ? [
-                        'id' =>
-                            $baseReel->user->id,
+                        'id' => $baseReel->user->id,
 
                         'name' => trim(
                             $baseReel->user->first_name .
@@ -2133,12 +2170,25 @@ public function indexReel()
                     ]
                     : null,
 
-                'created_at' => $reel->created_at?->toISOString(),
+                /*
+                 * Time the reel/repost was created.
+                 */
+                'created_at' =>
+                    $reel->created_at?->toISOString(),
 
-                'expires_at' =>
-                    $reel->created_at
-                        ?->copy()
-                        ->addHours(24),
+                /*
+                 * Original reel creation time.
+                 */
+                'original_created_at' =>
+                    $baseReel->created_at?->toISOString(),
+
+                /*
+                 * 24 hours from the reel creation.
+                 */
+                'expires_at' => $reel->created_at
+                    ?->copy()
+                    ->addHours(24)
+                    ->toISOString(),
 
                 'reactions_count' =>
                     $baseReel->reactions_count ?? 0,
@@ -2154,13 +2204,12 @@ public function indexReel()
             ];
         })
 
+        ->filter()
         ->values();
 
     return response()->json([
         'status' => true,
-
         'reels' => $reels,
-
         'reels_count' => $reels->count(),
     ]);
 }

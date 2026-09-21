@@ -102,6 +102,12 @@ class Post extends Model
         return $this->hasMany(Post::class, 'original_post_id');
     }
 
+    
+    public function repostedBy()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
     public function views()
     {
         return $this->hasMany(PostView::class);
