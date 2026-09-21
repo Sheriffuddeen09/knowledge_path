@@ -15,126 +15,164 @@ use App\Mail\TeacherRequestAccepted;
 use App\Mail\TeacherProposalRequestMail;
 use App\Models\Coursetitle;
 use App\Mail\StudentCancelledRequestMail;
+use App\Models\Notification;
 
 class TeacherRequestController extends Controller
 {
-    public function send($proposalId)
-{
-    $teacher = auth()->user();
+        public function send($proposalId)
+        {
+            $teacher = auth()->user();
 
-    if ($teacher->role !== "admin") {
-        return response()->json([
-            "message" => "Only teachers can send requests."
-        ], 403);
-    }
+            if ($teacher->role !== "admin") {
+                return response()->json([
+                    "message" => "Only teachers can send requests."
+                ], 403);
+            }
 
-    $badge = UserBadge::where('user_id', $teacher->id)->first();
+            $badge = UserBadge::where('user_id', $teacher->id)->first();
 
-    if (!$badge) {
-        return response()->json([
-            "message" => "Badge account not found."
-        ], 404);
-    }
+            if (!$badge) {
+                return response()->json([
+                    "message" => "Badge account not found."
+                ], 404);
+            }
 
-    if ($badge->badges < 20) {
-        return response()->json([
-            "message" => "You need at least 20 badges to send a request.",
-            "balance" => $badge->badges
-        ], 403);
-    }
+            if ($badge->badges < 20) {
+                return response()->json([
+                    "message" => "You need at least 20 badges to send a request.",
+                    "balance" => $badge->badges
+                ], 403);
+            }
 
-    $proposal = Proposal::with('student')->findOrFail($proposalId);
+            $proposal = Proposal::with('student')->findOrFail($proposalId);
 
-    $teacherForm = TeacherForm::where(
-        'user_id',
-        $teacher->id
-    )->first();
+            $teacherForm = TeacherForm::where(
+                'user_id',
+                $teacher->id
+            )->first();
 
-    if (!$teacherForm) {
-        return response()->json([
-            "message" => "Complete your teacher profile first."
-        ], 404);
-    }
+            if (!$teacherForm) {
+                return response()->json([
+                    "message" => "Complete your teacher profile first."
+                ], 404);
+            }
 
-    $existing = TeacherRequest::where(
-        'proposal_id',
-        $proposal->id
-    )
-    ->where(
-        'teacher_id',
-        $teacher->id
-    )
-    ->first();
+            $teacherName = trim(
+                $teacher->first_name . ' ' . $teacher->last_name
+            );
 
-    if ($existing) {
+            $existing = TeacherRequest::where(
+                'proposal_id',
+                $proposal->id
+            )
+            ->where(
+                'teacher_id',
+                $teacher->id
+            )
+            ->first();
 
-        if ($existing->status === 'pending') {
+            if ($existing) {
+
+                if ($existing->status === 'pending') {
+                    return response()->json([
+                        "message" => "Request already pending."
+                    ], 409);
+                }
+
+                if ($existing->status === 'accepted') {
+                    return response()->json([
+                        "message" => "Student has already accepted this request."
+                    ], 409);
+                }
+
+                DB::transaction(function () use (
+                    $badge,
+                    $existing,
+                    $proposal,
+                    $teacherName,
+                    $teacher
+                ) {
+
+                    $badge->decrement('badges', 20);
+
+                    $existing->update([
+                        'status' => 'pending',
+                        'teacher_deleted' => false,
+                    ]);
+
+                    Mail::to($proposal->student->email)
+                        ->send(
+                            new TeacherProposalRequestMail($existing)
+                        );
+
+                    Notification::create([
+                        'user_id' => $proposal->student_id,
+                        'type' => 'teacher_proposal',
+                        'data' => json_encode([
+                            'request_id' => $existing->id,
+                            'proposal_id' => $proposal->id,
+                            'teacher_id' => $teacher->id,
+                            'teacher_name' => $teacherName,
+                        ]),
+                        'redirect_url' => '/teacher-requests',
+                        'read' => false,
+                    ]);
+                });
+
+                return response()->json([
+                    'message' => 'Request sent again.',
+                    'balance' => $badge->fresh()->badges,
+                    'request' => $existing->fresh()
+                ]);
+            }
+
+            $request = DB::transaction(function () use (
+                $badge,
+                $proposal,
+                $teacher,
+                $teacherForm,
+                $teacherName
+            ) {
+
+                $badge->decrement('badges', 20);
+
+                $request = TeacherRequest::create([
+                    'proposal_id' => $proposal->id,
+                    'student_id' => $proposal->student_id,
+                    'teacher_id' => $teacher->id,
+                    'teacher_form_id' => $teacherForm->id,
+                    'status' => 'pending',
+                    'is_read' => false,
+                ]);
+
+                Mail::to($proposal->student->email)
+                    ->send(
+                        new TeacherProposalRequestMail($request)
+                    );
+
+                Notification::create([
+                    'user_id' => $proposal->student_id,
+                    'type' => 'teacher_proposal',
+                    'data' => json_encode([
+                        'request_id' => $request->id,
+                        'proposal_id' => $proposal->id,
+                        'teacher_id' => $teacher->id,
+                        'teacher_name' => $teacherName,
+                    ]),
+                    'redirect_url' => '/student/dashboard',
+                    'read' => false,
+                ]);
+
+                return $request;
+            });
+
             return response()->json([
-                "message" => "Request already pending."
-            ], 409);
-        }
-
-        if ($existing->status === 'accepted') {
-            return response()->json([
-                "message" => "Student has already accepted this request."
-            ], 409);
-        }
-
-        DB::transaction(function () use (
-            $badge,
-            $existing,
-            $proposal
-        ) {
-
-            $badge->decrement('badges', 20);
-
-            $existing->update([
-                'status' => 'pending',
-                'teacher_deleted' => false,
+                'message' => 'Request sent successfully.',
+                'balance' => $badge->fresh()->badges,
+                'request' => $request
             ]);
+        }
 
-            Mail::to($proposal->student->email)
-                ->send(new TeacherProposalRequestMail($existing));
-        });
-
-        return response()->json([
-            'message' => 'Request sent again.',
-            'balance' => $badge->fresh()->badges,
-            'request' => $existing->fresh()
-        ]);
-    }
-
-    $request = DB::transaction(function () use (
-        $badge,
-        $proposal,
-        $teacher,
-        $teacherForm
-    ) {
-
-        $badge->decrement('badges', 20);
-
-        $request = TeacherRequest::create([
-            'proposal_id' => $proposal->id,
-            'student_id' => $proposal->student_id,
-            'teacher_id' => $teacher->id,
-            'teacher_form_id' => $teacherForm->id,
-            'status' => 'pending',
-            'is_read' => false,
-        ]);
-
-        Mail::to($proposal->student->email)
-            ->send(new TeacherProposalRequestMail($request));
-
-        return $request;
-    });
-
-    return response()->json([
-        'message' => 'Request sent successfully.',
-        'balance' => $badge->fresh()->badges,
-        'request' => $request
-    ]);
-
-    }
 
 
     private function deleteExpiredProposals()

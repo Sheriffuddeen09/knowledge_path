@@ -278,146 +278,290 @@ public function index(Request $request)
             ->toArray();
     }
  
-
+    
     $postsQuery = Post::query()
-        ->where('post_type', '!=', 'reel')
 
-        ->when(
-            !$isRefresh,
-            function ($query) use ($viewedPostIds) {
-                $query->whereNotIn('id', $viewedPostIds);
-            }
+    ->where('post_type', '!=', 'reel')
+
+    // Only posts with an existing user
+    ->whereHas('user')
+
+    ->when(
+        !$isRefresh,
+        function ($query) use ($viewedPostIds) {
+            $query->whereNotIn(
+                'id',
+                $viewedPostIds
+            );
+        }
+    )
+
+    ->where(function ($query) use ($friendIds, $user) {
+
+        // PUBLIC
+        $query->where(
+            'visibility',
+            'public'
         )
 
-        ->where(function ($query) use ($friendIds, $user) {
+        // PRIVATE - owner only
+        ->orWhere(function ($q) use ($user) {
 
-            // PUBLIC
-            $query->where('visibility', 'public')
+            $q->where(
+                'visibility',
+                'private'
+            )
+            ->where(
+                'user_id',
+                $user->id
+            );
 
-                // PRIVATE - owner only
-                ->orWhere(function ($q) use ($user) {
-                    $q->where('visibility', 'private')
-                        ->where('user_id', $user->id);
-                })
-
-                // FRIENDS
-                ->orWhere(function ($q) use ($friendIds, $user) {
-
-                    $q->where('visibility', 'friends')
-
-                        ->where(function ($sub) use ($friendIds, $user) {
-
-                            $sub->where('user_id', $user->id)
-                                ->orWhereIn('user_id', $friendIds);
-
-                        });
-                });
         })
 
-       ->with([
-            'user:id,first_name,last_name,image',
-            'media',
-            'advertisement',
+        // FRIENDS
+        ->orWhere(function ($q) use (
+            $friendIds,
+            $user
+        ) {
 
-            'originalPost' => function ($query) {
-                $query->withCount([
-                    'reactions',
-                    'comments',
-                    'shares',
-                    'reposts',
-                ]);
-            },
+            $q->where(
+                'visibility',
+                'friends'
+            )
 
-            'originalPost.user:id,first_name,last_name,image',
-            'originalPost.media',
-        ])
+            ->where(function ($sub) use (
+                $friendIds,
+                $user
+            ) {
 
-        ->withCount([
-            'reactions',
-            'comments',
-            'shares',
-            'reposts',
-        ])
+                $sub->where(
+                    'user_id',
+                    $user->id
+                )
+                ->orWhereIn(
+                    'user_id',
+                    $friendIds
+                );
 
-        
-        ->inRandomOrder();
+            });
+
+        });
+
+    })
+
+    ->with([
+
+        'user:id,first_name,last_name,image',
+
+        'media',
+
+        'advertisement',
+
+        'originalPost' => function ($query) {
+
+            $query->withCount([
+                'reactions',
+                'comments',
+                'shares',
+                'reposts',
+            ]);
+
+        },
+
+        'originalPost.user:id,first_name,last_name,image',
+
+        'originalPost.media',
+
+    ])
+
+    ->withCount([
+        'reactions',
+        'comments',
+        'shares',
+        'reposts',
+    ])
+
+    ->inRandomOrder();
 
     $posts = $postsQuery
-        ->get()
-        ->map(function ($post) {
+    ->get()
+    ->map(function ($post) {
 
-            $isRepost = !is_null($post->original_post_id);
+        $isRepost = !is_null(
+            $post->original_post_id
+        );
 
-            $basePost = $post->original_post_id
-                ? $post->rootOriginal()
-                : $post;
+        $basePost = $post->original_post_id
+            ? $post->rootOriginal()
+            : $post;
 
-            return [
-                'id' => $post->id,
+        /*
+        |--------------------------------------------------------------------------
+        | Safety checks
+        |--------------------------------------------------------------------------
+        */
 
-                'feed_type' => 'post',
+        if (!$basePost) {
+            return null;
+        }
 
-                'is_repost' => $isRepost,
+        if (!$post->user) {
+            return null;
+        }
 
-                'original_post_id' => $post->original_post_id,
+        if (!$basePost->user) {
+            return null;
+        }
 
-                'is_advertisement' =>
-                    !is_null($post->advertisement_id),
+        /*
+        |--------------------------------------------------------------------------
+        | Advertisement
+        |--------------------------------------------------------------------------
+        */
 
-                'advertisement' => $post->advertisement
-                    ? [
-                        'id' => $post->advertisement->id,
-                        'type' => $post->advertisement->type,
-                    ]
+        $advertisement = $post->advertisement
+            ? [
+                'id' =>
+                    $post->advertisement->id,
+
+                'type' =>
+                    $post->advertisement->type,
+            ]
+            : null;
+
+        /*
+        |--------------------------------------------------------------------------
+        | Reposted By
+        |--------------------------------------------------------------------------
+        */
+
+        $repostedBy = $isRepost
+            ? [
+                'id' =>
+                    $post->user->id,
+
+                'name' =>
+                    trim(
+                        $post->user->first_name .
+                        ' ' .
+                        $post->user->last_name
+                    ),
+
+                'image' =>
+                    $post->user->image,
+            ]
+            : null;
+
+        /*
+        |--------------------------------------------------------------------------
+        | Base User
+        |--------------------------------------------------------------------------
+        */
+
+        $postUser = [
+            'id' =>
+                $basePost->user->id,
+
+            'name' =>
+                trim(
+                    $basePost->user->first_name .
+                    ' ' .
+                    $basePost->user->last_name
+                ),
+
+            'image' =>
+                $basePost->user->image,
+        ];
+
+        /*
+        |--------------------------------------------------------------------------
+        | Media
+        |--------------------------------------------------------------------------
+        */
+
+        $media = $basePost->media
+            ->map(function ($m) {
+
+                return [
+                    'id' => $m->id,
+
+                    'type' => $m->type,
+
+                    'url' => asset(
+                        'storage/' . $m->path
+                    ),
+                ];
+
+            })
+            ->values();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Return
+        |--------------------------------------------------------------------------
+        */
+
+        return [
+
+            'id' =>
+                $post->id,
+
+            'feed_type' =>
+                'post',
+
+            'is_repost' =>
+                $isRepost,
+
+            'original_post_id' =>
+                $post->original_post_id,
+
+            'is_advertisement' =>
+                !is_null(
+                    $post->advertisement_id
+                ),
+
+            'advertisement' =>
+                $advertisement,
+
+            'reposted_by' =>
+                $repostedBy,
+
+            'content' =>
+                $basePost->content,
+
+            'media' =>
+                $media,
+
+            'user' =>
+                $postUser,
+
+            'created_at' =>
+                $post->created_at
+                    ? $post->created_at->diffForHumans()
                     : null,
 
-                'reposted_by' => $isRepost
-                    ? [
-                        'id' => $post->user->id,
-                        'name' =>
-                            $post->user->first_name . ' ' .
-                            $post->user->last_name,
-                    ]
+            'original_created_at' =>
+                $basePost->created_at
+                    ? $basePost->created_at->diffForHumans()
                     : null,
 
-                'content' => $basePost->content,
+            'reactions_count' =>
+                $basePost->reactions_count ?? 0,
 
-                'media' => $basePost->media->map(
-                    fn ($m) => [
-                        'id' => $m->id,
-                        'type' => $m->type,
-                        'url' => asset(
-                            'storage/' . $m->path
-                        ),
-                    ]
-                )->values(),
+            'comments_count' =>
+                $basePost->comments_count ?? 0,
 
-                'user' => [
-                    'id' => $basePost->user->id,
+            'shares_count' =>
+                $basePost->shares_count ?? 0,
 
-                    'name' =>
-                        $basePost->user->first_name . ' ' .
-                        $basePost->user->last_name,
-                ],
+            'reposts_count' =>
+                $basePost->reposts_count ?? 0,
 
-                'created_at' => $post->created_at->diffForHumans(),
+        ];
 
-                'original_created_at' => $basePost->created_at->diffForHumans(),
-
-                'reactions_count' =>
-                    $basePost->reactions_count ?? 0,
-
-                'comments_count' =>
-                    $basePost->comments_count ?? 0,
-
-                'shares_count' =>
-                    $basePost->shares_count ?? 0,
-
-                'reposts_count' =>
-                    $basePost->reposts_count ?? 0,
-            ];
-        })
-        ->values();
+    })
+    ->filter()
+    ->values();
  
     $products = Product::query()
 

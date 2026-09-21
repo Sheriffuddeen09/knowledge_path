@@ -155,6 +155,122 @@ class NotificationController extends Controller
                     $message = $names->first() ? "{$names->first()} reported your {$typeText}" : "Someone reported your {$typeText}";
                     break;
 
+                    case 'community_reported':
+                        $reporterName = $data['reporter_name'] ?? null;
+
+                        $names = collect([$reporterName])
+                            ->filter()
+                            ->values();
+
+                        $action = "reported your community";
+
+                        $message = $reporterName
+                            ? "{$reporterName} reported your community"
+                            : "Someone reported your community";
+
+                        break;
+
+                    case 'new_product':
+                        $productTitle = $data['title'] ?? null;
+
+                        $names = collect([$productTitle])
+                            ->filter()
+                            ->values();
+
+                        $action = "is now available in your location";
+
+                        $message = $productTitle
+                            ? "{$productTitle} is now available in your location"
+                            : "A new product is available in your location";
+
+                        break;
+
+
+                        case 'teacher_proposal':
+                            $teacherName = $data['teacher_name'] ?? null;
+
+                            $names = collect([$teacherName])
+                                ->filter()
+                                ->values();
+
+                            $action = "sent you a teacher proposal";
+
+                            $message = $teacherName
+                                ? "{$teacherName} sent you a teacher proposal"
+                                : "A teacher sent you a proposal";
+
+                            break;
+
+
+                    case 'live_class_request':
+                        $studentName = $data['student_name'] ?? null;
+
+                        $names = collect([$studentName])
+                            ->filter()
+                            ->values();
+
+                        $action = "requested a live class with you";
+
+                        $message = $studentName
+                            ? "{$studentName} requested a live class with you"
+                            : "A student requested a live class with you";
+
+                        break;
+
+
+                case 'new_job':
+                    $jobTitle = $data['title'] ?? null;
+
+                    $names = collect([
+                        $jobTitle
+                    ])
+                        ->filter()
+                        ->values();
+
+                    $action = "is now available";
+
+                    $message = $jobTitle
+                        ? "New job available: {$jobTitle}"
+                        : "A new job is available";
+
+                    break;
+
+
+                case 'advertisement_visibility_expired':
+                    $advertisementTitle = $data['title'] ?? null;
+
+                    $names = collect([
+                        $advertisementTitle
+                    ])
+                        ->filter()
+                        ->values();
+
+                    $action = "advertisement visibility has expired";
+
+                    $message = $advertisementTitle
+                        ? "{$advertisementTitle} advertisement visibility has expired"
+                        : "Your advertisement visibility has expired";
+
+                    break;
+
+
+                case 'product_visibility_expired':
+                    $productName = $data['name'] ?? null;
+
+                    $names = collect([
+                        $productName
+                    ])
+                        ->filter()
+                        ->values();
+
+                    $action = "product visibility has expired";
+
+                    $message = $productName
+                        ? "{$productName} product visibility has expired"
+                        : "Your product visibility has expired";
+
+                    break;
+
                 default:
                     $message = "You have a new notification";
                     $names = collect();
@@ -168,6 +284,7 @@ class NotificationController extends Controller
                 'names' => $names ?? [],
                 'action' => $action ?? '',
                 'message' => $message ?? '',
+                'data' => $data,
                 'redirect_url' => $n->redirect_url,
                 'read' => $n->read,
                 'created_at' => $n->created_at->diffForHumans(),

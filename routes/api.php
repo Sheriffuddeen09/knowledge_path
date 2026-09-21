@@ -76,7 +76,7 @@ use App\Http\Controllers\JobPostController;
 use App\Http\Controllers\ProductVisibilityController;
 use App\Http\Controllers\ReelController;
 
-// views
+// /teacher-request/
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post(
@@ -504,7 +504,7 @@ Route::middleware('auth:sanctum')->group(function () {
         '/proposals-get',
         [ProposalController::class,'index']
     );
-
+// /job-profile
     Route::post(
         '/teacher-request/{proposal}',
         [TeacherRequestController::class,'send']

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\LiveClassRequest;
+use App\Models\Notification;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\StudentRequestedLiveClass;
 use App\Mail\LiveClassAccepted;
@@ -18,72 +19,111 @@ class LiveClassController extends Controller
 {
 
 
+    public function sendRequest(Request $request)
+    {
+        $user = $request->user();
+        $teacherId = $request->teacher_id;
 
-public function sendRequest(Request $request)
-{
-    $user = $request->user();
-    $teacherId = $request->teacher_id;
+        $existing = LiveClassRequest::where('user_id', $user->id)
+            ->where('teacher_id', $teacherId)
+            ->first();
 
-    $existing = LiveClassRequest::where('user_id', $user->id)
-        ->where('teacher_id', $teacherId)
-        ->first();
+        if (
+            $existing &&
+            in_array($existing->status, ['pending', 'accepted']) &&
+            !$existing->cleared_by_student
+        ) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Request already sent'
+            ], 409);
+        }
 
-    // ❌ Block duplicates
-    if ($existing && in_array($existing->status, ['pending', 'accepted']) && !$existing->cleared_by_student) {
-        return response()->json([
-            'status' => false,
-            'message' => 'Request already sent'
-        ], 409);
-    }
+        $total = UserBadge::where('user_id', $user->id)->sum('badges');
 
-    // Check badges
-    $total = UserBadge::where('user_id', $user->id)->sum('badges');
-    if ($total < 20) {
-        return response()->json(['message' => 'Not enough badges'], 400);
-    }
+        if ($total < 20) {
+            return response()->json([
+                'message' => 'Not enough badges'
+            ], 400);
+        }
 
-    // ✅ Subtract 20 now
-    UserBadge::create([
-        'user_id' => $user->id,
-        'badges' => -20,
-        'source' => 'registration'
-    ]);
-
-    // ✅ Resend
-    if ($existing && ($existing->status === 'declined' || $existing->cleared_by_student)) {
-        $existing->update([
-            'status' => 'pending',
-            'cleared_by_student' => false,
-            'cleared_by_teacher' => false,
+        UserBadge::create([
+            'user_id' => $user->id,
+            'badges' => -20,
+            'source' => 'registration'
         ]);
 
-        Mail::to($existing->teacher->email)
-            ->send(new StudentRequestedLiveClass($existing));
+        $studentName = trim(
+            $user->first_name . ' ' . $user->last_name
+        );
+
+        if (
+            $existing &&
+            (
+                $existing->status === 'declined' ||
+                $existing->cleared_by_student
+            )
+        ) {
+            $existing->update([
+                'status' => 'pending',
+                'cleared_by_student' => false,
+                'cleared_by_teacher' => false,
+            ]);
+
+            $existing->load(['teacher', 'user']);
+
+            Mail::to($existing->teacher->email)
+                ->send(new StudentRequestedLiveClass($existing));
+
+            Notification::create([
+                'user_id' => $existing->teacher_id,
+                'type' => 'live_class_request',
+                'data' => json_encode([
+                    'request_id' => $existing->id,
+                    'student_id' => $user->id,
+                    'student_name' => $studentName,
+                ]),
+                'redirect_url' => '/admin/dashboard',
+                'read' => false,
+            ]);
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Request sent successfully',
+                'request' => $existing,
+                'total' => UserBadge::where('user_id', $user->id)->sum('badges'),
+            ]);
+        }
+
+        $requestModel = LiveClassRequest::create([
+            'user_id' => $user->id,
+            'teacher_id' => $teacherId,
+        ]);
+
+        $requestModel->load(['teacher', 'user']);
+
+        Mail::to($requestModel->teacher->email)
+            ->send(new StudentRequestedLiveClass($requestModel));
+
+        Notification::create([
+            'user_id' => $requestModel->teacher_id,
+            'type' => 'live_class_request',
+            'data' => json_encode([
+                'request_id' => $requestModel->id,
+                'student_id' => $user->id,
+                'student_name' => $studentName,
+            ]),
+            'redirect_url' => '/admin/dashboard',
+            'read' => false,
+        ]);
 
         return response()->json([
             'status' => true,
             'message' => 'Request sent successfully',
-            'request' => $existing,
+            'request' => $requestModel,
             'total' => UserBadge::where('user_id', $user->id)->sum('badges'),
         ]);
     }
-
-    // ✅ New request
-    $requestModel = LiveClassRequest::create([
-        'user_id' => $user->id,
-        'teacher_id' => $teacherId,
-    ]);
-
-    Mail::to($requestModel->teacher->email)
-        ->send(new StudentRequestedLiveClass($requestModel));
-
-    return response()->json([
-        'status' => true,
-        'message' => 'Request sent successfully',
-        'request' => $requestModel,
-        'total' => UserBadge::where('user_id', $user->id)->sum('badges'),
-    ]);
-}
 
 
     // Get requests for the logged-in teacher

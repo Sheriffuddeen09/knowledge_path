@@ -24,7 +24,8 @@ class JobProfile extends Model
  'skills',
  'certification',
  'status',
- 'decline_reason'
+ 'decline_reason',
+ 'job_category_id',
 ];
 
 protected $casts = [
@@ -36,4 +37,10 @@ protected $casts = [
  {
  return $this->belongsTo(User::class);
  }
+
+public function category()
+{
+    return $this->belongsTo(JobCategory::class, 'job_category_id');
+}
+
 }

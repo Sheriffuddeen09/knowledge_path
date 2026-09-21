@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\Category;
+use App\Models\Notification;
 use Illuminate\Support\Str;
 
 class ProductController extends Controller
@@ -13,10 +14,9 @@ class ProductController extends Controller
 
 
             // Create Product
-        
-            public function store(Request $request)
-            {
-//
+                
+        public function store(Request $request)
+        {
             $request->validate([
                 'title' => 'required|string',
                 'price' => 'required|numeric',
@@ -47,135 +47,176 @@ class ProductController extends Controller
             $back = null;
             $side = null;
 
-            if($request->hasFile('front_image')){
-            $front = $request->file('front_image')->store('products','public');
+            if ($request->hasFile('front_image')) {
+                $front = $request->file('front_image')->store('products', 'public');
             }
 
-            if($request->hasFile('back_image')){
-            $back = $request->file('back_image')->store('products','public');
+            if ($request->hasFile('back_image')) {
+                $back = $request->file('back_image')->store('products', 'public');
             }
 
-            if($request->hasFile('side_image')){
-            $side = $request->file('side_image')->store('products','public');
+            if ($request->hasFile('side_image')) {
+                $side = $request->file('side_image')->store('products', 'public');
             }
 
             $pdf = null;
 
-            if($request->hasFile('pdf_file')){
-            $pdf = $request->file('pdf_file')->store('books','public');
+            if ($request->hasFile('pdf_file')) {
+                $pdf = $request->file('pdf_file')->store('books', 'public');
             }
 
             $totalPrice = $request->price;
 
-            if($request->discount){
+            if ($request->discount) {
                 $totalPrice = $totalPrice - $request->discount;
             }
 
-            if($request->charges){
+            if ($request->charges) {
                 $totalPrice = $totalPrice + $request->charges;
             }
 
-    $user = auth()->user();
-    \Log::info('Authenticated user:', ['user' => $user]);
+            $user = auth()->user();
 
-    if (!$user) {
-        return response()->json([
-            'message' => 'User not authenticated'
-        ], 401);
-    }
+            if (!$user) {
+                return response()->json([
+                    'message' => 'User not authenticated'
+                ], 401);
+            }
 
-    $categoryId = null;
+            $categoryId = null;
 
-    // handle new parent/subcategory safely...
-    if ($request->new_parent) {
-        $parent = Category::firstOrCreate(
-            ['slug' => Str::slug($request->new_parent)],
-            ['name' => $request->new_parent]
-        );
-        $parentId = $parent->id;
-    } else {
-        $parentId = $request->parent_id ?? null;
-    }
+            if ($request->new_parent) {
 
-    if ($request->new_subcategory) {
-        if (!$parentId) {
-            return response()->json([
-                'message' => 'You must select or create a parent category for the new subcategory'
-            ], 422);
-        }
+                $parent = Category::firstOrCreate(
+                    ['slug' => Str::slug($request->new_parent)],
+                    ['name' => $request->new_parent]
+                );
 
-        $subcategory = Category::firstOrCreate(
-            ['slug' => Str::slug($request->new_subcategory)],
-            ['name' => $request->new_subcategory, 'parent_id' => $parentId]
-        );
+                $parentId = $parent->id;
 
-        $categoryId = $subcategory->id;
-    } elseif ($request->category_id) {
-        $categoryId = $request->category_id;
-    } else {
-        return response()->json([
-            'message' => 'You must select a category or create a new subcategory'
-        ], 422);
-    }
+            } else {
+                $parentId = $request->parent_id ?? null;
+            }
 
+            if ($request->new_subcategory) {
+
+                if (!$parentId) {
+                    return response()->json([
+                        'message' =>
+                            'You must select or create a parent category for the new subcategory'
+                    ], 422);
+                }
+
+                $subcategory = Category::firstOrCreate(
+                    ['slug' => Str::slug($request->new_subcategory)],
+                    [
+                        'name' => $request->new_subcategory,
+                        'parent_id' => $parentId
+                    ]
+                );
+
+                $categoryId = $subcategory->id;
+
+            } elseif ($request->category_id) {
+
+                $categoryId = $request->category_id;
+
+            } else {
+
+                return response()->json([
+                    'message' =>
+                        'You must select a category or create a new subcategory'
+                ], 422);
+            }
 
             $saleType = $request->sale_type ?? 'physical';
 
-
             $product = Product::create([
-            'user_id' => $user->id,
-            'title' => $request->title,
-            'author' => $request->author,
-            'description' => $request->description,
-            'price' => $request->price,
-            'discount' => $request->discount ?? 0,
-            'charges' => $request->charges ?? 0,
-            'currency' => $request->currency,
-            'stock' => $request->stock ?? 0,
-            'brand_name' => $request->brand_name,
-            'company_type' => $request->company_type,
-            'company_available' => $request->company_available,
-            'location' => $request->location,
-            'address' => $request->address,
-            'delivery_method' => $request->delivery_method,
-            'delivery_time' => $request->delivery_time,
-            'delivery_price' => $request->delivery_price,
-            'category_id' => $categoryId,
-            'front_image' => $front,
-            'back_image' => $back,
-            'side_image' => $side,
-            'pdf_file' => $pdf,
-            'is_digital' => $request->is_digital ?? false,
-            'sale_type' => $saleType,
-            'downloadable' => $request->downloadable ?? 'no',
-            'key_features' => $request->key_features ?? [],
-            'specifications' => $request->specifications ?? [],
-            'total_price' => $totalPrice,
-            'parent_id' => $parentId,
-            'new_subcategory' => $request->new_subcategory,
-        ]);
-            if($request->hasFile('images')){
-
-            foreach($request->file('images') as $index => $img){
-
-            $path = $img->store('product_gallery','public');
-
-            ProductImage::create([
-            'product_id'=>$product->id,
-            'image_path'=>$path,
-            'position'=>$request->positions[$index] ?? 'gallery'
+                'user_id' => $user->id,
+                'title' => $request->title,
+                'author' => $request->author,
+                'description' => $request->description,
+                'price' => $request->price,
+                'discount' => $request->discount ?? 0,
+                'charges' => $request->charges ?? 0,
+                'currency' => $request->currency,
+                'stock' => $request->stock ?? 0,
+                'brand_name' => $request->brand_name,
+                'company_type' => $request->company_type,
+                'company_available' => $request->company_available,
+                'location' => $request->location,
+                'address' => $request->address,
+                'delivery_method' => $request->delivery_method,
+                'delivery_time' => $request->delivery_time,
+                'delivery_price' => $request->delivery_price,
+                'category_id' => $categoryId,
+                'front_image' => $front,
+                'back_image' => $back,
+                'side_image' => $side,
+                'pdf_file' => $pdf,
+                'is_digital' => $request->is_digital ?? false,
+                'sale_type' => $saleType,
+                'downloadable' => $request->downloadable ?? 'no',
+                'key_features' => $request->key_features ?? [],
+                'specifications' => $request->specifications ?? [],
+                'total_price' => $totalPrice,
+                'parent_id' => $parentId,
+                'new_subcategory' => $request->new_subcategory,
             ]);
 
-            }
+            if ($request->hasFile('images')) {
 
+                foreach ($request->file('images') as $index => $img) {
+
+                    $path = $img->store('product_gallery', 'public');
+
+                    ProductImage::create([
+                        'product_id' => $product->id,
+                        'image_path' => $path,
+                        'position' => $request->positions[$index] ?? 'gallery'
+                    ]);
+                }
+            }
+        
+
+            $productLocation = trim($product->location);
+
+            if ($productLocation !== '') {
+
+                $users = User::where('id', '!=', $user->id)
+                    ->whereNotNull('location')
+                    ->whereRaw('LOWER(TRIM(location)) = ?', [
+                        strtolower($productLocation)
+                    ])
+                    ->get();
+
+                $sellerName = trim(
+                    $user->first_name . ' ' . $user->last_name
+                );
+
+                foreach ($users as $receiver) {
+
+                    Notification::create([
+                        'user_id' => $receiver->id,
+                        'type' => 'new_product',
+                        'data' => json_encode([
+                            'product_id' => $product->id,
+                            'title' => $product->title,
+                            'location' => $product->location,
+                            'seller_id' => $user->id,
+                            'seller_name' => $sellerName,
+                        ]),
+                        'redirect_url' => "/marketplace/product/{$product->id}",
+                        'read' => false,
+                    ]);
+                }
             }
 
             return response()->json([
-            'message'=>'Product created',
-            'product'=>$product
+                'message' => 'Product created',
+                'product' => $product
             ]);
-
-            }
+        }
 
             
         

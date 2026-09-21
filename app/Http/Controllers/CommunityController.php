@@ -25,7 +25,7 @@ use App\Mail\CommunityMessageNotification;
 class CommunityController extends Controller
 
 {
-// pin
+// store
 
      public function messages($id)
 {
@@ -1868,6 +1868,8 @@ public function generateCommunityInviteLink(
     ]);
 }
 
+
+
 public function store(Request $request)
 {
     $request->validate([
@@ -1909,6 +1911,10 @@ public function store(Request $request)
         ]
     );
 
+    $reporter = auth()->user();
+
+    $community = \App\Models\Community::find($request->community_id);
+
     Mail::to($report->reportedUser->email)
         ->send(new UserReportedMail($report));
 
@@ -1918,14 +1924,17 @@ public function store(Request $request)
     Notification::create([
         'user_id' => $request->reported_user_id,
         'type' => 'community_reported',
+
         'data' => json_encode([
             'community_id' => $request->community_id,
             'reporter_id' => $authId,
-            'reporter_name' => auth()->user()->first_name . ' ' .
-                               auth()->user()->last_name,
+            'reporter_name' => trim(
+                $reporter->first_name . ' ' . $reporter->last_name
+            ),
+            'community_name' => $community?->name,
         ]),
-        'redirect_url' =>
-            "/community/report/{$request->community_id}",
+
+        'redirect_url' => "/community/report/{$request->community_id}",
         'read' => false,
     ]);
 
@@ -1933,6 +1942,8 @@ public function store(Request $request)
         'message' => 'Community report submitted successfully.'
     ]);
 }
+
+
 
 public function communityReport()
 {

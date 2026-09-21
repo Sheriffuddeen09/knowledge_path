@@ -10,97 +10,109 @@ use Illuminate\Support\Facades\Log;
 
 class JobProfileController extends Controller
 {
-    public function show(Request $request)
-    {
-        return $request->user()->jobProfile;
-    }
+   public function show(Request $request)
+        {
+            $profile = $request->user()
+                ->jobProfile()
+                ->with('category')
+                ->first();
 
-
-    public function store(Request $request)
-    {
-        $user = $request->user();
-
-        $data = $request->validate([
-
-            'type' => 'required|in:creator,finder',
-
-            'company_name' => 'nullable|string|max:255',
-            'company_logo'=>'nullable|image',
-            'company_type' => 'nullable|in:individual,organisation',
-            'organisation_size' => 'nullable|string|max:255',
-            'company_location' => 'nullable|string|max:255',
-            'company_address' => 'nullable|string|max:255',
-
-            'full_name' => 'nullable|string|max:255',
-            'cv' => 'nullable|file|mimes:pdf,doc,docx|max:5120',
-            'qualifications' => 'nullable|string',
-            'portfolio' => 'nullable|string',
-            'skills' => 'nullable|array',
-            'skills.*' => 'string|max:100',
-            'certification' => 'nullable|string',
-            'location' => 'nullable|string|max:255',
-            'address' => 'nullable|string|max:255',
-
-        ]);
-
-        if ($request->filled('skills')) {
-
-            $data['skills'] = $request->skills;
-
-                    }
-
-                    if ($request->filled('skills')) {
-
-                $validated['skills'] = $request->skills;
-
+            if ($profile && $profile->skills) {
+                $profile->skills = json_decode($profile->skills, true) ?? [];
+            } else if ($profile) {
+                $profile->skills = [];
             }
 
-        if ($request->hasFile('company_logo')) {
-
-            $data['company_logo'] = $request
-                ->file('company_logo')
-                ->store('company_logo', 'public');
-
-        }
-        if ($request->hasFile('cv')) {
-
-            $data['cv'] = $request
-                ->file('cv')
-                ->store('cv', 'public');
-
+            return response()->json($profile);
         }
 
 
-        $data['user_id'] = $user->id;
+            public function store(Request $request)
+            {
+            $user = $request->user();
+
+            $data = $request->validate([
+
+                'type' => 'required|in:creator,finder',
+
+                // Creator
+                'company_name' => 'nullable|string|max:255',
+                'company_logo' => 'nullable|image',
+                'company_type' => 'nullable|in:individual,organisation',
+                'organisation_size' => 'nullable|string|max:255',
+                'company_location' => 'nullable|string|max:255',
+                'company_address' => 'nullable|string|max:255',
+
+                // Finder
+                'full_name' => 'nullable|string|max:255',
+
+                'job_category_id' => [
+                    'required_if:type,finder',
+                    'exists:job_categories,id',
+                ],
+
+                'cv' => 'nullable|file|mimes:pdf,doc,docx|max:5120',
+                'qualifications' => 'nullable|string',
+                'portfolio' => 'nullable|string',
+                'skills' => 'nullable|array',
+                'skills.*' => 'string|max:100',
+                'certification' => 'nullable|string',
+                'location' => 'nullable|string|max:255',
+                'address' => 'nullable|string|max:255',
+            ]);
 
 
-        $profile = JobProfile::updateOrCreate(
-
-            [
-                'user_id' => $user->id
-            ],
-
-            $data
-
-        );
+            if ($request->filled('skills')) {
+                $data['skills'] = json_encode($request->skills);
+            } else {
+                $data['skills'] = null;
+            }
 
 
-        return response()->json([
+            if ($request->hasFile('company_logo')) {
 
-            'message' => 'Profile created successfully.',
-
-            'profile' => $profile
-
-        ], 201);
-    }
+                $data['company_logo'] = $request
+                    ->file('company_logo')
+                    ->store('company_logo', 'public');
+            }
 
 
+            if ($request->hasFile('cv')) {
 
-    public function update(Request $request, $id)
-        {
-            
+                $data['cv'] = $request
+                    ->file('cv')
+                    ->store('cv', 'public');
+            }
 
-        Log::info('Job profile update request', [
+
+            $data['user_id'] = $user->id;
+
+
+            $profile = JobProfile::updateOrCreate(
+                [
+                    'user_id' => $user->id,
+                ],
+                $data
+            );
+
+
+            $profile->load('category');
+
+            return response()->json([
+
+                'message' => 'Profile created successfully.',
+
+                'profile' => $profile,
+
+            ], 201);
+            }
+
+
+
+
+            public function update(Request $request, $id)
+            {
+            Log::info('Job profile update request', [
 
                 'method' => $request->method(),
 
@@ -136,103 +148,107 @@ class JobProfileController extends Controller
                     ]),
             ]);
 
-    $user = $request->user();
+            $user = $request->user();
+
+            $profile = JobProfile::where('id', $id)
+                ->where('user_id', $user->id)
+                ->firstOrFail();
+
+            $validated = $request->validate([
+
+                // Creator
+                'company_name' => 'nullable|string|max:255',
+                'company_logo' => 'nullable|image',
+                'company_type' => 'nullable|in:individual,organisation',
+                'organisation_size' => 'nullable|string|max:255',
+                'company_location' => 'nullable|string|max:255',
+                'company_address' => 'nullable|string|max:255',
+
+                // Finder
+                'full_name' => 'nullable|string|max:255',
+
+                'job_category_id' => [
+                    'nullable',
+                    'exists:job_categories,id',
+                ],
+
+                'cv' => 'nullable|file|mimes:pdf,doc,docx|max:5120',
+                'qualifications' => 'nullable|string',
+                'portfolio' => 'nullable|string|max:500',
+                'certification' => 'nullable|string',
+                'skills' => 'nullable|array',
+                'skills.*' => 'string|max:100',
+                'location' => 'nullable|string|max:255',
+                'address' => 'nullable|string|max:255',
+            ]);
+
+            if ($request->hasFile('company_logo')) {
+
+                if (
+                    $profile->company_logo &&
+                    Storage::disk('public')->exists(
+                        $profile->company_logo
+                    )
+                ) {
+                    Storage::disk('public')->delete(
+                        $profile->company_logo
+                    );
+                }
+
+                $validated['company_logo'] = $request
+                    ->file('company_logo')
+                    ->store(
+                        'company_logo',
+                        'public'
+                    );
+            }
 
 
-    $profile = JobProfile::where('id', $id)
-        ->where('user_id', $user->id)
-        ->firstOrFail();
+            if ($request->hasFile('cv')) {
 
-    $validated = $request->validate([
+                if (
+                    $profile->cv &&
+                    Storage::disk('public')->exists(
+                        $profile->cv
+                    )
+                ) {
+                    Storage::disk('public')->delete(
+                        $profile->cv
+                    );
+                }
 
-        'company_name' => 'nullable|string|max:255',
-        'company_logo' => 'nullable|image',
-        'company_type' => 'nullable|in:individual,organisation',
-        'organisation_size' => 'nullable|string|max:255',
-        'company_location' => 'nullable|string|max:255',
-        'company_address' => 'nullable|string|max:255',
-
-        'full_name' => 'nullable|string|max:255',
-        'cv' => 'nullable|mimes:pdf,doc,docx|max:5120',
-        'qualifications' => 'nullable|string',
-        'portfolio' => 'nullable|string|max:500',
-        'certification' => 'nullable|string',
-        'skills' => 'nullable|array',
-        'skills.*' => 'string|max:100',
-        'location' => 'nullable|string|max:255',
-        'address' => 'nullable|string|max:255',
-
-    ]);
-
-    if ($request->hasFile('company_logo')) {
+                $validated['cv'] = $request
+                    ->file('cv')
+                    ->store(
+                        'cv',
+                        'public'
+                    );
+            }
 
 
-        if (
-            $profile->company_logo &&
-            Storage::disk('public')->exists(
-                $profile->company_logo
-            )
-        ) {
+            if ($request->filled('skills')) {
 
-            Storage::disk('public')
-                ->delete(
-                    $profile->company_logo
+                $validated['skills'] = json_encode(
+                    $request->skills
                 );
 
-        }
+            } else {
 
-        $validated['company_logo'] = $request
-            ->file('company_logo')
-            ->store(
-                'company_logo',
-                'public'
-            );
-    }
+                $validated['skills'] = null;
+            }
 
 
-    if ($request->hasFile('cv')) {
-
-        if (
-            $profile->cv &&
-            Storage::disk('public')->exists(
-                $profile->cv
-            )
-        ) {
-
-            Storage::disk('public')
-                ->delete(
-                    $profile->cv
-                );
-
-        }
-
-        $validated['cv'] = $request
-            ->file('cv')
-            ->store(
-                'cv',
-                'public'
-            );
-    }
+            $profile->update($validated);
 
 
-    if ($request->filled('skills')) {
+            $profile->load('category');
 
-        $validated['skills'] = json_encode(
-            $request->skills
-        );
+            return response()->json([
 
-    }
+                'message' => 'Profile updated successfully.',
 
-    $profile->update(
-        $validated
-    );
+                'profile' => $profile,
 
-    return response()->json([
-
-        'message' => 'Profile updated successfully.',
-
-        'profile' => $profile->fresh(),
-
-    ]);
-}
+            ]);
+            }
 }
