@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Mail;
 use Throwable;
 use Illuminate\Support\Str;
 use App\Mail\NewMessageNotification;
+use App\Models\CommunityMessage;
 
 class ReelController extends Controller
 {
@@ -2848,5 +2849,906 @@ private function formatAdvertisementPost(
     ];
 }
 
+ 
+public function fromCommunityMessages(Request $request)
+{
+    $request->validate([
+        'message_ids' => [
+            'required',
+            'array',
+            'min:1',
+        ],
+
+        'message_ids.*' => [
+            'required',
+            'integer',
+            'exists:community_messages,id',
+        ],
+ 
+        'media_descriptions' => [
+            'nullable',
+            'array',
+        ],
+
+        'media_descriptions.*' => [
+            'nullable',
+            'string',
+            'max:700',
+        ],
+    ]);
+
+    $user = $request->user();
+
+    $messages = CommunityMessage::with([
+        'approvals',
+        'community',
+    ])
+        ->whereIn(
+            'id',
+            $request->message_ids
+        )
+        ->orderBy('id')
+        ->get();
+
+    if ($messages->isEmpty()) {
+        return response()->json([
+            'message' => 'No community message was found.',
+        ], 422);
+    }
+ 
+    $mediaMessages = $messages->filter(function ($message) {
+        return in_array(
+            $message->type,
+            [
+                'image',
+                'video',
+            ],
+            true
+        );
+    });
+
+    $textMessages = $messages->filter(function ($message) {
+        return $message->type === 'text';
+    });
+
+    if (
+        $mediaMessages->isEmpty() &&
+        $textMessages->isEmpty()
+    ) {
+        return response()->json([
+            'message' => 'This message type cannot be added to a Reel.',
+        ], 422);
+    }
+ 
+    $textParts = [];
+
+    foreach ($textMessages as $message) {
+
+        $text = $message->message;
+
+        if (
+            $message->approvals &&
+            $message->approvals->count()
+        ) {
+            $latestApproval = $message->approvals->last();
+
+            $text =
+                $latestApproval->admin_response
+                ?: $message->message;
+        }
+
+        if (
+            $text &&
+            trim($text) !== ''
+        ) {
+            $textParts[] = trim($text);
+        }
+    }
+
+    $content = !empty($textParts)
+        ? implode("\n\n", $textParts)
+        : null;
+ 
+    $hasImages = $mediaMessages->contains(
+        fn ($message) =>
+            $message->type === 'image'
+    );
+
+    $hasVideos = $mediaMessages->contains(
+        fn ($message) =>
+            $message->type === 'video'
+    );
+
+    if ($hasImages && $hasVideos) {
+
+        $reelType = 'mixed';
+
+    } elseif ($hasVideos) {
+
+        $reelType = 'video';
+
+    } elseif ($hasImages) {
+
+        $reelType = 'image';
+
+    } else {
+
+        $reelType = 'text';
+    }
+
+    DB::beginTransaction();
+
+    try {
+ 
+        $post = Post::create([
+            'user_id' =>
+                $user->id,
+
+            'post_type' =>
+                'reel',
+
+            'reel_type' =>
+                $reelType,
+
+            'content' =>
+                $content,
+
+            'visibility' =>
+                'friends',
+
+            'is_new_home' =>
+                0,
+
+            'is_new_video' =>
+                1,
+
+            'reel_duration' =>
+                0,
+        ]);
+
+        $totalDuration = 0;
+        $order = 0;
+ 
+        foreach ($mediaMessages as $message) {
+
+            if (!$message->file) {
+                continue;
+            }
+
+            $sourcePath = $message->file;
+ 
+            if (
+                !Storage::disk('public')
+                    ->exists($sourcePath)
+            ) {
+                continue;
+            }
+ 
+            if ($message->type === 'image') {
+
+                $extension =
+                    pathinfo(
+                        $sourcePath,
+                        PATHINFO_EXTENSION
+                    ) ?: 'jpg';
+
+                $newPath =
+                    'posts/reels/images/' .
+                    'forwarded_' .
+                    Str::uuid() .
+                    '.' .
+                    $extension;
+
+                Storage::disk('public')->copy(
+                    $sourcePath,
+                    $newPath
+                );
+
+                $postMedia = $post->media()->create([
+                    'type' =>
+                        'image',
+
+                    'path' =>
+                        $newPath,
+
+                    'order' =>
+                        $order++,
+                ]);
+ 
+                $description =
+                    $request->input(
+                        "media_descriptions.{$message->id}"
+                    );
+
+                if ($description === null) {
+                    $description = $message->message;
+                }
+
+                if (
+                    $description &&
+                    trim($description) !== ''
+                ) {
+                    $postMedia
+                        ->description()
+                        ->create([
+                            'type' =>
+                                'image',
+
+                            'content' =>
+                                trim($description),
+                        ]);
+                }
+ 
+                $totalDuration += 30;
+
+                continue;
+            }
+ 
+            if ($message->type === 'video') {
+
+                $fullSourcePath =
+                    Storage::disk('public')
+                        ->path($sourcePath);
+ 
+                $durationCommand =
+                    new \Symfony\Component\Process\Process([
+                        'ffprobe',
+                        '-v',
+                        'error',
+                        '-show_entries',
+                        'format=duration',
+                        '-of',
+                        'default=noprint_wrappers=1:nokey=1',
+                        $fullSourcePath,
+                    ]);
+
+                $durationCommand->setTimeout(60);
+
+                try {
+
+                    $durationCommand->mustRun();
+
+                    $videoDuration =
+                        (float) trim(
+                            $durationCommand->getOutput()
+                        );
+
+                } catch (\Throwable $e) {
+
+                    DB::rollBack();
+
+                    return response()->json([
+                        'message' =>
+                            'Unable to determine the forwarded video duration.',
+                    ], 422);
+                }
+
+                if ($videoDuration <= 0) {
+
+                    DB::rollBack();
+
+                    return response()->json([
+                        'message' =>
+                            'The forwarded video has an invalid duration.',
+                    ], 422);
+                }
+ 
+                if ($videoDuration > 90) {
+
+                    DB::rollBack();
+
+                    return response()->json([
+                        'message' =>
+                            'The forwarded video is longer than 90 seconds and cannot be added directly to a Reel.',
+                    ], 422);
+                }
+
+                $extension =
+                    pathinfo(
+                        $sourcePath,
+                        PATHINFO_EXTENSION
+                    ) ?: 'mp4';
+
+                $newPath =
+                    'posts/reels/videos/' .
+                    'forwarded_' .
+                    Str::uuid() .
+                    '.' .
+                    $extension;
+
+                Storage::disk('public')->copy(
+                    $sourcePath,
+                    $newPath
+                );
+
+                $postMedia = $post->media()->create([
+                    'type' =>
+                        'video',
+
+                    'path' =>
+                        $newPath,
+
+                    'order' =>
+                        $order++,
+                ]);
+ 
+                $description =
+                    $request->input(
+                        "media_descriptions.{$message->id}"
+                    );
+
+                if ($description === null) {
+                    $description = $message->message;
+                }
+
+                if (
+                    $description &&
+                    trim($description) !== ''
+                ) {
+                    $postMedia
+                        ->description()
+                        ->create([
+                            'type' =>
+                                'video',
+
+                            'content' =>
+                                trim($description),
+                        ]);
+                }
+
+                $totalDuration += $videoDuration;
+            }
+        }
+ 
+        if (
+            $reelType === 'text' &&
+            !$content
+        ) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' =>
+                    'The selected message has no Reel content.',
+            ], 422);
+        }
+ 
+        $post->update([
+            'reel_duration' =>
+                (int) ceil($totalDuration),
+        ]);
+ 
+        $post->load([
+            'user',
+            'media',
+        ]);
+
+        DB::commit();
+
+        return response()->json([
+            'success' =>
+                true,
+
+            'message' =>
+                'Added to your Reel status.',
+
+            'post' =>
+                $post,
+
+            'reel' =>
+                $post,
+
+        ], 201);
+
+    } catch (\Throwable $e) {
+
+        DB::rollBack();
+
+        report($e);
+
+        return response()->json([
+            'message' =>
+                'Unable to add this message to your Reel.',
+
+            'error' =>
+                config('app.debug')
+                    ? $e->getMessage()
+                    : null,
+
+        ], 500);
+    }
+}
+
+
+
+
+public function fromMessages(Request $request)
+{
+    $request->validate([
+        'message_ids' => [
+            'required',
+            'array',
+            'min:1',
+        ],
+
+        'message_ids.*' => [
+            'required',
+            'integer',
+            'exists:messages,id',
+        ],
+
+        /*
+        |--------------------------------------------------------------------------
+        | Optional descriptions entered from the Reel review modal
+        |--------------------------------------------------------------------------
+        */
+        'media_descriptions' => [
+            'nullable',
+            'array',
+        ],
+
+        'media_descriptions.*' => [
+            'nullable',
+            'string',
+            'max:700',
+        ],
+    ]);
+
+    $user = $request->user();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Get normal chat messages
+    |--------------------------------------------------------------------------
+    */
+    $messages = Message::whereIn(
+        'id',
+        $request->message_ids
+    )
+        ->orderBy('id')
+        ->get();
+
+    if ($messages->isEmpty()) {
+        return response()->json([
+            'message' => 'No message was found.',
+        ], 422);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Separate media and text messages
+    |--------------------------------------------------------------------------
+    */
+    $mediaMessages = $messages->filter(function ($message) {
+        return in_array(
+            $message->type,
+            [
+                'image',
+                'video',
+            ],
+            true
+        );
+    });
+
+    $textMessages = $messages->filter(function ($message) {
+        return $message->type === 'text';
+    });
+
+    if (
+        $mediaMessages->isEmpty() &&
+        $textMessages->isEmpty()
+    ) {
+        return response()->json([
+            'message' =>
+                'This message type cannot be added to a Reel.',
+        ], 422);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Build Reel text content
+    |--------------------------------------------------------------------------
+    */
+    $textParts = [];
+
+    foreach ($textMessages as $message) {
+
+        $text = $message->message;
+
+        if (
+            $text &&
+            trim($text) !== ''
+        ) {
+            $textParts[] = trim($text);
+        }
+    }
+
+    $content = !empty($textParts)
+        ? implode("\n\n", $textParts)
+        : null;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Determine Reel type
+    |--------------------------------------------------------------------------
+    */
+    $hasImages = $mediaMessages->contains(
+        fn ($message) =>
+            $message->type === 'image'
+    );
+
+    $hasVideos = $mediaMessages->contains(
+        fn ($message) =>
+            $message->type === 'video'
+    );
+
+    if ($hasImages && $hasVideos) {
+
+        $reelType = 'mixed';
+
+    } elseif ($hasVideos) {
+
+        $reelType = 'video';
+
+    } elseif ($hasImages) {
+
+        $reelType = 'image';
+
+    } else {
+
+        $reelType = 'text';
+    }
+
+    DB::beginTransaction();
+
+    try {
+
+        /*
+        |--------------------------------------------------------------------------
+        | Create Reel Post
+        |--------------------------------------------------------------------------
+        */
+        $post = Post::create([
+            'user_id' =>
+                $user->id,
+
+            'post_type' =>
+                'reel',
+
+            'reel_type' =>
+                $reelType,
+
+            'content' =>
+                $content,
+
+            'visibility' =>
+                'friends',
+
+            'is_new_home' =>
+                0,
+
+            'is_new_video' =>
+                1,
+
+            'reel_duration' =>
+                0,
+        ]);
+
+        $totalDuration = 0;
+        $order = 0;
+
+        /*
+        |--------------------------------------------------------------------------
+        | Add media to Reel
+        |--------------------------------------------------------------------------
+        */
+        foreach ($mediaMessages as $message) {
+
+            if (!$message->file) {
+                continue;
+            }
+
+            $sourcePath = $message->file;
+
+            /*
+            |--------------------------------------------------------------------------
+            | Check source file
+            |--------------------------------------------------------------------------
+            */
+            if (
+                !Storage::disk('public')
+                    ->exists($sourcePath)
+            ) {
+                continue;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | IMAGE
+            |--------------------------------------------------------------------------
+            */
+            if ($message->type === 'image') {
+
+                $extension =
+                    pathinfo(
+                        $sourcePath,
+                        PATHINFO_EXTENSION
+                    ) ?: 'jpg';
+
+                $newPath =
+                    'posts/reels/images/' .
+                    'forwarded_' .
+                    Str::uuid() .
+                    '.' .
+                    $extension;
+
+                Storage::disk('public')->copy(
+                    $sourcePath,
+                    $newPath
+                );
+
+                $postMedia = $post->media()->create([
+                    'type' =>
+                        'image',
+
+                    'path' =>
+                        $newPath,
+
+                    'order' =>
+                        $order++,
+                ]);
+
+                /*
+                |--------------------------------------------------------------------------
+                | Use review-modal description
+                |
+                | If no new description was supplied,
+                | use the original message text.
+                |--------------------------------------------------------------------------
+                */
+                $description =
+                    $request->input(
+                        "media_descriptions.{$message->id}"
+                    );
+
+                if ($description === null) {
+                    $description = $message->message;
+                }
+
+                if (
+                    $description &&
+                    trim($description) !== ''
+                ) {
+                    $postMedia
+                        ->description()
+                        ->create([
+                            'type' =>
+                                'image',
+
+                            'content' =>
+                                trim($description),
+                        ]);
+                }
+
+                /*
+                |--------------------------------------------------------------------------
+                | Images display for 30 seconds
+                |--------------------------------------------------------------------------
+                */
+                $totalDuration += 30;
+
+                continue;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | VIDEO
+            |--------------------------------------------------------------------------
+            */
+            if ($message->type === 'video') {
+
+                $fullSourcePath =
+                    Storage::disk('public')
+                        ->path($sourcePath);
+
+                /*
+                |--------------------------------------------------------------------------
+                | Get video duration
+                |--------------------------------------------------------------------------
+                */
+                $durationCommand =
+                    new \Symfony\Component\Process\Process([
+                        'ffprobe',
+                        '-v',
+                        'error',
+                        '-show_entries',
+                        'format=duration',
+                        '-of',
+                        'default=noprint_wrappers=1:nokey=1',
+                        $fullSourcePath,
+                    ]);
+
+                $durationCommand->setTimeout(60);
+
+                try {
+
+                    $durationCommand->mustRun();
+
+                    $videoDuration =
+                        (float) trim(
+                            $durationCommand->getOutput()
+                        );
+
+                } catch (\Throwable $e) {
+
+                    DB::rollBack();
+
+                    return response()->json([
+                        'message' =>
+                            'Unable to determine the message video duration.',
+                    ], 422);
+                }
+
+                if ($videoDuration <= 0) {
+
+                    DB::rollBack();
+
+                    return response()->json([
+                        'message' =>
+                            'The message video has an invalid duration.',
+                    ], 422);
+                }
+
+                /*
+                |--------------------------------------------------------------------------
+                | Reel videos cannot exceed 90 seconds
+                |--------------------------------------------------------------------------
+                */
+                if ($videoDuration > 90) {
+
+                    DB::rollBack();
+
+                    return response()->json([
+                        'message' =>
+                            'The selected video is longer than 90 seconds and cannot be added directly to a Reel.',
+                    ], 422);
+                }
+
+                $extension =
+                    pathinfo(
+                        $sourcePath,
+                        PATHINFO_EXTENSION
+                    ) ?: 'mp4';
+
+                $newPath =
+                    'posts/reels/videos/' .
+                    'forwarded_' .
+                    Str::uuid() .
+                    '.' .
+                    $extension;
+
+                Storage::disk('public')->copy(
+                    $sourcePath,
+                    $newPath
+                );
+
+                $postMedia = $post->media()->create([
+                    'type' =>
+                        'video',
+
+                    'path' =>
+                        $newPath,
+
+                    'order' =>
+                        $order++,
+                ]);
+
+                /*
+                |--------------------------------------------------------------------------
+                | Use review-modal description
+                |
+                | If no new description was supplied,
+                | use the original message text.
+                |--------------------------------------------------------------------------
+                */
+                $description =
+                    $request->input(
+                        "media_descriptions.{$message->id}"
+                    );
+
+                if ($description === null) {
+                    $description = $message->message;
+                }
+
+                if (
+                    $description &&
+                    trim($description) !== ''
+                ) {
+                    $postMedia
+                        ->description()
+                        ->create([
+                            'type' =>
+                                'video',
+
+                            'content' =>
+                                trim($description),
+                        ]);
+                }
+
+                $totalDuration += $videoDuration;
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Make sure Reel actually contains content
+        |--------------------------------------------------------------------------
+        */
+        if (
+            $reelType === 'text' &&
+            !$content
+        ) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' =>
+                    'The selected message has no Reel content.',
+            ], 422);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Update total Reel duration
+        |--------------------------------------------------------------------------
+        */
+        $post->update([
+            'reel_duration' =>
+                (int) ceil($totalDuration),
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Load response data
+        |--------------------------------------------------------------------------
+        */
+        $post->load([
+            'user',
+            'media',
+        ]);
+
+        DB::commit();
+
+        return response()->json([
+            'success' =>
+                true,
+
+            'message' =>
+                'Added to your Reel status.',
+
+            'post' =>
+                $post,
+
+            'reel' =>
+                $post,
+
+        ], 201);
+
+    } catch (\Throwable $e) {
+
+        DB::rollBack();
+
+        report($e);
+
+        return response()->json([
+            'message' =>
+                'Unable to add this message to your Reel.',
+
+            'error' =>
+                config('app.debug')
+                    ? $e->getMessage()
+                    : null,
+
+        ], 500);
+    }
+} 
 
 }

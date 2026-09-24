@@ -75,9 +75,46 @@ use App\Http\Controllers\AdvertisementController;
 use App\Http\Controllers\JobPostController;
 use App\Http\Controllers\ProductVisibilityController;
 use App\Http\Controllers\ReelController;
+use App\Http\Controllers\LiveVideoController;
 
-// /teacher-request/
+
+
 Route::middleware('auth:sanctum')->group(function () {
+
+    Route::post(
+        '/live/start',
+        [LiveVideoController::class, 'start']
+    );
+
+    Route::post(
+        '/live/{post}/join',
+        [LiveVideoController::class, 'join']
+    );
+
+    Route::post(
+        '/live/{post}/end',
+        [LiveVideoController::class, 'end']
+    );
+
+});
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    Route::post(
+        '/reels/from-community-messages',
+        [ReelController::class, 'fromCommunityMessages']
+    );
+
+
+
+    
+
+        Route::post(
+        '/reels/from-messages',
+        [ReelController::class, 'fromMessages']
+    );
+
+
 
     Route::post(
         '/chats/{chatId}/share-reel',

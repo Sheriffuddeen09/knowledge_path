@@ -1129,6 +1129,8 @@ public function sendPending(Request $request)
                     'type' => $original->type,
                     'file' => $original->file,
 
+                    'receiver_id' => $target['id'],
+
                     'is_forwarded' => true,
                     'forwarded_from' => $original->id,
 

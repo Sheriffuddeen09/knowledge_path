@@ -16,6 +16,8 @@ use App\Mail\JobApprovedMail;
 use App\Mail\JobDeclinedMail;
 use App\Models\JobApplication;
 use App\Models\Notification;
+use App\Models\JobProfile;
+use App\Models\NewJobForFinderMail;
 
 
 class JobPostController extends Controller
@@ -800,43 +802,65 @@ public function pendingJobs(Request $request)
                 'approved_by' => auth()->id(),
                 'approved_at' => now(),
             ]);
+ 
 
             $jobFinders = JobProfile::where('type', 'finder')
-                ->where('status', 'approved')
                 ->whereNotNull('user_id')
                 ->where('job_category_id', $job->job_category_id)
+                ->with('user')
                 ->get();
 
             foreach ($jobFinders as $jobFinder) {
 
+                // Don't notify the job creator if they also have a finder profile
                 if ((int) $jobFinder->user_id === (int) $job->user_id) {
                     continue;
                 }
+        
 
                 Notification::create([
                     'user_id' => $jobFinder->user_id,
                     'type' => 'new_job',
+
                     'data' => json_encode([
                         'job_id' => $job->id,
                         'title' => $job->title,
+
                         'company_name' => $job->user
                             ? trim(
                                 $job->user->first_name . ' ' .
                                 $job->user->last_name
                             )
                             : null,
+
                         'category' => $job->category?->name,
                     ]),
+
                     'redirect_url' => '/job-finder',
                 ]);
+        
+                if ($jobFinder->user?->email) {
+
+                    Mail::to($jobFinder->user->email)
+                        ->send(
+                            new NewJobForFinderMail(
+                                $job->fresh([
+                                    'user',
+                                    'category',
+                                ]),
+                                $jobFinder->user
+                            )
+                        );
+                }
             }
+ 
 
             Mail::to($job->user->email)
                 ->send(
                     new JobApprovedMail(
                         $job->fresh([
                             'user',
-                            'category'
+                            'category',
                         ])
                     )
                 );
@@ -846,11 +870,10 @@ public function pendingJobs(Request $request)
                 'message' => 'Job approved successfully.',
                 'job' => $job->fresh([
                     'user',
-                    'category'
-                ])
+                    'category',
+                ]),
             ]);
         }
-
 
 
 

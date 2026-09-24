@@ -212,29 +212,26 @@ class NotificationController extends Controller
                         $action = "requested a live class with you";
 
                         $message = $studentName
-                            ? "{$studentName} requested a live class with you"
-                            : "A student requested a live class with you";
+                            ? "{$studentName} requested a Online class with you"
+                            : "A student requested a Online class with you";
 
                         break;
+                        case 'new_job':
+                            $jobTitle = $data['title'] ?? null;
 
+                            $names = collect([
+                                $jobTitle
+                            ])
+                                ->filter()
+                                ->values();
 
-                case 'new_job':
-                    $jobTitle = $data['title'] ?? null;
+                            $action = "You have an update! new job has been posted";
 
-                    $names = collect([
-                        $jobTitle
-                    ])
-                        ->filter()
-                        ->values();
-
-                    $action = "is now available";
-
-                    $message = $jobTitle
-                        ? "New job available: {$jobTitle}"
-                        : "A new job is available";
-
-                    break;
-
+                            $message = $jobTitle
+                                ? "You have an update! A new job has been posted: {$jobTitle}"
+                                : "You have an update! A new job has just been posted.";
+                            
+                            break;
 
                 case 'advertisement_visibility_expired':
                     $advertisementTitle = $data['title'] ?? null;

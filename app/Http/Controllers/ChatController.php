@@ -444,6 +444,49 @@ public function index()
 
     })
 
+    // ---------------------------------------------------------
+    // REMOVE PRIVATE CHATS WHERE THE OTHER USER WAS DELETED
+    // ---------------------------------------------------------
+    ->where(function ($q) use ($userId) {
+
+        // Group chats don't use user_one_id/user_two_id
+        $q->where('type', 'group')
+
+            // For private chats, the other user must still exist
+            ->orWhere(function ($sub) use ($userId) {
+
+                $sub->where('type', '!=', 'group')
+
+                    ->where(function ($other) use ($userId) {
+
+                        $other->where(function ($x) use ($userId) {
+                            $x->where('user_one_id', $userId)
+                                ->whereExists(function ($exists) {
+                                    $exists->select(DB::raw(1))
+                                        ->from('users')
+                                        ->whereColumn(
+                                            'users.id',
+                                            'chats.user_two_id'
+                                        );
+                                });
+                        })
+
+                        ->orWhere(function ($x) use ($userId) {
+                            $x->where('user_two_id', $userId)
+                                ->whereExists(function ($exists) {
+                                    $exists->select(DB::raw(1))
+                                        ->from('users')
+                                        ->whereColumn(
+                                            'users.id',
+                                            'chats.user_one_id'
+                                        );
+                                });
+                        });
+
+                    });
+            });
+    })
+
     ->orderByDesc('last_activity_at')
 
     ->with([
@@ -464,6 +507,7 @@ public function index()
                 ]);
         },
     ])
+
     ->get()
 
     ->filter(function ($chat) use ($userId) {
@@ -478,7 +522,6 @@ public function index()
             ->where('user_id', $userId)
             ->first();
 
-        // no membership
         if (!$membership) {
             return false;
         }
@@ -506,11 +549,9 @@ public function index()
                 ->latest()
                 ->first();
 
-            // no new message after hidden
             if (
                 !$latestMessage ||
-                $latestMessage->created_at <=
-                $membership->hidden_at
+                $latestMessage->created_at <= $membership->hidden_at
             ) {
                 return false;
             }
@@ -539,20 +580,20 @@ public function index()
             ->active()
             ->whereDoesntHave('messageUsers', function ($q) use ($userId) {
                 $q->where('user_id', $userId)
-                ->where('deleted', 1);
+                    ->where('deleted', 1);
             })
             ->where('sender_id', '!=', $userId)
             ->where('id', '>', $lastReadId ?? 0)
             ->count();
 
         $latest = Message::where('chat_id', $chat->id)
-                ->active()
-                ->whereDoesntHave('messageUsers', function ($q) use ($userId) {
-                    $q->where('user_id', $userId)
+            ->active()
+            ->whereDoesntHave('messageUsers', function ($q) use ($userId) {
+                $q->where('user_id', $userId)
                     ->where('deleted', 1);
-                })
-                ->latest()
-                ->first();
+            })
+            ->latest()
+            ->first();
 
         $chat->latest_message = $latest;
 
@@ -574,14 +615,11 @@ public function index()
 
             $chat->members = DB::table('chat_user')
                 ->join('users', 'users.id', '=', 'chat_user.user_id')
-
                 ->where('chat_user.chat_id', $chat->id)
-
                 ->where(function ($q) {
                     $q->where('chat_user.status', 'approved')
                         ->orWhere('chat_user.role', 'admin');
                 })
-
                 ->select(
                     'users.id',
                     'users.first_name',
@@ -628,7 +666,8 @@ public function index()
     return response()->json($chats);
 }
 
-// pin
+
+
 
 public function send(Request $request)
 {
@@ -1229,7 +1268,6 @@ public function edit(Request $request, Message $message)
 }
 
 
- //forward function 
 
 public function forwardMultiple(Request $request)
 {
@@ -1243,98 +1281,178 @@ public function forwardMultiple(Request $request)
     ]);
 
     $authId = auth()->id();
-    $messages = Message::with('files')
-    ->whereIn('id', $request->message_ids)
-    ->get();
 
-    $lastChat = null; // 🔥 IMPORTANT
+    $messages = Message::with('files')
+        ->whereIn('id', $request->message_ids)
+        ->get();
+
+    $lastChat = null;
 
     foreach ($request->targets as $target) {
+ 
         if ($target['type'] === 'user') {
 
-            $otherUserId = $target['id'];
+            $otherUserId = (int) $target['id'];
 
-            if ($otherUserId == $authId) continue;
+            if ($otherUserId === (int) $authId) {
+                continue;
+            }
 
-            $pair = $this->getChatPair($authId, $otherUserId);
+            $pair = $this->getChatPair(
+                $authId,
+                $otherUserId
+            );
 
-            $chat = Chat::where('user_one_id', $pair['user_one_id'])
-                ->where('user_two_id', $pair['user_two_id'])
+            $chat = Chat::where(
+                'user_one_id',
+                $pair['user_one_id']
+            )
+                ->where(
+                    'user_two_id',
+                    $pair['user_two_id']
+                )
                 ->first();
 
             if (!$chat) {
+
                 $chat = Chat::create([
-                    'user_one_id' => $pair['user_one_id'],
-                    'user_two_id' => $pair['user_two_id'],
-                    'type' => 'private'
+                    'user_one_id' =>
+                        $pair['user_one_id'],
+
+                    'user_two_id' =>
+                        $pair['user_two_id'],
+
+                    'type' =>
+                        'private',
                 ]);
             }
 
             foreach ($messages as $msg) {
-
-    // 1. CREATE MESSAGE
+ 
                 $newMessage = $chat->messages()->create([
-                    'sender_id' => $authId,
-                    'type' => $msg->type,
-                    'message' => $msg->message,
-                    'file' => $msg->file,
-                    'is_forwarded' => true,
-                ]);
 
-                // 2. ATTACH FILE (ONLY IF EXISTS)
+                    'sender_id' =>
+                        $authId,
+
+                    'receiver_id' =>
+                        $otherUserId,
+
+                    'type' =>
+                        $msg->type,
+
+                    'message' =>
+                        $msg->message,
+
+                    'file' =>
+                        $msg->file,
+
+                    'is_forwarded' =>
+                        true,
+                ]);
+ 
                 if ($msg->file) {
+
                     $newMessage->files()->create([
-                        'file_url' => asset('storage/' . $msg->file),
-                        'file_name' => $msg->file_name,
-                        'type' => $msg->type,
+
+                        'file_url' =>
+                            asset(
+                                'storage/' . $msg->file
+                            ),
+
+                        'file_name' =>
+                            $msg->file_name,
+
+                        'type' =>
+                            $msg->type,
                     ]);
                 }
             }
 
-            $lastChat = $chat; // 🔥 store last chat
+            $lastChat = $chat;
         }
-            if ($target['type'] === 'group') {
+ 
+        if ($target['type'] === 'group') {
 
-            $chat = Chat::where('id', $target['id'])
-                ->where('type', 'group')
+            $chat = Chat::where(
+                'id',
+                $target['id']
+            )
+                ->where(
+                    'type',
+                    'group'
+                )
                 ->first();
 
             if (!$chat) {
-                logger('GROUP CHAT NOT FOUND', ['id' => $target['id']]);
+
+                logger(
+                    'GROUP CHAT NOT FOUND',
+                    [
+                        'id' => $target['id'],
+                    ]
+                );
+
                 continue;
             }
 
             foreach ($messages as $msg) {
+ 
+                $newMessage = $chat->messages()->create([
 
-            // 1. CREATE MESSAGE
-            $newMessage = $chat->messages()->create([
-                'sender_id' => $authId,
-                'type' => $msg->type,
-                'message' => $msg->message,
-                'file' => $msg->file,
-                'is_forwarded' => true,
-            ]);
+                    'sender_id' =>
+                        $authId,
 
-            // 2. ATTACH FILE (ONLY IF EXISTS)
-            if ($msg->file) {
-                $newMessage->files()->create([
-                    'file_url' => asset('storage/' . $msg->file),
-                    'file_name' => $msg->file_name,
-                    'type' => $msg->type,
+                    'receiver_id' =>
+                        $authId,
+
+                    'type' =>
+                        $msg->type,
+
+                    'message' =>
+                        $msg->message,
+
+                    'file' =>
+                        $msg->file,
+
+                    'is_forwarded' =>
+                        true,
                 ]);
+ 
+                if ($msg->file) {
+
+                    $newMessage->files()->create([
+
+                        'file_url' =>
+                            asset(
+                                'storage/' . $msg->file
+                            ),
+
+                        'file_name' =>
+                            $msg->file_name,
+
+                        'type' =>
+                            $msg->type,
+                    ]);
+                }
             }
-        }
+
             $lastChat = $chat;
         }
-        }
-
+    }
 
     return response()->json([
-                'message' => 'Messages forwarded successfully',
-                'chat_id' => $lastChat?->id,
-                'chat_type' => $lastChat?->type
-            ]);
+        'message' =>
+            'Messages forwarded successfully',
+
+        'chat_id' =>
+            $lastChat?->id,
+
+        'chat_type' =>
+            $lastChat?->type,
+    ]);
 }
+
+
 
 private function getChatPair($userA, $userB)
 {
