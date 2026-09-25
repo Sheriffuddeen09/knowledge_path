@@ -12,7 +12,7 @@ use App\Models\Post;
 
 class NotificationController extends Controller
 {
-
+// unreadMessageSendersCount
     public function index()
 {
     $user = auth()->user();
@@ -422,20 +422,21 @@ public function clearVideoPosts()
     return response()->json(['success' => true]);
 }
 
-
 public function unreadMessageSendersCount()
 {
     $userId = auth()->id();
 
     $count = Message::where('receiver_id', $userId)
+        ->where('sender_id', '!=', $userId)
         ->whereNull('seen_at')
-        ->distinct('sender_id')
+        ->distinct()
         ->count('sender_id');
 
     return response()->json([
-        'message' => $count
+        'message' => $count,
     ]);
 }
+
 
 
 public function clearUnreadMessages()

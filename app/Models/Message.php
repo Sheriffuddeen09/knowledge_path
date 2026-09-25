@@ -29,6 +29,7 @@ class Message extends Model
         'forward_source',
         'forward_source_name',
         'forward_source_image',
+        'description',
 
         'forward_source_message_id',
         'forward_source_community_id',

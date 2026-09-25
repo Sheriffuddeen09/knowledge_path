@@ -35,18 +35,24 @@ class PostCommentController extends Controller
 
 public function store(Request $request, Post $post)
 {
-    $request->validate([
+        $request->validate([
         'body' => 'nullable|string',
         'parent_id' => 'nullable|exists:post_comments,id',
-        'image' => 'nullable|image|max:4096',
-    ]);
 
-    if ((!$request->filled('body') || trim($request->body) === '') &&
-        !$request->hasFile('image')) {
-        return response()->json([
+        'image' => 'nullable|image|max:4096',
+
+        'video' => 'nullable|file|mimes:mp4,mov,avi,wmv,webm,mkv|max:51200',
+        ]);
+
+        if (
+        (!$request->filled('body') || trim($request->body) === '') &&
+        !$request->hasFile('image') &&
+        !$request->hasFile('video')
+        ) {
+            return response()->json([
             'message' => 'Comment text or image is required'
         ], 422);
-    }
+        }
 
     $body = $request->body ?? '';
 
@@ -64,6 +70,12 @@ public function store(Request $request, Post $post)
         $comment->save();
     }
 
+    if ($request->hasFile('video')) {
+        $comment->video = $request->file('video')
+            ->store('comments/videos', 'public');
+
+            $comment->save();
+        }
     // -------------------------
     // 2️⃣ Detect mentions FIRST
     $mentionedUserIds = [];

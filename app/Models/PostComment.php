@@ -12,6 +12,7 @@ class PostComment extends Model
         'parent_id',
         'body',
         'image',
+        'video',
     ];
 
     /* ---------------- RELATIONSHIPS ---------------- */

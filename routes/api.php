@@ -77,8 +77,7 @@ use App\Http\Controllers\ProductVisibilityController;
 use App\Http\Controllers\ReelController;
 use App\Http\Controllers\LiveVideoController;
 
-
-
+// }/comments
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post(

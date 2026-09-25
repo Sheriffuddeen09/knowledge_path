@@ -34,70 +34,81 @@ use Carbon\Carbon;
 
 class ChatController extends Controller
 {
-// pin
+
+
 
 public function messages(Chat $chat)
 {
     $userId = auth()->id();
-        $isAdmin = DB::table('chat_user')
-            ->where('chat_id', $chat->id)
-            ->where('user_id', $userId)
-            ->where('role', 'admin')
-            ->exists();
-        $onlyAdminCanSend = $chat->only_admin_send ?? false;
-        //   'created_at'
-        if ($chat->isBlockedFor($userId)) {
-                return response()->json([
-                    'message' => 'This chat is blocked'
-                ], 403);
-            }
 
-            Message::where('chat_id', $chat->id)
-                ->where('is_pinned', true)
-                ->whereNotNull('pin_expires_at')
-                ->where('pin_expires_at', '<=', now())
-                ->update([
-                    'is_pinned' => false,
-                    'pin_expires_at' => null,
-                ]);
+    $isAdmin = DB::table('chat_user')
+        ->where('chat_id', $chat->id)
+        ->where('user_id', $userId)
+        ->where('role', 'admin')
+        ->exists();
 
+    $onlyAdminCanSend = $chat->only_admin_send ?? false;
+ 
+    if ($chat->isBlockedFor($userId)) {
+        return response()->json([
+            'message' => 'This chat is blocked'
+        ], 403);
+    }
+ 
+
+    Message::where('chat_id', $chat->id)
+        ->where('is_pinned', true)
+        ->whereNotNull('pin_expires_at')
+        ->where('pin_expires_at', '<=', now())
+        ->update([
+            'is_pinned' => false,
+            'pin_expires_at' => null,
+        ]);
+ 
 
     $myLastReadId = DB::table('chat_user')
         ->where('chat_id', $chat->id)
         ->where('user_id', $userId)
         ->value('last_read_message_id');
+
     $otherLastReadId = DB::table('chat_user')
         ->where('chat_id', $chat->id)
         ->where('user_id', '!=', $userId)
         ->value('last_read_message_id');
-        Message::where('chat_id', $chat->id)
+
+    Message::where('chat_id', $chat->id)
         ->active()
         ->whereNull('delivered_at')
         ->where('sender_id', '!=', $userId)
         ->update([
             'delivered_at' => now()
         ]);
-        $membership = DB::table('chat_user')
-            ->where('chat_id', $chat->id)
-            ->where('user_id', $userId)
-            ->first();
-        $joinedAt = $membership?->joined_at;
-        $messages = Message::where('chat_id', $chat->id)
+ 
+    $membership = DB::table('chat_user')
+        ->where('chat_id', $chat->id)
+        ->where('user_id', $userId)
+        ->first();
+
+    $joinedAt = $membership?->joined_at;
+ 
+
+    $messages = Message::where('chat_id', $chat->id)
         ->active()
         ->whereDoesntHave('messageUsers', function ($q) use ($userId) {
             $q->where('user_id', $userId)
-            ->where('deleted', 1);
+                ->where('deleted', 1);
         })
         ->when($joinedAt, function ($query) use ($joinedAt) {
             $query->where(function ($q) use ($joinedAt) {
                 $q->where('created_at', '>=', $joinedAt)
-                ->orWhere('type', 'system');
+                    ->orWhere('type', 'system');
             });
         })
         ->with([
             'sender:id,first_name,last_name,role',
 
             'reactions:id,message_id,user_id,emoji',
+
             'reactions.user:id,first_name,last_name',
 
             'post',
@@ -114,240 +125,450 @@ public function messages(Chat $chat)
                     ->with([
                         'description:id,post_media_id,type,content',
                     ]);
-                    },
+            },
         ])
         ->orderBy('id', 'asc')
         ->get();
-            $lastReadId = $myLastReadId ?? 0;
-            $lastOpenedAt = DB::table('chat_user')
-                ->where('chat_id', $chat->id)
-                ->where('user_id', $userId)
-                ->value('last_opened_at');
-            $unreadCount = Message::where('chat_id', $chat->id)
-                ->active()
-                ->where('sender_id', '!=', $userId)
-                ->where('id', '>', $lastReadId)
-                ->count();
-            $result = [];
-            $groupMap = [];
-            $readerUser = DB::table('chat_user')
-                ->join('users', 'users.id', '=', 'chat_user.user_id')
-                ->where('chat_user.chat_id', $chat->id)
-                ->where('chat_user.user_id', '!=', $userId)
-                ->select('users.id', 'users.first_name', 'users.last_name')
-                ->first();
-        foreach ($messages as $msg) {
+ 
+
+    $lastReadId = $myLastReadId ?? 0;
+
+    $lastOpenedAt = DB::table('chat_user')
+        ->where('chat_id', $chat->id)
+        ->where('user_id', $userId)
+        ->value('last_opened_at');
+
+    $unreadCount = Message::where('chat_id', $chat->id)
+        ->active()
+        ->where('sender_id', '!=', $userId)
+        ->where('id', '>', $lastReadId)
+        ->count();
+ 
+
+    $result = [];
+    $groupMap = [];
+ 
+
+    $readerUser = DB::table('chat_user')
+        ->join(
+            'users',
+            'users.id',
+            '=',
+            'chat_user.user_id'
+        )
+        ->where('chat_user.chat_id', $chat->id)
+        ->where('chat_user.user_id', '!=', $userId)
+        ->select(
+            'users.id',
+            'users.first_name',
+            'users.last_name'
+        )
+        ->first();
+ 
+
+    foreach ($messages as $msg) {
+ 
+
         $status = 'sent';
+
         if ($msg->sender_id == $userId) {
-            if ($otherLastReadId && $msg->id <= $otherLastReadId) {
+
+            if (
+                $otherLastReadId &&
+                $msg->id <= $otherLastReadId
+            ) {
                 $status = 'read';
-            }
-            elseif ($msg->delivered_at) {
+            } elseif ($msg->delivered_at) {
                 $status = 'delivered';
             }
         }
+ 
+
         $readBy = null;
         $readByName = null;
-        if ($status === 'read' && $readerUser) {
+
+        if (
+            $status === 'read' &&
+            $readerUser
+        ) {
             $readBy = [
                 'id' => $readerUser->id,
                 'first_name' => $readerUser->first_name,
                 'last_name' => $readerUser->last_name,
             ];
-            $readByName = $readerUser->first_name . ' ' . $readerUser->last_name;
+
+            $readByName =
+                $readerUser->first_name .
+                ' ' .
+                $readerUser->last_name;
         }
 
+         
+
         $replyData = null;
+
         if ($msg->replied_to) {
-            $repliedArray = is_string($msg->replied_to) 
-                ? json_decode($msg->replied_to, true) 
+
+            $repliedArray = is_string($msg->replied_to)
+                ? json_decode(
+                    $msg->replied_to,
+                    true
+                )
                 : $msg->replied_to;
 
             if (is_array($repliedArray)) {
+
                 $replyData = [
-                    'id'      => $repliedArray['id'] ?? null,
-                    'type'    => $repliedArray['type'] ?? 'text',
-                    'message' => $repliedArray['message'] ?? null, 
-                    'iv'      => $repliedArray['iv'] ?? null,      
-                    'sender'  => [
-                        'id'         => $repliedArray['sender']['id'] ?? null,
-                        'first_name' => $repliedArray['sender']['first_name'] ?? 'User',
-                        'last_name'  => $repliedArray['sender']['last_name'] ?? '',
-                    ]
+                    'id' =>
+                        $repliedArray['id'] ?? null,
+
+                    'type' =>
+                        $repliedArray['type'] ?? 'text',
+
+                    'message' =>
+                        $repliedArray['message'] ?? null,
+
+                    'iv' =>
+                        $repliedArray['iv'] ?? null,
+
+                    'sender' => [
+                        'id' =>
+                            $repliedArray['sender']['id']
+                            ?? null,
+
+                        'first_name' =>
+                            $repliedArray['sender']['first_name']
+                            ?? 'User',
+
+                        'last_name' =>
+                            $repliedArray['sender']['last_name']
+                            ?? '',
+                    ],
                 ];
             }
         }
+ 
 
         $base = [
             'id' => $msg->id,
+
             'chat_id' => $msg->chat_id,
+
             'sender_id' => $msg->sender_id,
+
             'type' => $msg->type,
+
             'message' => $msg->message,
+
             'iv' => $msg->iv,
+
             'reel_preview' => null,
+
             'post_id' => $msg->post_id,
-            'post_media_id' => $msg->post_media_id,
-            'reactions' => $msg->reactions->map(function ($reaction) {
-                return [
-                    'id' => $reaction->id,
-                    'emoji' => $reaction->emoji,
-                    'user_id' => $reaction->user_id,
-                    'user' => $reaction->user ? [
-                        'id' => $reaction->user->id,
-                        'first_name' => $reaction->user->first_name,
-                        'last_name' => $reaction->user->last_name,
-                    ] : null,
-                ];
-            }),
-            'group_id' => $msg->group_id,
-            'sender' => $msg->sender,
-            'is_forwarded' => $msg->is_forwarded ?? false,
-            'created_at' => $msg->created_at?->toISOString(),
-            'is_pinned' => (bool) $msg->is_pinned,
-            'pin_expires_at' => $msg->pin_expires_at
-                ? \Carbon\Carbon::parse($msg->pin_expires_at)->toISOString()
-                : null,
-            'status' => $status,
-            'delivered_at' => $msg->delivered_at,
-            'read_by' => $readBy,
-            'read_by_name' => $readByName,
-            'replied_to'   => $replyData, 
-            'forward_source' => $msg->forward_source,
-            'forward_source_name' => $msg->forward_source_name,
-            'forward_source_image' => !empty($msg->forward_source_image)
-                ? url('storage/' . $msg->forward_source_image)
-                : null,
+
+            'post_media_id' =>
+                $msg->post_media_id,
+
+            'reactions' =>
+                $msg->reactions->map(
+                    function ($reaction) {
+                        return [
+                            'id' =>
+                                $reaction->id,
+
+                            'emoji' =>
+                                $reaction->emoji,
+
+                            'user_id' =>
+                                $reaction->user_id,
+
+                            'user' =>
+                                $reaction->user
+                                    ? [
+                                        'id' =>
+                                            $reaction->user->id,
+
+                                        'first_name' =>
+                                            $reaction->user->first_name,
+
+                                        'last_name' =>
+                                            $reaction->user->last_name,
+                                    ]
+                                    : null,
+                        ];
+                    }
+                ),
+
+            'group_id' =>
+                $msg->group_id,
+
+            'sender' =>
+                $msg->sender,
+
+            'is_forwarded' =>
+                $msg->is_forwarded ?? false,
+
+            'created_at' =>
+                $msg->created_at?->toISOString(),
+
+            'is_pinned' =>
+                (bool) $msg->is_pinned,
+
+            'pin_expires_at' =>
+                $msg->pin_expires_at
+                    ? \Carbon\Carbon::parse(
+                        $msg->pin_expires_at
+                    )->toISOString()
+                    : null,
+
+            'status' =>
+                $status,
+
+            'delivered_at' =>
+                $msg->delivered_at,
+
+            'read_by' =>
+                $readBy,
+
+            'read_by_name' =>
+                $readByName,
+
+            'replied_to' =>
+                $replyData,
+
+            'forward_source' =>
+                $msg->forward_source,
+
+            'forward_source_name' =>
+                $msg->forward_source_name,
+
+            'forward_source_image' =>
+                !empty($msg->forward_source_image)
+                    ? url(
+                        'storage/' .
+                        $msg->forward_source_image
+                    )
+                    : null,
+
             'forward_source_message_id' =>
                 $msg->forward_source_message_id,
 
             'forward_source_community_id' =>
                 $msg->forward_source_community_id,
+
             'meeting_call_type' =>
                 $msg->meeting_call_type,
+
             'meeting_expires_at' =>
                 $msg->meeting_expires_at,
+
             'meeting_room_id' =>
                 $msg->meeting_room_id,
+
             'meeting_link' =>
                 $msg->meeting_link,
-
-                // 
         ];
+ 
+
         if (
-                    $msg->type === 'reel' &&
-                    $msg->post
-                ) {
+            $msg->type === 'reel' &&
+            $msg->post
+        ) {
 
-                    if ($msg->postMedia) {
+            if ($msg->postMedia) {
 
-                        $base['reel_preview'] = [
-                            'post_id' =>
-                                $msg->post->id,
+                $base['reel_preview'] = [
+                    'post_id' =>
+                        $msg->post->id,
 
-                            'media_id' =>
-                                $msg->postMedia->id,
+                    'media_id' =>
+                        $msg->postMedia->id,
 
-                            'type' =>
-                                $msg->postMedia->type,
+                    'type' =>
+                        $msg->postMedia->type,
 
-                            'url' =>
+                    'url' =>
+                        $msg->postMedia->path
+                            ? asset(
+                                'storage/' .
                                 $msg->postMedia->path
-                                    ? asset(
-                                        'storage/' .
-                                        $msg->postMedia->path
-                                    )
-                                    : null,
+                            )
+                            : null,
 
-                            'description' =>
-                                $msg->postMedia->description
-                                    ? [
-                                        'id' =>
-                                            $msg->postMedia->description->id,
+                    'description' =>
+                        $msg->postMedia->description
+                            ? [
+                                'id' =>
+                                    $msg->postMedia
+                                        ->description
+                                        ->id,
 
-                                        'type' =>
-                                            $msg->postMedia->description->type,
+                                'type' =>
+                                    $msg->postMedia
+                                        ->description
+                                        ->type,
 
-                                        'content' =>
-                                            $msg->postMedia->description->content,
-                                    ]
-                                    : null,
+                                'content' =>
+                                    $msg->postMedia
+                                        ->description
+                                        ->content,
+                            ]
+                            : null,
 
-                            'content' =>
-                                $msg->post->content,
+                    'content' =>
+                        $msg->post->content,
 
-                            'reel_type' =>
-                                $msg->post->reel_type,
-                        ];
-                    }
-                    else {
+                    'reel_type' =>
+                        $msg->post->reel_type,
+                ];
 
-                        $base['reel_preview'] = [
-                            'post_id' =>
-                                $msg->post->id,
+            } else {
 
-                            'media_id' =>
-                                null,
+                $base['reel_preview'] = [
+                    'post_id' =>
+                        $msg->post->id,
 
-                            'type' =>
-                                'content',
+                    'media_id' =>
+                        null,
 
-                            'url' =>
-                                null,
+                    'type' =>
+                        'content',
 
-                            'content' =>
-                                $msg->post->content,
+                    'url' =>
+                        null,
 
-                            'description' =>
-                                null,
+                    'content' =>
+                        $msg->post->content,
 
-                            'reel_type' =>
-                                $msg->post->reel_type,
-                        ];
-                    }
-                }
+                    'description' =>
+                        null,
 
-        if ($msg->group_id) {
-            if (!isset($groupMap[$msg->group_id])) {
-                $groupMap[$msg->group_id] = $base;
-                $groupMap[$msg->group_id]['files'] = [];
-                $result[] = &$groupMap[$msg->group_id];
+                    'reel_type' =>
+                        $msg->post->reel_type,
+                ];
             }
-            $groupMap[$msg->group_id]['files'][] = [
-                'file_url' => $msg->file
-                    ? asset('storage/' . $msg->file)
-                    : null,
-                'file_name' => $msg->file_name,
-                'type' => $msg->type,
+        }
+ 
+        if ($msg->group_id) {
+
+            if (!isset(
+                $groupMap[$msg->group_id]
+            )) {
+
+                $groupMap[$msg->group_id] = $base;
+
+                $groupMap[
+                    $msg->group_id
+                ]['files'] = [];
+
+                $result[] =
+                    &$groupMap[$msg->group_id];
+            }
+ 
+
+            $groupMap[
+                $msg->group_id
+            ]['files'][] = [
+
+                'id' =>
+                    $msg->id,
+
+                'file_url' =>
+                    $msg->file
+                        ? asset(
+                            'storage/' .
+                            $msg->file
+                        )
+                        : null,
+
+                'file_name' =>
+                    $msg->file_name,
+
+                'type' =>
+                    $msg->type,
+
+                'description' =>
+                    $msg->description,
+
+                'duration' =>
+                    $msg->duration ?? null,
             ];
+
         } else {
+
+            
             $base['files'] = [[
-                'file_url' => $msg->file
-                    ? asset('storage/' . $msg->file)
-                    : null,
-                'file_name' => $msg->file_name,
-                'type' => $msg->type,
+
+                'id' =>
+                    $msg->id,
+
+                'file_url' =>
+                    $msg->file
+                        ? asset(
+                            'storage/' .
+                            $msg->file
+                        )
+                        : null,
+
+                'file_name' =>
+                    $msg->file_name,
+
+                'type' =>
+                    $msg->type,
+
+                'description' =>
+                    $msg->description,
+
+                'duration' =>
+                    $msg->duration ?? null,
             ]];
+
             $result[] = $base;
         }
     }
+ 
+
     try {
-    $chatKey = decrypt($chat->chat_key_user1);
+
+        $chatKey = decrypt(
+            $chat->chat_key_user1
+        );
+
     } catch (\Exception $e) {
-        $chatKey = base64_encode(random_bytes(32));
+
+        $chatKey =
+            base64_encode(
+                random_bytes(32)
+            );
+
         $chat->update([
-            'chat_key_user1' => encrypt($chatKey),
-            'chat_key_user2' => encrypt($chatKey),
+            'chat_key_user1' =>
+                encrypt($chatKey),
+
+            'chat_key_user2' =>
+                encrypt($chatKey),
         ]);
     }
+ 
     return response()->json([
-    'messages' => $result,
-    'last_read_message_id' => $myLastReadId,
-    'unread_count' => $unreadCount,
-    'is_admin' => $isAdmin,
-    'only_admin_can_send' => $onlyAdminCanSend,
-    'chat_key' => $chatKey,
-]);
+        'messages' =>
+            $result,
+
+        'last_read_message_id' =>
+            $myLastReadId,
+
+        'unread_count' =>
+            $unreadCount,
+
+        'is_admin' =>
+            $isAdmin,
+
+        'only_admin_can_send' =>
+            $onlyAdminCanSend,
+
+        'chat_key' =>
+            $chatKey,
+    ]);
 }
 
 public function deleteChat(Chat $chat)
@@ -668,349 +889,1010 @@ public function index()
 
 
 
-
 public function send(Request $request)
 {
     $request->validate([
-        'chat_id'    => 'required|exists:chats,id',
-        'type'       => 'nullable|in:text,image,voice,video,file,audio',
-        'types'      => 'nullable|array',
-        'types.*'    => 'in:image,video,voice,file,audio',
-        'message'    => 'nullable|string',
-        'file'       => 'nullable|file|max:20480',
-        'files'      => 'nullable|array',
-        'files.*'    => 'file|max:20480',
+        'chat_id' => 'required|exists:chats,id',
+
+        'type' => 'nullable|in:text,image,voice,video,file,audio',
+
+        'types' => 'nullable|array',
+        'types.*' => 'in:image,video,voice,file,audio',
+
+        'message' => 'nullable|string',
+
+        'file' => 'nullable|file|max:20480',
+
+        'files' => 'nullable|array',
+        'files.*' => 'file|max:20480',
+
+        /*
+        |--------------------------------------------------------------------------
+        | MEDIA DESCRIPTIONS
+        |--------------------------------------------------------------------------
+        */
+
+        'descriptions' => 'nullable|array',
+        'descriptions.*' => 'nullable|string|max:700',
+
         'trim_start' => 'nullable|array',
-        'trim_end'   => 'nullable|array',
+        'trim_end' => 'nullable|array',
+
         'replied_to' => 'nullable|exists:messages,id',
+
         'group_id' => 'nullable|string',
+
         'iv' => 'nullable|string',
     ]);
 
-    $chat = Chat::findOrFail($request->chat_id);
+    $chat = Chat::findOrFail(
+        $request->chat_id
+    );
 
-        if (!$chat->chat_key_user1 || !$chat->chat_key_user2) {
+    /*
+    |--------------------------------------------------------------------------
+    | CHAT ENCRYPTION KEY
+    |--------------------------------------------------------------------------
+    */
 
-            $chatKey = base64_encode(random_bytes(32));
-            $chat->chat_key_user1 = encrypt($chatKey);
-            $chat->chat_key_user2 = encrypt($chatKey);
-            $chat->save();
+    if (
+        !$chat->chat_key_user1 ||
+        !$chat->chat_key_user2
+    ) {
+        $chatKey = base64_encode(
+            random_bytes(32)
+        );
 
-        }
+        $chat->chat_key_user1 = encrypt(
+            $chatKey
+        );
 
-        if (
-                empty($chat->chat_key_user1) ||
-                empty($chat->chat_key_user2)
-            ) {
-                $chatKey = base64_encode(
-                    random_bytes(32)
-                );
+        $chat->chat_key_user2 = encrypt(
+            $chatKey
+        );
 
-                $chat->update([
-                    'chat_key_user1' => encrypt($chatKey),
-                    'chat_key_user2' => encrypt($chatKey),
-                ]);
-            } else {
-                try {
-                    $chatKey = decrypt(
-                        $chat->chat_key_user1
-                    );
-                } catch (\Throwable $e) {
+        $chat->save();
+    }
 
-                    \Log::error(
-                        'CHAT KEY DECRYPT FAILED',
-                        [
-                            'chat_id' => $chat->id,
-                            'error' => $e->getMessage(),
-                        ]
-                    );
+    if (
+        empty($chat->chat_key_user1) ||
+        empty($chat->chat_key_user2)
+    ) {
+        $chatKey = base64_encode(
+            random_bytes(32)
+        );
 
-                    return response()->json([
-                        'message' =>
-                            'Chat encryption key is corrupted.'
-                    ], 422);
-                }
-            }
-        if (empty($chatKey)) {
+        $chat->update([
+            'chat_key_user1' => encrypt(
+                $chatKey
+            ),
+
+            'chat_key_user2' => encrypt(
+                $chatKey
+            ),
+        ]);
+    } else {
+        try {
+            $chatKey = decrypt(
+                $chat->chat_key_user1
+            );
+        } catch (\Throwable $e) {
+
+            \Log::error(
+                'CHAT KEY DECRYPT FAILED',
+                [
+                    'chat_id' => $chat->id,
+                    'error' => $e->getMessage(),
+                ]
+            );
+
             return response()->json([
-                'message' => 'Chat encryption key missing.'
+                'message' =>
+                    'Chat encryption key is corrupted.'
             ], 422);
         }
+    }
 
+    if (empty($chatKey)) {
+        return response()->json([
+            'message' =>
+                'Chat encryption key missing.'
+        ], 422);
+    }
 
-        $repliedMessage = $request->replied_to ? Message::find($request->replied_to) : null;
+    /*
+    |--------------------------------------------------------------------------
+    | REPLY
+    |--------------------------------------------------------------------------
+    */
 
-        $messageText = $request->message;
-        $iv = $request->iv;
+    $repliedMessage = $request->replied_to
+        ? Message::find(
+            $request->replied_to
+        )
+        : null;
 
-        if (!$iv && $request->message) {
+    /*
+    |--------------------------------------------------------------------------
+    | MESSAGE ENCRYPTION
+    |--------------------------------------------------------------------------
+    */
 
-            $encrypted = MessageCryptoService::encrypt(
+    $messageText = $request->message;
+    $iv = $request->iv;
+
+    if (
+        !$iv &&
+        $request->message
+    ) {
+        $encrypted =
+            MessageCryptoService::encrypt(
                 $request->message,
                 $chatKey
             );
 
-            $messageText = $encrypted['data'];
-            $iv = $encrypted['iv'];
-        }
+        $messageText =
+            $encrypted['data'];
 
-    if ($chat->isBlockedFor(auth()->id())) {
-        return response()->json(['message' => 'You are blocked in this chat'], 403);
+        $iv =
+            $encrypted['iv'];
     }
+
+     
+    if (
+        $chat->isBlockedFor(
+            auth()->id()
+        )
+    ) {
+        return response()->json([
+            'message' =>
+                'You are blocked in this chat'
+        ], 403);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | RECEIVER
+    |--------------------------------------------------------------------------
+    */
+
     $receiverId = null;
 
-    $receiver = User::find($receiverId);
-
-    if ($chat->teacher_id && $chat->student_id) {
-        $receiverId = $chat->teacher_id == auth()->id()
-            ? $chat->student_id
-            : $chat->teacher_id;
+    if (
+        $chat->teacher_id &&
+        $chat->student_id
+    ) {
+        $receiverId =
+            $chat->teacher_id == auth()->id()
+                ? $chat->student_id
+                : $chat->teacher_id;
     }
 
-    if ($chat->user_one_id && $chat->user_two_id) {
-        $receiverId = $chat->user_one_id == auth()->id()
-            ? $chat->user_two_id
-            : $chat->user_one_id;
+    if (
+        $chat->user_one_id &&
+        $chat->user_two_id
+    ) {
+        $receiverId =
+            $chat->user_one_id == auth()->id()
+                ? $chat->user_two_id
+                : $chat->user_one_id;
     }
 
-        $mode = $chat->disappearing_mode;
+    /*
+    |--------------------------------------------------------------------------
+    | DISAPPEARING MESSAGE
+    |--------------------------------------------------------------------------
+    */
 
-        $expiresAt = match ($mode) {
-            '24h' => now()->addHours(24),
-            '7d' => now()->addDays(7),
-            '90d' => now()->addDays(90),
-            default => null,
-        };
+    $mode = $chat->disappearing_mode;
 
-        $messages = [];
-
-            logger([
-            'chat_id' => $chat->id,
-            'mode' => $chat->disappearing_mode,
-            'expires_at' => $expiresAt,
-            ]);
-
-    // 🔥 SAFE FILE NAME
-    $generateFileName = function ($file) {
-        $original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-        $extension = $file->getClientOriginalExtension();
-
-        $clean = preg_replace('/[^A-Za-z0-9_\-]/', '_', $original);
-
-        return $clean . '_' . time() . '.' . $extension;
+    $expiresAt = match ($mode) {
+        '24h' => now()->addHours(24),
+        '7d' => now()->addDays(7),
+        '90d' => now()->addDays(90),
+        default => null,
     };
 
-    $starts = $request->trim_start ?? [];
-    $ends   = $request->trim_end ?? [];
-    $types  = $request->types ?? [];
-    $repliedData = $repliedMessage ? [
-        'id'      => $repliedMessage->id,
-        'type'    => $repliedMessage->type,
-        'message' => $repliedMessage->message, // The encrypted ciphertext string
-        'iv'      => $repliedMessage->iv,      // 🔥 CRITICAL: Pass the parent IV to the frontend!
-        'sender'  => $repliedMessage->sender ? [
-        'id'         => $repliedMessage->sender->id,
-        'first_name' => $repliedMessage->sender->first_name,
-        'last_name'  => $repliedMessage->sender->last_name,
-        ] : null,
-    ] : null;
+    /*
+    |--------------------------------------------------------------------------
+    | SAFE FILE NAME
+    |--------------------------------------------------------------------------
+    */
 
-    if ($request->hasFile('files')) {
-        $files = $request->file('files');
-        $groupId = $request->input('group_id');
+    $generateFileName = function ($file) {
+
+        $original = pathinfo(
+            $file->getClientOriginalName(),
+            PATHINFO_FILENAME
+        );
+
+        $extension =
+            $file->getClientOriginalExtension();
+
+        $clean = preg_replace(
+            '/[^A-Za-z0-9_\-]/',
+            '_',
+            $original
+        );
+
+        return $clean .
+            '_' .
+            time() .
+            '_' .
+            uniqid() .
+            '.' .
+            $extension;
+    };
+
+    /*
+    |--------------------------------------------------------------------------
+    | ARRAYS
+    |--------------------------------------------------------------------------
+    */
+
+    $starts =
+        $request->trim_start ?? [];
+
+    $ends =
+        $request->trim_end ?? [];
+
+    $types =
+        $request->types ?? [];
+
+    $descriptions =
+        $request->descriptions ?? [];
+
+    /*
+    |--------------------------------------------------------------------------
+    | REPLY DATA
+    |--------------------------------------------------------------------------
+    */
+
+    $repliedData = $repliedMessage
+        ? [
+            'id' =>
+                $repliedMessage->id,
+
+            'type' =>
+                $repliedMessage->type,
+
+            'message' =>
+                $repliedMessage->message,
+
+            'iv' =>
+                $repliedMessage->iv,
+
+            'sender' =>
+                $repliedMessage->sender
+                    ? [
+                        'id' =>
+                            $repliedMessage->sender->id,
+
+                        'first_name' =>
+                            $repliedMessage
+                                ->sender
+                                ->first_name,
+
+                        'last_name' =>
+                            $repliedMessage
+                                ->sender
+                                ->last_name,
+                    ]
+                    : null,
+        ]
+        : null;
+
+    $messages = [];
+
+    /*
+    |--------------------------------------------------------------------------
+    | MULTIPLE FILES
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+        $request->hasFile('files')
+    ) {
+        $files =
+            $request->file('files');
+
+        $groupId =
+            $request->input('group_id');
+
+        /*
+        |--------------------------------------------------------------------------
+        | CREATE GROUP ID FOR MULTIPLE MEDIA
+        |--------------------------------------------------------------------------
+        */
+
         if (!$groupId) {
-            $onlyMedia = collect($types)->every(fn($t) => in_array($t, ['image', 'video']));
-            if ($onlyMedia && count($files) > 1) {
-                $groupId = uniqid('grp_');
+
+            $onlyMedia =
+                collect($types)->every(
+                    fn ($type) =>
+                        in_array(
+                            $type,
+                            [
+                                'image',
+                                'video'
+                            ]
+                        )
+                );
+
+            if (
+                $onlyMedia &&
+                count($files) > 1
+            ) {
+                $groupId =
+                    uniqid('grp_');
             }
         }
-        foreach ($files as $index => $file) {
-            $storedName = $generateFileName($file);
-            $type = $types[$index] ?? 'file';
-            $start = $starts[$index] ?? 0;
-            $end   = $ends[$index] ?? 0;
+
+        /*
+        |--------------------------------------------------------------------------
+        | PROCESS EACH FILE
+        |--------------------------------------------------------------------------
+        */
+
+        foreach (
+            $files as $index => $file
+        ) {
+
+            $storedName =
+                $generateFileName(
+                    $file
+                );
+
+            /*
+            |--------------------------------------------------------------------------
+            | TYPE
+            |--------------------------------------------------------------------------
+            */
+
+            $type =
+                $types[$index]
+                ?? 'file';
+
+            /*
+            |--------------------------------------------------------------------------
+            | DESCRIPTION
+            |--------------------------------------------------------------------------
+            |
+            | VERY IMPORTANT:
+            |
+            | files[0] → descriptions[0]
+            | files[1] → descriptions[1]
+            | files[2] → descriptions[2]
+            |
+            */
+
+            $description =
+                isset($descriptions[$index])
+                    ? trim(
+                        $descriptions[$index]
+                    )
+                    : null;
+
+            if (
+                $description === ''
+            ) {
+                $description = null;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | TRIM
+            |--------------------------------------------------------------------------
+            */
+
+            $start =
+                $starts[$index] ?? 0;
+
+            $end =
+                $ends[$index] ?? 0;
+
             $path = null;
-            if ($type === 'video' && $end > $start) {
-                $tempPath = $file->getRealPath();
-                $outputName = 'trimmed_' . $storedName;
-                $outputFullPath = storage_path('app/public/chat_files/' . $outputName);
-                if (!file_exists(dirname($outputFullPath))) {
-                    mkdir(dirname($outputFullPath), 0777, true);
+
+            /*
+            |--------------------------------------------------------------------------
+            | VIDEO TRIM
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                $type === 'video' &&
+                $end > $start
+            ) {
+
+                $tempPath =
+                    $file->getRealPath();
+
+                $outputName =
+                    'trimmed_' .
+                    $storedName;
+
+                $outputFullPath =
+                    storage_path(
+                        'app/public/chat_files/' .
+                        $outputName
+                    );
+
+                if (
+                    !file_exists(
+                        dirname(
+                            $outputFullPath
+                        )
+                    )
+                ) {
+                    mkdir(
+                        dirname(
+                            $outputFullPath
+                        ),
+                        0777,
+                        true
+                    );
                 }
-                $command = "ffmpeg -ss $start -i \"$tempPath\" -to $end -c:v libx264 -c:a aac \"$outputFullPath\" 2>&1";
-                exec($command, $output, $returnCode);
-                if ($returnCode !== 0) {
-                    $path = $file->storeAs('chat_files', $storedName, 'public');
+
+                $command =
+                    "ffmpeg -ss " .
+                    escapeshellarg($start) .
+                    " -i " .
+                    escapeshellarg($tempPath) .
+                    " -to " .
+                    escapeshellarg(
+                        $end - $start
+                    ) .
+                    " -c:v libx264 -c:a aac " .
+                    escapeshellarg(
+                        $outputFullPath
+                    ) .
+                    " 2>&1";
+
+                exec(
+                    $command,
+                    $output,
+                    $returnCode
+                );
+
+                if (
+                    $returnCode !== 0
+                ) {
+
+                    $path =
+                        $file->storeAs(
+                            'chat_files',
+                            $storedName,
+                            'public'
+                        );
                 } else {
-                    $path = 'chat_files/' . $outputName;
+
+                    $path =
+                        'chat_files/' .
+                        $outputName;
                 }
             } else {
-                $path = $file->storeAs('chat_files', $storedName, 'public');
-            }
-            $originalName = $file->getClientOriginalName();
-            $cleanName = preg_replace('/[^A-Za-z0-9_\-\.]/', '_', $originalName);
+ 
 
-            $messages[] = Message::create([
-                'chat_id'     => $chat->id,
-                'sender_id'   => auth()->id(),
-                'receiver_id' => $receiverId,
-                'type'        => $type,
-                'message'     => $messageText,
-                'iv'          => $iv,
-                'file'        => $path,
-                'file_name'   => $cleanName,
-                'replied_to'  => $repliedData,
-                'is_read'     => false,
-                'expires_at'  => $expiresAt,
-                'group_id'    => $groupId,
-            ]);
+                $path =
+                    $file->storeAs(
+                        'chat_files',
+                        $storedName,
+                        'public'
+                    );
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | FILE NAME
+            |--------------------------------------------------------------------------
+            */
+
+            $originalName =
+                $file->getClientOriginalName();
+
+            $cleanName =
+                preg_replace(
+                    '/[^A-Za-z0-9_\-\.]/',
+                    '_',
+                    $originalName
+                );
+
+            /*
+            |--------------------------------------------------------------------------
+            | CREATE MESSAGE
+            |--------------------------------------------------------------------------
+            */
+
+            $messages[] =
+                Message::create([
+                    'chat_id' =>
+                        $chat->id,
+
+                    'sender_id' =>
+                        auth()->id(),
+
+                    'receiver_id' =>
+                        $receiverId,
+
+                    'type' =>
+                        $type,
+
+                    'message' =>
+                        $messageText,
+
+                    'iv' =>
+                        $iv,
+
+                    'file' =>
+                        $path,
+
+                    'file_name' =>
+                        $cleanName,
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | SAVE THIS FILE'S DESCRIPTION
+                    |--------------------------------------------------------------------------
+                    */
+
+                    'description' =>
+                        $description,
+
+                    'replied_to' =>
+                        $repliedData,
+
+                    'is_read' =>
+                        false,
+
+                    'expires_at' =>
+                        $expiresAt,
+
+                    'group_id' =>
+                        $groupId,
+                ]);
         }
     }
-    elseif ($request->hasFile('file')) {
-        $file = $request->file('file');
-        $storedName = $generateFileName($file);
-        $type = $request->type ?? 'file';
-        $start = $request->trim_start[0] ?? 0;
-        $end   = $request->trim_end[0] ?? 0;
+
+    /*
+    |--------------------------------------------------------------------------
+    | SINGLE FILE
+    |--------------------------------------------------------------------------
+    */
+
+    elseif (
+        $request->hasFile('file')
+    ) {
+
+        $file =
+            $request->file('file');
+
+        $storedName =
+            $generateFileName($file);
+
+        $type =
+            $request->type ?? 'file';
+
+        $start =
+            $request->trim_start[0]
+            ?? 0;
+
+        $end =
+            $request->trim_end[0]
+            ?? 0;
+
+        /*
+        |--------------------------------------------------------------------------
+        | SINGLE FILE DESCRIPTION
+        |--------------------------------------------------------------------------
+        */
+
+        $description =
+            $request->input(
+                'description'
+            );
+
+        if (
+            $description !== null
+        ) {
+            $description =
+                trim($description);
+        }
+
         $path = null;
-        if ($type === 'video' && $end > $start) {
-            $tempPath = $file->getRealPath();
-            $outputName = 'trimmed_' . $storedName;
-            $outputFullPath = storage_path('app/public/chat_files/' . $outputName);
-            if (!file_exists(dirname($outputFullPath))) {
-                mkdir(dirname($outputFullPath), 0777, true);
+
+        /*
+        |--------------------------------------------------------------------------
+        | VIDEO TRIM
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $type === 'video' &&
+            $end > $start
+        ) {
+
+            $tempPath =
+                $file->getRealPath();
+
+            $outputName =
+                'trimmed_' .
+                $storedName;
+
+            $outputFullPath =
+                storage_path(
+                    'app/public/chat_files/' .
+                    $outputName
+                );
+
+            if (
+                !file_exists(
+                    dirname(
+                        $outputFullPath
+                    )
+                )
+            ) {
+                mkdir(
+                    dirname(
+                        $outputFullPath
+                    ),
+                    0777,
+                    true
+                );
             }
-            $command = "ffmpeg -ss $start -i \"$tempPath\" -to $end -c:v libx264 -c:a aac \"$outputFullPath\" 2>&1";
-            exec($command, $output, $returnCode);
-            if ($returnCode !== 0) {
-                $path = $file->storeAs('chat_files', $storedName, 'public');
+
+            $command =
+                "ffmpeg -ss " .
+                escapeshellarg($start) .
+                " -i " .
+                escapeshellarg($tempPath) .
+                " -to " .
+                escapeshellarg(
+                    $end - $start
+                ) .
+                " -c:v libx264 -c:a aac " .
+                escapeshellarg(
+                    $outputFullPath
+                ) .
+                " 2>&1";
+
+            exec(
+                $command,
+                $output,
+                $returnCode
+            );
+
+            if (
+                $returnCode !== 0
+            ) {
+
+                $path =
+                    $file->storeAs(
+                        'chat_files',
+                        $storedName,
+                        'public'
+                    );
             } else {
-                $path = 'chat_files/' . $outputName;
+
+                $path =
+                    'chat_files/' .
+                    $outputName;
             }
         } else {
-            $path = $file->storeAs('chat_files', $storedName, 'public');
+
+            $path =
+                $file->storeAs(
+                    'chat_files',
+                    $storedName,
+                    'public'
+                );
         }
-        $messages[] = Message::create([
-            'chat_id'     => $chat->id,
-            'sender_id'   => auth()->id(),
-            'receiver_id' => $receiverId,
-            'type'        => $type,
-            'message'     => $messageText,
-            'iv'          => $iv,
-            'file'        => $path,
-            'file_name'   => $cleanName,
-            'replied_to'  => $repliedData,
-            'is_read'     => false,
-            'expires_at'  => $expiresAt,
-            'group_id'    => $groupId,
-        ]);
-    }
-    else {
-        $messages[] = Message::create([
-            'chat_id'     => $chat->id,
-            'sender_id'   => auth()->id(),
-            'receiver_id' => $receiverId,
-            'type'        => 'text',
-            'message'     => $messageText,
-            'iv'          => $iv,
-            'replied_to'  => $repliedData,
-            'is_read'     => false,
-            'expires_at'  => $expiresAt,
+
+        /*
+        |--------------------------------------------------------------------------
+        | FILE NAME
+        |--------------------------------------------------------------------------
+        */
+
+        $originalName =
+            $file->getClientOriginalName();
+
+        $cleanName =
+            preg_replace(
+                '/[^A-Za-z0-9_\-\.]/',
+                '_',
+                $originalName
+            );
+
+        /*
+        |--------------------------------------------------------------------------
+        | CREATE SINGLE FILE MESSAGE
+        |--------------------------------------------------------------------------
+        */
+
+        $messages[] =
+            Message::create([
+                'chat_id' =>
+                    $chat->id,
+
+                'sender_id' =>
+                    auth()->id(),
+
+                'receiver_id' =>
+                    $receiverId,
+
+                'type' =>
+                    $type,
+
+                'message' =>
+                    $messageText,
+
+                'iv' =>
+                    $iv,
+
+                'file' =>
+                    $path,
+
+                'file_name' =>
+                    $cleanName,
+
+                'description' =>
+                    $description,
+
+                'replied_to' =>
+                    $repliedData,
+
+                'is_read' =>
+                    false,
+
+                'expires_at' =>
+                    $expiresAt,
+
+                'group_id' =>
+                    $request->group_id,
             ]);
     }
-    foreach ($messages as $message) {
+ 
+    else {
+
+        $messages[] =
+            Message::create([
+                'chat_id' =>
+                    $chat->id,
+
+                'sender_id' =>
+                    auth()->id(),
+
+                'receiver_id' =>
+                    $receiverId,
+
+                'type' =>
+                    'text',
+
+                'message' =>
+                    $messageText,
+
+                'iv' =>
+                    $iv,
+
+                'replied_to' =>
+                    $repliedData,
+
+                'is_read' =>
+                    false,
+
+                'expires_at' =>
+                    $expiresAt,
+            ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | USERS + NOTIFICATIONS + BROADCAST
+    |--------------------------------------------------------------------------
+    */
+
+    foreach (
+        $messages as $message
+    ) {
 
         $userIds = collect([
             $chat->teacher_id,
             $chat->student_id,
             $chat->user_one_id,
-            $chat->user_two_id
-        ])->filter()->unique();
+            $chat->user_two_id,
+        ])
+            ->filter()
+            ->unique();
 
-       foreach ($userIds as $userId) {
-            $message->users()->syncWithoutDetaching([
-                $userId => [
-                    'deleted' => false,
-                ],
-            ]);
+        foreach (
+            $userIds as $userId
+        ) {
+
+            $message
+                ->users()
+                ->syncWithoutDetaching([
+                    $userId => [
+                        'deleted' =>
+                            false,
+                    ],
+                ]);
         }
 
-        // ✅ RESTORE CHAT FOR USERS THAT REMOVED IT
+        /*
+        |--------------------------------------------------------------------------
+        | RESTORE CHAT FOR OTHER USERS
+        |--------------------------------------------------------------------------
+        */
+
         DB::table('chat_user')
-            ->where('chat_id', $chat->id)
-
-            // ✅ don't restore for sender
-            ->where('user_id', '!=', auth()->id())
-
+            ->where(
+                'chat_id',
+                $chat->id
+            )
+            ->where(
+                'user_id',
+                '!=',
+                auth()->id()
+            )
             ->update([
-                'hidden_at' => null,
+                'hidden_at' =>
+                    null,
             ]);
 
-            $message->load([
+        /*
+        |--------------------------------------------------------------------------
+        | LOAD RELATIONSHIPS
+        |--------------------------------------------------------------------------
+        */
+
+        $message->load([
             'sender',
-            'receiver'
+            'receiver',
         ]);
 
+        /*
+        |--------------------------------------------------------------------------
+        | EMAIL
+        |--------------------------------------------------------------------------
+        */
 
-        if($message->receiver && $message->receiver->email){
+        if (
+            $message->receiver &&
+            $message->receiver->email
+        ) {
 
-            Mail::to($message->receiver->email)
-                ->send(
-                    new NewMessageNotification($message)
-                );
-
+            Mail::to(
+                $message
+                    ->receiver
+                    ->email
+            )->send(
+                new NewMessageNotification(
+                    $message
+                )
+            );
         }
 
-    broadcast(new NewMessage($message))->toOthers();
+        /*
+        |--------------------------------------------------------------------------
+        | BROADCAST
+        |--------------------------------------------------------------------------
+        */
+
+        broadcast(
+            new NewMessage($message)
+        )->toOthers();
     }
 
-    Chat::where('id', $chat->id)->update([
-    'last_activity_at' => now()
+    /*
+    |--------------------------------------------------------------------------
+    | UPDATE CHAT ACTIVITY
+    |--------------------------------------------------------------------------
+    */
+
+    Chat::where(
+        'id',
+        $chat->id
+    )->update([
+        'last_activity_at' =>
+            now(),
     ]);
 
-    
+    /*
+    |--------------------------------------------------------------------------
+    | GROUP RESPONSE
+    |--------------------------------------------------------------------------
+    */
 
     $grouped = collect($messages)
-    ->groupBy('group_id')
-    ->map(function ($group) {
+        ->groupBy('group_id')
+        ->map(function ($group) {
 
-    $first = $group->first();
+            $first =
+                $group->first();
 
-    return [
+            return [
 
-        'id' => $first->id,
-        'chat_id' => $first->chat_id,
-        'sender_id' => $first->sender_id,
-        'receiver_id' => $first->receiver_id,
+                'id' =>
+                    $first->id,
 
-        'type' => $first->type,
+                'chat_id' =>
+                    $first->chat_id,
 
-        'message' => $first->message,
-        'iv' => $first->iv,
+                'sender_id' =>
+                    $first->sender_id,
 
-        'group_id' => $first->group_id,
+                'receiver_id' =>
+                    $first->receiver_id,
 
-        'sender' => $first->sender,
+                'type' =>
+                    $first->type,
 
-        'created_at' => $first->created_at,
-        'updated_at' => $first->updated_at,
+                'message' =>
+                    $first->message,
 
-        'replied_to' => $first->replied_to,
+                'iv' =>
+                    $first->iv,
 
-        'files' => $group->map(fn($msg) => [
-            'file_url' => $msg->file
-                ? asset('storage/' . $msg->file)
-                : null,
+                'group_id' =>
+                    $first->group_id,
 
-            'file_name' => $msg->file_name,
-            'type' => $msg->type,
-        ])->values(),
-    ];
-})
-->values();
-return response()->json([
-    'messages' => $grouped
-]);
+                'sender' =>
+                    $first->sender,
+
+                'created_at' =>
+                    $first->created_at,
+
+                'updated_at' =>
+                    $first->updated_at,
+
+                'replied_to' =>
+                    $first->replied_to,
+
+                /*
+                |--------------------------------------------------------------------------
+                | EVERY FILE GETS ITS OWN DESCRIPTION
+                |--------------------------------------------------------------------------
+                */
+
+                'files' =>
+                    $group
+                        ->map(
+                            fn ($msg) => [
+
+                                'id' =>
+                                    $msg->id,
+
+                                'file_url' =>
+                                    $msg->file
+                                        ? asset(
+                                            'storage/' .
+                                            $msg->file
+                                        )
+                                        : null,
+
+                                'file_name' =>
+                                    $msg->file_name,
+
+                                'type' =>
+                                    $msg->type,
+
+                                'description' =>
+                                    $msg->description,
+
+                                'duration' =>
+                                    $msg->duration
+                                    ?? null,
+                            ]
+                        )
+                        ->values(),
+            ];
+        })
+        ->values();
+
+    return response()->json([
+        'messages' =>
+            $grouped,
+    ]);
 }
 
 
@@ -1281,15 +2163,63 @@ public function forwardMultiple(Request $request)
     ]);
 
     $authId = auth()->id();
+ 
 
-    $messages = Message::with('files')
+    $selectedMessages = Message::with('files')
         ->whereIn('id', $request->message_ids)
+        ->orderBy('id')
         ->get();
+ 
+
+    $groupIds = $selectedMessages
+        ->whereNotNull('group_id')
+        ->pluck('group_id')
+        ->unique()
+        ->values();
+
+    $groupMessages = collect();
+
+    if ($groupIds->isNotEmpty()) {
+        $groupMessages = Message::with('files')
+            ->whereIn('group_id', $groupIds)
+            ->orderBy('id')
+            ->get();
+    }
+ 
+
+    $messages = $selectedMessages
+        ->concat($groupMessages)
+        ->unique('id')
+        ->sortBy('id')
+        ->values();
+
+    logger('FORWARD MESSAGES', [
+        'requested_ids' => $request->message_ids,
+        'group_ids' => $groupIds->toArray(),
+        'message_ids_to_forward' => $messages->pluck('id')->toArray(),
+    ]);
 
     $lastChat = null;
+    $createdMessages = [];
+ 
+
+    $newGroupIds = [];
+
+    foreach ($messages as $msg) {
+
+        if (
+            $msg->group_id &&
+            !isset($newGroupIds[$msg->group_id])
+        ) {
+            $newGroupIds[$msg->group_id] =
+                'grp_' . \Illuminate\Support\Str::uuid()->toString();
+        }
+    }
+ 
 
     foreach ($request->targets as $target) {
  
+
         if ($target['type'] === 'user') {
 
             $otherUserId = (int) $target['id'];
@@ -1328,7 +2258,14 @@ public function forwardMultiple(Request $request)
             }
 
             foreach ($messages as $msg) {
- 
+
+                $newGroupId = null;
+
+                if ($msg->group_id) {
+                    $newGroupId =
+                        $newGroupIds[$msg->group_id] ?? null;
+                }
+
                 $newMessage = $chat->messages()->create([
 
                     'sender_id' =>
@@ -1346,10 +2283,26 @@ public function forwardMultiple(Request $request)
                     'file' =>
                         $msg->file,
 
+                    'file_name' =>
+                        $msg->file_name,
+
+                    'group_id' =>
+                        $newGroupId,
+
+                    'description' =>
+                        $msg->description,
+
                     'is_forwarded' =>
                         true,
+
+                    'forwarded_from' =>
+                        $msg->sender_id,
+
+                    'forward_source_message_id' =>
+                        $msg->id,
                 ]);
  
+
                 if ($msg->file) {
 
                     $newMessage->files()->create([
@@ -1366,11 +2319,15 @@ public function forwardMultiple(Request $request)
                             $msg->type,
                     ]);
                 }
+
+                $createdMessages[] =
+                    $newMessage->fresh('files');
             }
 
             $lastChat = $chat;
         }
  
+
         if ($target['type'] === 'group') {
 
             $chat = Chat::where(
@@ -1396,7 +2353,14 @@ public function forwardMultiple(Request $request)
             }
 
             foreach ($messages as $msg) {
- 
+
+                $newGroupId = null;
+
+                if ($msg->group_id) {
+                    $newGroupId =
+                        $newGroupIds[$msg->group_id] ?? null;
+                }
+
                 $newMessage = $chat->messages()->create([
 
                     'sender_id' =>
@@ -1414,10 +2378,26 @@ public function forwardMultiple(Request $request)
                     'file' =>
                         $msg->file,
 
+                    'file_name' =>
+                        $msg->file_name,
+
+                    'group_id' =>
+                        $newGroupId,
+
+                    'description' =>
+                        $msg->description,
+
                     'is_forwarded' =>
                         true,
+
+                    'forwarded_from' =>
+                        $msg->sender_id,
+
+                    'forward_source_message_id' =>
+                        $msg->id,
                 ]);
  
+
                 if ($msg->file) {
 
                     $newMessage->files()->create([
@@ -1434,6 +2414,9 @@ public function forwardMultiple(Request $request)
                             $msg->type,
                     ]);
                 }
+
+                $createdMessages[] =
+                    $newMessage->fresh('files');
             }
 
             $lastChat = $chat;
@@ -1449,6 +2432,10 @@ public function forwardMultiple(Request $request)
 
         'chat_type' =>
             $lastChat?->type,
+ 
+
+        'messages' =>
+            $createdMessages,
     ]);
 }
 
