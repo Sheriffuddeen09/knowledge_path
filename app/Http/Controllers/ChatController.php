@@ -925,9 +925,7 @@ public function send(Request $request)
         'iv' => 'nullable|string',
     ]);
 
-    $chat = Chat::findOrFail(
-        $request->chat_id
-    );
+    $chat = Chat::findOrFail($request->chat_id);
 
     /*
     |--------------------------------------------------------------------------
@@ -943,13 +941,8 @@ public function send(Request $request)
             random_bytes(32)
         );
 
-        $chat->chat_key_user1 = encrypt(
-            $chatKey
-        );
-
-        $chat->chat_key_user2 = encrypt(
-            $chatKey
-        );
+        $chat->chat_key_user1 = encrypt($chatKey);
+        $chat->chat_key_user2 = encrypt($chatKey);
 
         $chat->save();
     }
@@ -963,13 +956,8 @@ public function send(Request $request)
         );
 
         $chat->update([
-            'chat_key_user1' => encrypt(
-                $chatKey
-            ),
-
-            'chat_key_user2' => encrypt(
-                $chatKey
-            ),
+            'chat_key_user1' => encrypt($chatKey),
+            'chat_key_user2' => encrypt($chatKey),
         ]);
     } else {
         try {
@@ -988,7 +976,7 @@ public function send(Request $request)
 
             return response()->json([
                 'message' =>
-                    'Chat encryption key is corrupted.'
+                    'Chat encryption key is corrupted.',
             ], 422);
         }
     }
@@ -996,7 +984,7 @@ public function send(Request $request)
     if (empty($chatKey)) {
         return response()->json([
             'message' =>
-                'Chat encryption key missing.'
+                'Chat encryption key missing.',
         ], 422);
     }
 
@@ -1007,9 +995,7 @@ public function send(Request $request)
     */
 
     $repliedMessage = $request->replied_to
-        ? Message::find(
-            $request->replied_to
-        )
+        ? Message::find($request->replied_to)
         : null;
 
     /*
@@ -1038,7 +1024,12 @@ public function send(Request $request)
             $encrypted['iv'];
     }
 
-     
+    /*
+    |--------------------------------------------------------------------------
+    | BLOCK CHECK
+    |--------------------------------------------------------------------------
+    */
+
     if (
         $chat->isBlockedFor(
             auth()->id()
@@ -1046,7 +1037,7 @@ public function send(Request $request)
     ) {
         return response()->json([
             'message' =>
-                'You are blocked in this chat'
+                'You are blocked in this chat',
         ], 403);
     }
 
@@ -1193,39 +1184,103 @@ public function send(Request $request)
     if (
         $request->hasFile('files')
     ) {
+
         $files =
             $request->file('files');
 
-        $groupId =
-            $request->input('group_id');
+        /*
+        |--------------------------------------------------------------------------
+        | CHECK WHETHER ANY MEDIA HAS A DESCRIPTION
+        |--------------------------------------------------------------------------
+        |
+        | If even ONE selected media has a description,
+        | ALL selected media must become separate messages.
+        |
+        */
+
+        $hasDescription = collect($files)
+            ->keys()
+            ->contains(function ($index) use ($descriptions) {
+
+                $description =
+                    isset($descriptions[$index])
+                        ? trim(
+                            (string) $descriptions[$index]
+                        )
+                        : '';
+
+                return $description !== '';
+            });
 
         /*
         |--------------------------------------------------------------------------
-        | CREATE GROUP ID FOR MULTIPLE MEDIA
+        | CHECK MEDIA TYPES
+        |--------------------------------------------------------------------------
+        |
+        | Grouping is only allowed for images and videos.
+        |
+        */
+
+        $onlyImagesAndVideos =
+            collect($files)
+                ->keys()
+                ->every(function ($index) use ($types) {
+
+                    $type =
+                        $types[$index]
+                        ?? 'file';
+
+                    return in_array(
+                        $type,
+                        [
+                            'image',
+                            'video',
+                        ],
+                        true
+                    );
+                });
+
+        /*
+        |--------------------------------------------------------------------------
+        | SHOULD GROUP?
+        |--------------------------------------------------------------------------
+        |
+        | GROUP ONLY WHEN:
+        |
+        | 1. More than one file
+        | 2. All files are image/video
+        | 3. NONE has a description
+        |
+        */
+
+        $shouldGroup =
+            count($files) > 1 &&
+            $onlyImagesAndVideos &&
+            !$hasDescription;
+
+        /*
+        |--------------------------------------------------------------------------
+        | GROUP ID
         |--------------------------------------------------------------------------
         */
 
-        if (!$groupId) {
+        if ($shouldGroup) {
 
-            $onlyMedia =
-                collect($types)->every(
-                    fn ($type) =>
-                        in_array(
-                            $type,
-                            [
-                                'image',
-                                'video'
-                            ]
-                        )
-                );
+            $groupId =
+                $request->input('group_id')
+                ?: uniqid('grp_');
 
-            if (
-                $onlyMedia &&
-                count($files) > 1
-            ) {
-                $groupId =
-                    uniqid('grp_');
-            }
+        } else {
+
+            /*
+            |----------------------------------------------------------------------
+            | IMPORTANT:
+            |----------------------------------------------------------------------
+            | If there is a description, every media gets its own message.
+            |
+            */
+
+            $groupId = null;
         }
 
         /*
@@ -1239,9 +1294,7 @@ public function send(Request $request)
         ) {
 
             $storedName =
-                $generateFileName(
-                    $file
-                );
+                $generateFileName($file);
 
             /*
             |--------------------------------------------------------------------------
@@ -1257,19 +1310,12 @@ public function send(Request $request)
             |--------------------------------------------------------------------------
             | DESCRIPTION
             |--------------------------------------------------------------------------
-            |
-            | VERY IMPORTANT:
-            |
-            | files[0] → descriptions[0]
-            | files[1] → descriptions[1]
-            | files[2] → descriptions[2]
-            |
             */
 
             $description =
                 isset($descriptions[$index])
                     ? trim(
-                        $descriptions[$index]
+                        (string) $descriptions[$index]
                     )
                     : null;
 
@@ -1370,8 +1416,8 @@ public function send(Request $request)
                         'chat_files/' .
                         $outputName;
                 }
+
             } else {
- 
 
                 $path =
                     $file->storeAs(
@@ -1429,12 +1475,6 @@ public function send(Request $request)
                     'file_name' =>
                         $cleanName,
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | SAVE THIS FILE'S DESCRIPTION
-                    |--------------------------------------------------------------------------
-                    */
-
                     'description' =>
                         $description,
 
@@ -1446,6 +1486,19 @@ public function send(Request $request)
 
                     'expires_at' =>
                         $expiresAt,
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | IMPORTANT
+                    |--------------------------------------------------------------------------
+                    |
+                    | If $shouldGroup = true:
+                    |     every file gets the SAME group_id.
+                    |
+                    | If $shouldGroup = false:
+                    |     every file gets NULL.
+                    |
+                    */
 
                     'group_id' =>
                         $groupId,
@@ -1496,6 +1549,12 @@ public function send(Request $request)
         ) {
             $description =
                 trim($description);
+        }
+
+        if (
+            $description === ''
+        ) {
+            $description = null;
         }
 
         $path = null;
@@ -1571,12 +1630,14 @@ public function send(Request $request)
                         $storedName,
                         'public'
                     );
+
             } else {
 
                 $path =
                     'chat_files/' .
                     $outputName;
             }
+
         } else {
 
             $path =
@@ -1651,7 +1712,13 @@ public function send(Request $request)
                     $request->group_id,
             ]);
     }
- 
+
+    /*
+    |--------------------------------------------------------------------------
+    | TEXT MESSAGE
+    |--------------------------------------------------------------------------
+    */
+
     else {
 
         $messages[] =
@@ -1799,65 +1866,86 @@ public function send(Request $request)
 
     /*
     |--------------------------------------------------------------------------
-    | GROUP RESPONSE
+    | BUILD RESPONSE
+    |--------------------------------------------------------------------------
+    |
+    | IMPORTANT:
+    |
+    | DO NOT groupBy('group_id') directly.
+    |
+    | group_id = NULL means individual message.
+    | Multiple NULL messages must remain separate.
+    |
+    */
+
+    $responseMessages = [];
+
+    /*
+    |--------------------------------------------------------------------------
+    | GROUPED MESSAGES
     |--------------------------------------------------------------------------
     */
 
-    $grouped = collect($messages)
-        ->groupBy('group_id')
-        ->map(function ($group) {
+    $groups = collect($messages)
+        ->filter(function ($message) {
+            return !empty($message->group_id);
+        })
+        ->groupBy('group_id');
 
-            $first =
-                $group->first();
+    foreach (
+        $groups as $group
+    ) {
 
-            return [
+        $first =
+            $group->first();
 
-                'id' =>
-                    $first->id,
+        $responseMessages[] = [
 
-                'chat_id' =>
-                    $first->chat_id,
+            'id' =>
+                $first->id,
 
-                'sender_id' =>
-                    $first->sender_id,
+            'chat_id' =>
+                $first->chat_id,
 
-                'receiver_id' =>
-                    $first->receiver_id,
+            'sender_id' =>
+                $first->sender_id,
 
-                'type' =>
-                    $first->type,
+            'receiver_id' =>
+                $first->receiver_id,
 
-                'message' =>
-                    $first->message,
+            'type' =>
+                $first->type,
 
-                'iv' =>
-                    $first->iv,
+            'message' =>
+                $first->message,
 
-                'group_id' =>
-                    $first->group_id,
+            'iv' =>
+                $first->iv,
 
-                'sender' =>
-                    $first->sender,
+            'group_id' =>
+                $first->group_id,
 
-                'created_at' =>
-                    $first->created_at,
+            'sender' =>
+                $first->sender,
 
-                'updated_at' =>
-                    $first->updated_at,
+            'receiver' =>
+                $first->receiver,
 
-                'replied_to' =>
-                    $first->replied_to,
+            'created_at' =>
+                $first->created_at,
 
-                /*
-                |--------------------------------------------------------------------------
-                | EVERY FILE GETS ITS OWN DESCRIPTION
-                |--------------------------------------------------------------------------
-                */
+            'updated_at' =>
+                $first->updated_at,
 
-                'files' =>
-                    $group
-                        ->map(
-                            fn ($msg) => [
+            'replied_to' =>
+                $first->replied_to,
+
+            'files' =>
+                $group
+                    ->map(
+                        function ($msg) {
+
+                            return [
 
                                 'id' =>
                                     $msg->id,
@@ -1882,21 +1970,145 @@ public function send(Request $request)
                                 'duration' =>
                                     $msg->duration
                                     ?? null,
-                            ]
-                        )
-                        ->values(),
-            ];
-        })
-        ->values();
+                            ];
+                        }
+                    )
+                    ->values()
+                    ->all(),
+        ];
+    }
 
+    /*
+    |--------------------------------------------------------------------------
+    | INDIVIDUAL MESSAGES
+    |--------------------------------------------------------------------------
+    */
+
+    $individualMessages = collect($messages)
+        ->filter(function ($message) {
+            return empty($message->group_id);
+        });
+
+    foreach (
+        $individualMessages as $msg
+    ) {
+
+        $fileData = [
+
+            'id' =>
+                $msg->id,
+
+            'file_url' =>
+                $msg->file
+                    ? asset(
+                        'storage/' .
+                        $msg->file
+                    )
+                    : null,
+
+            'file_name' =>
+                $msg->file_name,
+
+            'type' =>
+                $msg->type,
+
+            'description' =>
+                $msg->description,
+
+            'duration' =>
+                $msg->duration
+                ?? null,
+        ];
+
+        $responseMessages[] = [
+
+            'id' =>
+                $msg->id,
+
+            'chat_id' =>
+                $msg->chat_id,
+
+            'sender_id' =>
+                $msg->sender_id,
+
+            'receiver_id' =>
+                $msg->receiver_id,
+
+            'type' =>
+                $msg->type,
+
+            'message' =>
+                $msg->message,
+
+            'iv' =>
+                $msg->iv,
+
+            'group_id' =>
+                null,
+
+            'sender' =>
+                $msg->sender,
+
+            'receiver' =>
+                $msg->receiver,
+
+            'created_at' =>
+                $msg->created_at,
+
+            'updated_at' =>
+                $msg->updated_at,
+
+            'replied_to' =>
+                $msg->replied_to,
+
+            /*
+            |--------------------------------------------------------------------------
+            | SINGLE FILE FIELDS
+            |--------------------------------------------------------------------------
+            */
+
+            'file_url' =>
+                $fileData['file_url'],
+
+            'file_name' =>
+                $fileData['file_name'],
+
+            'description' =>
+                $fileData['description'],
+
+            'duration' =>
+                $fileData['duration'],
+
+            /*
+            |--------------------------------------------------------------------------
+            | KEEP files ARRAY FOR REACT
+            |--------------------------------------------------------------------------
+            */
+
+            'files' => [
+                $fileData,
+            ],
+        ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | SORT RESPONSE BY CREATED TIME
+    |--------------------------------------------------------------------------
+    */
+
+    $responseMessages =
+        collect($responseMessages)
+            ->sortBy(function ($message) {
+                return $message['created_at'];
+            })
+            ->values();
+ 
     return response()->json([
         'messages' =>
-            $grouped,
+            $responseMessages,
     ]);
 }
-
-
-
 
    public function sendVoice(Request $request)
 {
