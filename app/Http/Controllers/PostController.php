@@ -503,62 +503,86 @@ public function index(Request $request)
 
         return [
 
-            'id' =>
-                $post->id,
+                'id' =>
+                    $post->id,
 
-            'feed_type' =>
-                'post',
+                'feed_type' =>
+                    'post',
 
-            'is_repost' =>
-                $isRepost,
+                'is_repost' =>
+                    $isRepost,
 
-            'original_post_id' =>
-                $post->original_post_id,
+                'original_post_id' =>
+                    $post->original_post_id,
 
-            'is_advertisement' =>
-                !is_null(
-                    $post->advertisement_id
-                ),
+                'is_advertisement' =>
+                    !is_null(
+                        $post->advertisement_id
+                    ),
 
-            'advertisement' =>
-                $advertisement,
+                'advertisement' =>
+                    $advertisement,
 
-            'reposted_by' =>
-                $repostedBy,
+                'reposted_by' =>
+                    $repostedBy,
 
-            'content' =>
-                $basePost->content,
+                'content' =>
+                    $basePost->content,
 
-            'media' =>
-                $media,
+                'media' =>
+                    $media,
 
-            'user' =>
-                $postUser,
+                'user' =>
+                    $postUser,
+ 
 
-            'created_at' =>
-                $post->created_at
-                    ? $post->created_at->diffForHumans()
-                    : null,
+                'is_live' =>
+                    (bool) $basePost->is_live,
 
-            'original_created_at' =>
-                $basePost->created_at
-                    ? $basePost->created_at->diffForHumans()
-                    : null,
+                'live_status' =>
+                    $basePost->live_status,
 
-            'reactions_count' =>
-                $basePost->reactions_count ?? 0,
+                'live_room_name' =>
+                    $basePost->live_room_name,
 
-            'comments_count' =>
-                $basePost->comments_count ?? 0,
+                'live_started_at' =>
+                    $basePost->live_started_at
+                        ? $basePost->live_started_at->toISOString()
+                        : null,
 
-            'shares_count' =>
-                $basePost->shares_count ?? 0,
+                'live_ended_at' =>
+                    $basePost->live_ended_at
+                        ? $basePost->live_ended_at->toISOString()
+                        : null,
 
-            'reposts_count' =>
-                $basePost->reposts_count ?? 0,
+                'live_viewers_count' =>
+                    (int) ($basePost->live_viewers_count ?? 0),
+ 
 
-        ];
+                'created_at' =>
+                    $post->created_at
+                        ? $post->created_at->diffForHumans()
+                        : null,
 
+                'original_created_at' =>
+                    $basePost->created_at
+                        ? $basePost->created_at->diffForHumans()
+                        : null,
+ 
+
+                'reactions_count' =>
+                    $basePost->reactions_count ?? 0,
+
+                'comments_count' =>
+                    $basePost->comments_count ?? 0,
+
+                'shares_count' =>
+                    $basePost->shares_count ?? 0,
+
+                'reposts_count' =>
+                    $basePost->reposts_count ?? 0,
+
+            ];
     })
     ->filter()
     ->values();

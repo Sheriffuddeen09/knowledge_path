@@ -8,7 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Post extends Model
 {
-    protected $fillable = [
+    
+        protected $fillable = [
         'user_id',
         'post_type',
         'reel_type',
@@ -20,20 +21,35 @@ class Post extends Model
         'original_post_id',
         'is_new_home',
         'is_new_video',
-        'post_media', 
+        'post_media',
         'trim_start',
         'trim_end',
         'background_color',
         'font',
         'reel_duration',
         'advertisement_id',
+
+        // Live video
+        'is_live',
+        'live_status',
+        'live_room_name',
+        'live_started_at',
+        'live_ended_at',
+        'live_viewers_count',
     ];
 
     protected $casts = [
-    'trim_start' => 'float',
-    'trim_end' => 'float',
-    'reel_duration' => 'integer',
-        ];
+        'trim_start' => 'float',
+        'trim_end' => 'float',
+        'reel_duration' => 'integer',
+
+        'is_live' => 'boolean',
+        'live_started_at' => 'datetime',
+        'live_ended_at' => 'datetime',
+        'live_viewers_count' => 'integer',
+    ];
+
+
     public function user()
     {
         return $this->belongsTo(User::class);

@@ -11,9 +11,8 @@ use Agence104\LiveKit\VideoGrant;
 
 class LiveVideoController extends Controller
 {
-    /**
-     * Start a live video.
-     */
+   
+
     public function start(Request $request)
     {
         $request->validate([
@@ -177,41 +176,50 @@ class LiveVideoController extends Controller
         ]);
     }
 
-    /**
-     * End live video.
-     */
+    
+
+    
     public function end(Request $request, Post $post)
-    {
-        $user = $request->user();
+{
+    $user = $request->user();
 
-        if ((int) $post->user_id !== (int) $user->id) {
-            return response()->json([
-                'message' => 'You cannot end this live video.'
-            ], 403);
-        }
-
-        if (
-            !$post->is_live ||
-            $post->live_status !== 'live'
-        ) {
-            return response()->json([
-                'message' => 'This live video is not active.'
-            ], 422);
-        }
-
-        $post->update([
-            'is_live' => false,
-            'live_status' => 'ended',
-            'live_ended_at' => now(),
-        ]);
-
+    if ((int) $post->user_id !== (int) $user->id) {
         return response()->json([
-            'success' => true,
-            'message' => 'Live video ended.',
-            'post' => $post->fresh([
-                'user:id,first_name,last_name,image',
-                'media',
-            ]),
-        ]);
+            'message' => 'You cannot end this live video.'
+        ], 403);
     }
+
+    \Log::info('Ending live video', [
+        'post_id' => $post->id,
+        'user_id' => $user->id,
+        'is_live' => $post->is_live,
+        'live_status' => $post->live_status,
+        'live_room_name' => $post->live_room_name,
+    ]);
+
+    if ($post->live_status !== 'live') {
+        return response()->json([
+            'message' => 'This live video is not active.',
+            'debug' => [
+                'is_live' => $post->is_live,
+                'live_status' => $post->live_status,
+            ],
+        ], 422);
+    }
+
+    $post->update([
+        'is_live' => false,
+        'live_status' => 'ended',
+        'live_ended_at' => now(),
+    ]);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Live video ended.',
+        'post' => $post->fresh([
+            'user:id,first_name,last_name,image',
+            'media',
+        ]),
+    ]);
+}
 }

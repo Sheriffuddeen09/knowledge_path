@@ -90,6 +90,8 @@ Route::middleware('auth:sanctum')->group(function () {
         [LiveVideoController::class, 'join']
     );
 
+    Route::post('/live/{post}/view', [LiveController::class, 'view']);
+
     Route::post(
         '/live/{post}/end',
         [LiveVideoController::class, 'end']
